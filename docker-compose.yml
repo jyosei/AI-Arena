@@ -1,0 +1,19 @@
+version: "3.9"
+services:
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: 123456
+      MYSQL_DATABASE: aiarena
+    ports: ["3306:3306"]
+
+  backend:
+    build: ./backend
+    ports: ["8000:8000"]
+    depends_on: [db]
+    volumes: ["./backend:/app"]
+
+  frontend:
+    build: ./frontend
+    ports: ["5173:5173"]
+    volumes: ["./frontend:/app"]
