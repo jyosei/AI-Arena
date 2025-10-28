@@ -2,15 +2,18 @@
   "name": "ai-arena-frontend",
   "version": "0.1.0",
   "dependencies": {
-    "react": "^18.3.0",
-    "react-dom": "^18.3.0",
-    "react-router-dom": "^6.23.0",
     "antd": "^5.14.0",
     "axios": "^1.6.0",
-    "echarts": "^5.5.0"
+    "echarts": "^5.5.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "react-router-dom": "^6.23.0"
   },
   "scripts": {
     "start": "vite",
     "build": "vite build"
+  },
+  "devDependencies": {
+    "vite": "^7.1.12"
   }
 }
