@@ -1,0 +1,28 @@
+# filepath: /home/ubuntu/AI-Arena/.gitignore
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Django
+db.sqlite3
+
+# Node.js / Frontend
+node_modules/
+dist/
+build/
+.npm/
+npm-debug.log*
+
+# Environment variables
+.env
+.env.*
+
+# IDE / Editor
+.vscode/
+.idea/
+
+# OS generated files
+.DS_Store
+Thumbs.db

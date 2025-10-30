@@ -13,7 +13,10 @@ RUN npm run build
 
 # 部署阶段
 FROM nginx:stable-alpine
+# 拷贝构建好的前端文件
 COPY --from=build /app/dist /usr/share/nginx/html
+# 拷贝我们自定义的 Nginx 配置文件
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]

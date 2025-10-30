@@ -3,17 +3,25 @@ services:
   db:
     image: mysql:8.0
     environment:
-      MYSQL_ROOT_PASSWORD: 123456
+      MYSQL_ROOT_PASSWORD: '123456'
       MYSQL_DATABASE: aiarena
     ports: ["3306:3306"]
 
   backend:
     build: ./backend
-    ports: ["8000:8000"]
+    # 不再需要对外暴露端口，因为它只和 frontend 通信
+    # ports: ["8000:8000"] 
     depends_on: [db]
     volumes: ["./backend:/app"]
+    environment:
+      DB_NAME: 'aiarena'
+      DB_USER: 'root'
+      DB_PASSWORD: '123456'
+      DB_HOST: 'db'
+      DB_PORT: '3306'
+    command: sh -c "chmod +x ./wait-for-db.sh && ./wait-for-db.sh db 'python manage.py migrate && python manage.py runserver 0.0.0.0:8000'"
 
   frontend: # <-- 🌟 确保这里有正确的缩进，使其成为 services 的子项
     build: ./frontend
-    ports: ["5173:80"]  # 主机 5173 映射到容器内 Nginx 监听的 80 端口 (已修正)
+    ports: ["8000:80"]  # 主机 5173 映射到容器内 Nginx 监听的 80 端口 (已修正)
     volumes: ["./frontend:/app"]
