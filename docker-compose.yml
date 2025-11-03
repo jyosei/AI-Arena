@@ -1,4 +1,7 @@
 version: "3.9"
+volumes:
+  db_data:
+
 services:
   db:
     image: mysql:8.0
@@ -20,7 +23,7 @@ services:
       DB_HOST: 'db'
       DB_PORT: '3306'
       # 在这里添加您的 API Key
-      OPENAI_API_KEY: 'sk-RchkXJvhtoGWq7jltEIez0S9LQ2zreRa1Oy8YcVgm7U5OOGG' 
+      OPENAI_API_KEY: 'sk-ser2cEa4NSlALdseJwob4oube3Trg0NOLwvXEH7yUAeYy9k9' 
     command: sh -c "chmod +x ./wait-for-db.sh && ./wait-for-db.sh db 'python manage.py migrate && python manage.py runserver 0.0.0.0:8000'"
 
   frontend: # <-- 🌟 确保这里有正确的缩进，使其成为 services 的子项

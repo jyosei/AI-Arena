@@ -22,7 +22,7 @@ class OpenAIModel(BaseLanguageModel):
                 # 使用从构造函数传入的 API Key
                 api_key=self.api_key,
                 # 这里是您指定的国内代理地址
-                base_url="https://api.vectorengine.ai/v1" 
+                base_url="https://jeniya.cn/v1" 
             )
             response = client.chat.completions.create(
                 # 注意：这里的模型名称可能需要根据代理服务的要求来写
