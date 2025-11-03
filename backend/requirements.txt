@@ -4,3 +4,5 @@ djangorestframework-simplejwt==5.3
 PyMySQL==1.1.0
 django-cors-headers==4.3
 cryptography
+setuptools
+openai

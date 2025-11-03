@@ -1,6 +1,5 @@
 from rest_framework import generics, permissions
-from rest_framework_simplejwt.tokens import RefreshToken
-from .models import User
+from .models import User  # 从 users 应用自己的 models 导入 User
 from .serializers import UserSerializer
 
 class RegisterView(generics.CreateAPIView):

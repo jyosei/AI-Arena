@@ -16,7 +16,8 @@ INSTALLED_APPS = [
     'rest_framework', 
     'corsheaders',
     'users', 
-    'datasets'
+    'datasets',
+    'models_manager'
 ]
 
 MIDDLEWARE = [
