@@ -10,13 +10,13 @@ class BaseLanguageModel(ABC):
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
 
     @abstractmethod
-    def evaluate(self, prompt: str) -> str:
+    def evaluate(self, prompt: str,model_name : str) -> str:
         """接收一个提示，返回模型的响应字符串"""
         pass
 
 # 2. 为 OpenAI 创建一个具体的实现类
 class OpenAIModel(BaseLanguageModel):
-    def evaluate(self, prompt: str) -> str:
+    def evaluate(self, prompt: str,model_name : str) -> str:
         try:
             client = OpenAI(
                 # 使用从构造函数传入的 API Key
@@ -26,7 +26,7 @@ class OpenAIModel(BaseLanguageModel):
             )
             response = client.chat.completions.create(
                 # 注意：这里的模型名称可能需要根据代理服务的要求来写
-                model="gpt-4o", 
+                model=model_name, 
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant."},
                     # 使用传入的 prompt 参数作为用户问题
@@ -41,20 +41,24 @@ class OpenAIModel(BaseLanguageModel):
             # 做好异常处理
             return f"调用 API 时出错: {e}"
 
-
-# 3. （未来扩展）为 Gemini 创建一个实现类
-# class GeminiModel(BaseLanguageModel):
-#     def evaluate(self, prompt: str) -> str:
-#         # 这里是调用 Google Gemini 的代码
-#         # ...
-#         pass
-
+class GLMModel(OpenAIModel):
+    """
+    GLM与OpenAI兼容，直接继承就可以。
+    """
+    pass
+class DeepSeekModel(OpenAIModel):
+    """
+    DeepSeek与OpenAI兼容，直接继承就可以。
+    """
+    pass
 # 4. 创建一个工厂函数，根据名称获取对应的模型服务
 def get_model_service(model_name: str) -> BaseLanguageModel:
     """根据模型名称返回一个模型服务实例"""
     if model_name.startswith("gpt"):
         return OpenAIModel()
-    # elif model_name.startswith("gemini"):
-    #     return GeminiModel()
+    elif model_name.startswith("glm"):
+        return GLMModel()
+    elif model_name.startswith("deepseek"):
+        return DeepSeekModel()
     else:
         raise ValueError(f"Unsupported model: {model_name}")

@@ -13,7 +13,7 @@ services:
   backend:
     build: ./backend
     # 不再需要对外暴露端口，因为它只和 frontend 通信
-    # ports: ["8000:8000"] 
+    #ports: ["8000:8000"] 
     depends_on: [db]
     volumes: ["./backend:/app"]
     environment:

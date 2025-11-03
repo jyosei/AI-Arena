@@ -1,6 +1,6 @@
 from django.urls import path
-from .views import ModelEvaluationView
+from .views import EvaluateModelView
 
 urlpatterns = [
-    path('evaluate/', ModelEvaluationView.as_view(), name='model-evaluation'),
+    path('evaluate/', EvaluateModelView.as_view(), name='model-evaluate'),
 ]

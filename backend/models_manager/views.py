@@ -4,31 +4,30 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from .services import get_model_service
 
-class ModelEvaluationView(APIView):
-    """
-    接收前端请求，调用指定的大模型进行测评。
-    """
-    permission_classes = [IsAuthenticated] # 建议开启权限验证
+class EvaluateModelView(APIView):
+    permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
-        prompt = request.data.get('prompt')
-        model_name = request.data.get('model_name')
+        model_name = request.data.get("model_name")
+        prompt = request.data.get("prompt")
 
-        if not prompt or not model_name:
-            return Response(
-                {"error": "prompt 和 model_name 不能为空"}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        if not model_name or not prompt:
+            return Response({"error": "model_name and prompt are required."}, status=400)
 
         try:
             model_service = get_model_service(model_name)
-            model_response = model_service.evaluate(prompt)
             
-            return Response(
-                {"prompt": prompt, "model": model_name, "response": model_response},
-                status=status.HTTP_200_OK
-            )
+            # 重点：确保在这里传递了 prompt 和 model_name 两个参数
+            response_text = model_service.evaluate(prompt, model_name) 
+            
+            return Response({
+                "prompt": prompt,
+                "model": model_name,
+                "response": response_text
+            })
         except ValueError as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": str(e)}, status=400)
         except Exception as e:
-            return Response({"error": f"服务器内部错误: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            # 将内部错误包装起来，提供更友好的提示
+            # 注意：在生产环境中，不应暴露详细的内部错误 e
+            return Response({"error": f"服务器内部错误: {e}"}, status=500)
