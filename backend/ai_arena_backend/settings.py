@@ -1,9 +1,21 @@
 import os
+from pathlib import Path
 from datetime import timedelta
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-SECRET_KEY = 'dev-key'
-DEBUG = True
+# Build paths inside the project like this: BASE_DIR / 'subdir'.
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+# 加载 .env 文件
+
+# Quick-start development settings - unsuitable for production
+# See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
+
+# SECURITY WARNING: keep the secret key used in production secret!
+SECRET_KEY = os.getenv('SECRET_KEY', 'default-secret-key')
+
+# SECURITY WARNING: don't run with debug turned on in production!
+DEBUG = os.getenv('DEBUG', '0') == '1'
+
 ALLOWED_HOSTS = ['*']
 
 INSTALLED_APPS = [
@@ -53,25 +65,32 @@ WSGI_APPLICATION = 'ai_arena_backend.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': os.environ.get('DB_NAME'),
-        'USER': os.environ.get('DB_USER'),
-        'PASSWORD': os.environ.get('DB_PASSWORD'),
-        'HOST': os.environ.get('DB_HOST'),
-        'PORT': os.environ.get('DB_PORT'),
+        'ENGINE': os.getenv('DB_ENGINE', 'django.db.backends.sqlite3'),
+        'NAME': os.path.join(BASE_DIR, os.getenv('DB_NAME', 'db.sqlite3')),
+        'USER': os.getenv('DB_USER'),
+        'PASSWORD': os.getenv('DB_PASSWORD'),
+        'HOST': os.getenv('DB_HOST'),
+        'PORT': os.getenv('DB_PORT'),
     }
 }
 
-CORS_ALLOW_ALL_ORIGINS = True
-REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-    )
-}
-SIMPLE_JWT = {'ACCESS_TOKEN_LIFETIME': timedelta(hours=2)}
-
+# 告诉 Django 使用你的自定义用户模型
 AUTH_USER_MODEL = 'users.User'
 
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+# 新增：配置 Django Rest Framework
+REST_FRAMEWORK = {
+    # 设置默认的认证类
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+    # 你也可以在这里设置默认的权限类，例如要求所有视图默认都需要登录
+    # 'DEFAULT_PERMISSION_CLASSES': [
+    #     'rest_framework.permissions.IsAuthenticated',
+    # ]
+}
 
-STATIC_URL = 'static/'
+# 新增：配置 Simple JWT
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60), # 访问令牌有效期
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),    # 刷新令牌有效期
+}

@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { Card, Input, Select, List, Button, Spin, Modal, Typography, Row, Col, Space, Avatar } from 'antd';
 import { Link } from 'react-router-dom';
-import { SearchOutlined, TrophyOutlined, CompareOutlined, TeamOutlined, MessageOutlined, UserOutlined, RobotOutlined, SendOutlined } from '@ant-design/icons';
-import { getModels } from '../api/models';
-
+import { SearchOutlined, TrophyOutlined, SwapOutlined, TeamOutlined, MessageOutlined, UserOutlined, RobotOutlined, SendOutlined } from '@ant-design/icons';
+// 导入新的 API 函数
+import { getModels, evaluateModel } from '../api/models';
+import axios from 'axios'
 const { Search, TextArea } = Input;
 const { Title, Paragraph } = Typography;
-
+const HARDCODED_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzYyMjg0ODQwLCJpYXQiOjE3NjIyODEyNDAsImp0aSI6IjE2YjE0N2FhYzBkMjQ5MjlhNDU3YjExZjMzNzc0NDEwIiwidXNlcl9pZCI6MX0.KCM_PkbTKx0vjD894gg1ICor48JnB2H6dvq9hurIYGg"; // <--- 在这里粘贴你的有效令牌
 // 聊天对话框组件
+// 接收 model 属性
 function ChatDialog({ visible, onClose }) {
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
@@ -16,115 +18,68 @@ function ChatDialog({ visible, onClose }) {
   const handleSend = async () => {
     if (!inputValue.trim()) return;
 
-    const userMessage = {
-      id: Date.now(),
-      content: inputValue,
-      isUser: true,
-      timestamp: new Date()
-    };
-
+    const userMessage = { content: inputValue, isUser: true };
     setMessages(prev => [...prev, userMessage]);
+    const currentInput = inputValue;
     setInputValue('');
     setLoading(true);
 
-    // 模拟 AI 回复（实际使用时需要连接后端 API）
-    setTimeout(() => {
-      const aiMessage = {
-        id: Date.now() + 1,
-        content: `这是对"${inputValue}"的模拟回复。在实际应用中，这里会调用真实的 AI 模型 API。您可以询问关于 AI 模型、技术细节或使用建议等问题。`,
-        isUser: false,
-        timestamp: new Date()
-      };
+    try {
+      // 直接使用 axios 发送请求
+      const response = await axios.post(
+        '/api/models/evaluate/', // 后端 API 地址
+        {
+          model_name: 'gpt-3.5-turbo', // 固定使用 gpt-3.5-turbo
+          prompt: currentInput,
+        },
+        {
+          headers: {
+            // 手动添加硬编码的令牌
+            'Authorization': `Bearer ${HARDCODED_TOKEN}`
+          }
+        }
+      );
+      
+      const aiMessage = { content: response.data.response, isUser: false };
       setMessages(prev => [...prev, aiMessage]);
+
+    } catch (error) {
+      const errorMessage = { content: `调用模型出错: ${error.response?.data?.detail || error.message}`, isUser: false };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
       setLoading(false);
-    }, 1500);
+    }
   };
 
   return (
     <Modal
-      title="💬 与 AI 对话"
+      title="💬 与 gpt-3.5-turbo 对话"
       open={visible}
       onCancel={onClose}
       footer={null}
       width={700}
-      style={{ top: 20 }}
     >
       <div style={{ height: '400px', display: 'flex', flexDirection: 'column' }}>
-        {/* 消息列表 */}
-        <div style={{ flex: 1, overflowY: 'auto', marginBottom: '16px', border: '1px solid #d9d9d9', borderRadius: '8px', padding: '16px' }}>
-          {messages.length === 0 ? (
-            <div style={{ textAlign: 'center', color: '#999', marginTop: '100px' }}>
-              <RobotOutlined style={{ fontSize: '48px', marginBottom: '16px' }} />
-              <p>欢迎与 AI 对话！请问我任何问题</p>
-              <p style={{ fontSize: '12px', marginTop: '8px' }}>例如：推荐最好的分类模型、如何比较模型性能等</p>
-            </div>
-          ) : (
-            <List
-              dataSource={messages}
-              renderItem={message => (
-                <List.Item style={{ border: 'none', padding: '8px 0' }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', width: '100%', flexDirection: message.isUser ? 'row-reverse' : 'row' }}>
-                    <Avatar 
-                      icon={message.isUser ? <UserOutlined /> : <RobotOutlined />}
-                      style={{ 
-                        backgroundColor: message.isUser ? '#1890ff' : '#52c41a',
-                        margin: message.isUser ? '0 0 0 12px' : '0 12px 0 0'
-                      }}
-                    />
-                    <div style={{ 
-                      background: message.isUser ? '#1890ff' : '#f5f5f5',
-                      color: message.isUser ? 'white' : 'black',
-                      padding: '12px 16px',
-                      borderRadius: '12px',
-                      maxWidth: '70%',
-                      boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
-                    }}>
-                      {message.content}
-                    </div>
-                  </div>
-                </List.Item>
-              )}
-            />
-          )}
-          {loading && (
-            <div style={{ display: 'flex', alignItems: 'flex-start', margin: '8px 0' }}>
-              <Avatar icon={<RobotOutlined />} style={{ backgroundColor: '#52c41a', marginRight: '12px' }} />
-              <div style={{ background: '#f5f5f5', padding: '12px 16px', borderRadius: '12px' }}>
-                <Spin size="small" /> AI 正在思考...
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px', border: '1px solid #f0f0f0', marginBottom: 16 }}>
+          {messages.map((msg, index) => (
+            <div key={index} style={{ display: 'flex', justifyContent: msg.isUser ? 'flex-end' : 'flex-start', marginBottom: 12 }}>
+              <Avatar icon={msg.isUser ? <UserOutlined /> : <RobotOutlined />} style={{ order: msg.isUser ? 2 : 1, marginLeft: msg.isUser ? 8 : 0, marginRight: msg.isUser ? 0 : 8 }} />
+              <div style={{ background: msg.isUser ? '#1890ff' : '#f5f5f5', color: msg.isUser ? 'white' : 'black', padding: '8px 12px', borderRadius: '8px', maxWidth: '70%' }}>
+                {msg.content}
               </div>
             </div>
-          )}
+          ))}
+          {loading && <Spin style={{ marginLeft: 40 }} />}
         </div>
-
-        {/* 输入区域 */}
         <div style={{ display: 'flex', gap: '8px' }}>
-          <TextArea
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            placeholder="输入您的问题...（按 Enter 发送，Shift + Enter 换行）"
-            autoSize={{ minRows: 1, maxRows: 4 }}
-            onPressEnter={(e) => {
-              if (e.shiftKey) {
-                return; // 允许换行
-              }
-              e.preventDefault();
-              handleSend();
-            }}
-          />
-          <Button 
-            type="primary" 
-            icon={<SendOutlined />} 
-            onClick={handleSend}
-            disabled={!inputValue.trim() || loading}
-            style={{ height: 'auto', padding: '0 16px' }}
-          >
-            发送
-          </Button>
+          <TextArea value={inputValue} onChange={e => setInputValue(e.target.value)} placeholder="输入您的问题..." onPressEnter={e => !e.shiftKey && (e.preventDefault(), handleSend())} />
+          <Button type="primary" icon={<SendOutlined />} onClick={handleSend} disabled={!inputValue.trim() || loading}>发送</Button>
         </div>
       </div>
     </Modal>
   );
 }
+
 
 export default function ModelList() {
   const [loading, setLoading] = useState(false);
@@ -134,6 +89,8 @@ export default function ModelList() {
   const [welcomeModalVisible, setWelcomeModalVisible] = useState(false);
   const [searchInput, setSearchInput] = useState('');
   const [chatVisible, setChatVisible] = useState(false);
+  // 新增 state 用于存储当前选择用于聊天的模型
+  const [selectedModelForChat, setSelectedModelForChat] = useState(null);
 
   const fetch = async () => {
     setLoading(true);
@@ -169,7 +126,7 @@ export default function ModelList() {
 
   const features = [
     {
-      icon: <CompareOutlined style={{ fontSize: '24px', color: '#1890ff' }} />,
+      icon: <SwapOutlined style={{ fontSize: '24px', color: '#1890ff' }} />,
       title: '比较模型',
       description: '对比不同AI模型的性能和表现，找到最适合您需求的模型'
     },
@@ -236,7 +193,13 @@ export default function ModelList() {
           type="primary"
           size="large"
           icon={<MessageOutlined />}
-          onClick={() => setChatVisible(true)}
+          // 修改这里的 onClick 事件
+          onClick={() => {
+            // 1. 硬编码一个模型对象，指定 name 为 gpt-3.5-turbo
+            setSelectedModelForChat({ name: 'gpt-3.5-turbo' });
+            // 2. 打开聊天窗口
+            setChatVisible(true);
+          }}
           style={{
             position: 'absolute',
             right: '24px',
@@ -336,7 +299,11 @@ export default function ModelList() {
                   hoverable
                   actions={[
                     <Link to={`/models/${item.id}`} style={{ color: '#1890ff' }}>查看详情</Link>,
-                    <Button type="link" onClick={() => setChatVisible(true)}>测试对话</Button>
+                    // 点击时，设置要聊天的模型并打开对话框
+                    <Button type="link" onClick={() => {
+                      setSelectedModelForChat(item);
+                      setChatVisible(true);
+                    }}>测试对话</Button>
                   ]}
                   style={{
                     borderRadius: '8px',
@@ -358,6 +325,8 @@ export default function ModelList() {
       <ChatDialog 
         visible={chatVisible} 
         onClose={() => setChatVisible(false)} 
+        // 将选中的模型传递给对话框
+        model={selectedModelForChat} 
       />
 
       {/* Welcome Modal */}
