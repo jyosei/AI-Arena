@@ -6,3 +6,4 @@ django-cors-headers==4.3
 cryptography
 setuptools
 openai
+google-generativeai

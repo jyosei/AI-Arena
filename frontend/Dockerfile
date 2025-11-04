@@ -5,7 +5,8 @@ WORKDIR /app
 
 # 安装依赖
 COPY package*.json ./
-RUN npm install
+# 使用淘宝镜像源加速 npm install
+RUN npm install --registry=https://registry.npmmirror.com
 
 # 拷贝前端源码并构建
 COPY . .

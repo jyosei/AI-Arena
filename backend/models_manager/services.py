@@ -41,7 +41,7 @@ class OpenAIModel(BaseLanguageModel):
             # 做好异常处理
             return f"调用 API 时出错: {e}"
 
-class GLMModel(OpenAIModel):
+class ZhipuAIModel(OpenAIModel):
     """
     GLM与OpenAI兼容，直接继承就可以。
     """
@@ -51,14 +51,70 @@ class DeepSeekModel(OpenAIModel):
     DeepSeek与OpenAI兼容，直接继承就可以。
     """
     pass
+class GeminiModel(OpenAIModel):
+    """
+    Gemini与OpenAI兼容，直接继承就可以。
+    """
+    pass
+class AnthropicModel(OpenAIModel):
+    """
+    claude与OpenAI兼容，直接继承就可以。
+    """
+    pass
+class MoonshotModel(OpenAIModel):
+    """
+    moonshot与OpenAI兼容，直接继承就可以。
+    """
+    pass
+class QWenModel(OpenAIModel):
+    """
+    qwen与OpenAI兼容，直接继承就可以。
+    """
+    pass
+class HunyuanModel(OpenAIModel):
+    """
+    hunyuan与OpenAI兼容，直接继承就可以。
+    """
+    pass
+class DoubaoModel(OpenAIModel):
+    """
+    doubao与OpenAI兼容，直接继承就可以。
+    """
+    pass
+class LlamaModel(OpenAIModel):
+    """
+    llama与OpenAI兼容，直接继承就可以。
+    """
+    pass
+class ERNIEBotModel(OpenAIModel):
+    """
+    ERNIE与OpenAI兼容，直接继承就可以。
+    """
+    pass
 # 4. 创建一个工厂函数，根据名称获取对应的模型服务
 def get_model_service(model_name: str) -> BaseLanguageModel:
     """根据模型名称返回一个模型服务实例"""
     if model_name.startswith("gpt"):
         return OpenAIModel()
     elif model_name.startswith("glm"):
-        return GLMModel()
+        return ZhipuAIModel()
     elif model_name.startswith("deepseek"):
         return DeepSeekModel()
+    elif model_name.startswith("gemini"):
+        return GeminiModel()
+    elif model_name.startswith("claude"):
+        return AnthropicModel()
+    elif model_name.startswith("moonshot"):
+        return MoonshotModel()
+    elif model_name.startswith("qwen"):
+        return QWenModel()
+    elif model_name.startswith("ERNIE"):
+        return ERNIEBotModel
+    elif model_name.startswith("hunyuan"):
+        return HunyuanModel()
+    elif model_name.startswith("llama"):
+        return LlamaModel()
+    elif model_name.startswith("doubao"):
+        return DoubaoModel()
     else:
         raise ValueError(f"Unsupported model: {model_name}")

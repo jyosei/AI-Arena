@@ -1,7 +1,8 @@
 FROM python:3.12
 
-# 只需要 netcat 用于 wait-for-db.sh 脚本
-RUN apt-get update && apt-get install -y netcat-openbsd
+# 关键：在 apt-get update 之前，先用 sed 命令替换软件源为国内镜像
+RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update && apt-get install -y netcat-openbsd
 
 WORKDIR /app
 COPY requirements.txt .
