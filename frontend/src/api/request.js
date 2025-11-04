@@ -3,6 +3,16 @@
 import axios from 'axios';
 
 // 必须将 localhost 更改为 Docker Compose 服务名称 'backend'
-const request = axios.create({ baseURL: 'http://backend:8000/api/' }); 
+const request = axios.create({ baseURL: 'http://backend:8000/api/' });
+
+// request interceptor: attach token if available
+request.interceptors.request.use((config) => {
+	const token = localStorage.getItem('token');
+	if (token) {
+		config.headers = config.headers || {};
+		config.headers.Authorization = `Bearer ${token}`;
+	}
+	return config;
+});
 
 export default request;
