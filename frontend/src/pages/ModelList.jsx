@@ -7,38 +7,25 @@ import { getModels, evaluateModel } from '../api/models';
 import axios from 'axios'
 const { Search, TextArea } = Input;
 const { Title, Paragraph } = Typography;
-const HARDCODED_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzYyMjg0ODQwLCJpYXQiOjE3NjIyODEyNDAsImp0aSI6IjE2YjE0N2FhYzBkMjQ5MjlhNDU3YjExZjMzNzc0NDEwIiwidXNlcl9pZCI6MX0.KCM_PkbTKx0vjD894gg1ICor48JnB2H6dvq9hurIYGg"; // <--- 在这里粘贴你的有效令牌
 // 聊天对话框组件
 // 接收 model 属性
-function ChatDialog({ visible, onClose }) {
+function ChatDialog({ visible, onClose, model }) { // 确保接收 model prop
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSend = async () => {
-    if (!inputValue.trim()) return;
+    if (!inputValue.trim() || !model) return;
 
     const userMessage = { content: inputValue, isUser: true };
     setMessages(prev => [...prev, userMessage]);
     const currentInput = inputValue;
     setInputValue('');
     setLoading(true);
-
+    
     try {
-      // 直接使用 axios 发送请求
-      const response = await axios.post(
-        '/api/models/evaluate/', // 后端 API 地址
-        {
-          model_name: 'gpt-3.5-turbo', // 固定使用 gpt-3.5-turbo
-          prompt: currentInput,
-        },
-        {
-          headers: {
-            // 手动添加硬编码的令牌
-            'Authorization': `Bearer ${HARDCODED_TOKEN}`
-          }
-        }
-      );
+      // 使用导入的 evaluateModel 函数，它内部会通过 apiClient 发送请求
+      const response = await evaluateModel(model.name, currentInput);
       
       const aiMessage = { content: response.data.response, isUser: false };
       setMessages(prev => [...prev, aiMessage]);
@@ -53,7 +40,7 @@ function ChatDialog({ visible, onClose }) {
 
   return (
     <Modal
-      title="💬 与 gpt-3.5-turbo 对话"
+      title={model ? `💬 与 ${model.name} 对话` : '💬 与 AI 对话'}
       open={visible}
       onCancel={onClose}
       footer={null}

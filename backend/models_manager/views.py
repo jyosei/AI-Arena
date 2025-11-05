@@ -1,9 +1,31 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated, AllowAny # 导入 AllowAny
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
 from .services import get_model_service
 import random
+
+# 新增：模型列表视图
+class ModelListView(APIView):
+    # 允许任何人查看模型列表，所以暂时不需要登录
+    permission_classes = [AllowAny]
+
+    def get(self, request, *args, **kwargs):
+        # 以后这里会是从数据库查询的真实数据
+        # models = Model.objects.all()
+        # serializer = ModelSerializer(models, many=True)
+        # return Response(serializer.data)
+
+        # 现在，为了快速测试，我们返回一些硬编码的假数据
+        dummy_models = [
+            {"id": 1, "name": "gpt-3.5-turbo", "owner_name": "OpenAI", "task": "通用"},
+            {"id": 2, "name": "glm-4", "owner_name": "智谱AI", "task": "通用"},
+            {"id": 3, "name": "deepseek-coder", "owner_name": "深度求索", "task": "代码"},
+            {"id": 4, "name": "qwen-max", "owner_name": "阿里巴巴", "task": "通用"},
+        ]
+        return Response(dummy_models, status=status.HTTP_200_OK)
+
+
 class EvaluateModelView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -31,6 +53,7 @@ class EvaluateModelView(APIView):
             # 将内部错误包装起来，提供更友好的提示
             # 注意：在生产环境中，不应暴露详细的内部错误 e
             return Response({"error": f"服务器内部错误: {e}"}, status=500)
+
 class BattleModelView(APIView):
     permission_classes = [IsAuthenticated]
     def post(self , request , *args , **kwargs):
