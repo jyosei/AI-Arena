@@ -20,14 +20,14 @@ class ModelListView(APIView):
         dummy_models = [
             {"id": 1, "name": "gpt-3.5-turbo", "owner_name": "OpenAI", "task": "通用"},
             {"id": 2, "name": "glm-4", "owner_name": "智谱AI", "task": "通用"},
-            {"id": 3, "name": "deepseek-coder", "owner_name": "深度求索", "task": "代码"},
+            {"id": 3, "name": "deepseek-chat", "owner_name": "深度求索", "task": "代码"},
             {"id": 4, "name": "qwen-max", "owner_name": "阿里巴巴", "task": "通用"},
         ]
         return Response(dummy_models, status=status.HTTP_200_OK)
 
 
 class EvaluateModelView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def post(self, request, *args, **kwargs):
         model_name = request.data.get("model_name")
@@ -55,7 +55,8 @@ class EvaluateModelView(APIView):
             return Response({"error": f"服务器内部错误: {e}"}, status=500)
 
 class BattleModelView(APIView):
-    permission_classes = [IsAuthenticated]
+    """permission_classes = [IsAuthenticated]"""
+    permission_classes = [AllowAny]
     def post(self , request , *args , **kwargs):
         #1.请求模型的名称和prompt
         model_a_name = request.data.get("model_a")
@@ -91,3 +92,38 @@ class BattleModelView(APIView):
             return Response({"error": str(e)}, status=400)
         except Exception as e:
             return Response({"error": f"服务器内部错误: {e}"}, status=500)
+
+
+class LeaderboardView(APIView):
+    """简陋的排行榜接口（用于前端在后端未完成真实 leaderboard 时的回退）。
+    返回包含 id/name/owner_name/value/rank 的列表，按 value 降序。
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request, *args, **kwargs):
+        # 支持一个可选的 metric 查询参数（当前不影响返回，仅保留以便未来扩展）
+        metric = request.query_params.get('metric', 'score')
+
+        # 使用与 ModelListView 相同的假数据源，但带上示例的 value（分数）
+        dummy_models = [
+            {"id": 1, "name": "gpt-3.5-turbo", "owner_name": "OpenAI", "task": "通用"},
+            {"id": 2, "name": "glm-4", "owner_name": "智谱AI", "task": "通用"},
+            {"id": 3, "name": "deepseek-chat", "owner_name": "深度求索", "task": "代码"},
+            {"id": 4, "name": "qwen-max", "owner_name": "阿里巴巴", "task": "通用"},
+        ]
+
+        # 简单固定分数；真实场景应由数据库或评估结果提供
+        sample_scores = [95, 88, 76, 70]
+
+        scored = []
+        for i, m in enumerate(dummy_models):
+            item = m.copy()
+            item['value'] = sample_scores[i] if i < len(sample_scores) else 0
+            scored.append(item)
+
+        # 按 value 降序排序并添加 rank
+        scored.sort(key=lambda x: x['value'], reverse=True)
+        for idx, item in enumerate(scored):
+            item['rank'] = idx + 1
+
+        return Response(scored, status=status.HTTP_200_OK)

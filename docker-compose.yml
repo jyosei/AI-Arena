@@ -29,6 +29,11 @@ services:
     command: sh -c "chmod +x ./wait-for-db.sh && ./wait-for-db.sh db 'python manage.py migrate && python manage.py runserver 0.0.0.0:8000'"
 
   frontend: # <-- 🌟 确保这里有正确的缩进，使其成为 services 的子项
-    build: ./frontend
-    ports: ["8000:80"]  # 主机 5173 映射到容器内 Nginx 监听的 80 端口 (已修正)
+    build:
+      context: ./frontend
+      args:
+        # 使用相对路径 /api/，让浏览器中的请求走 nginx 的 /api/ 代理到后端
+        VITE_API_BASE: /api/
+    ports: ["8000:80"]  # 主机 8000 映射到容器内 Nginx 监听的 80 端口
+    # 注意：开发时可以使用 volumes 挂载源码以便热重载，但在生产镜像中这会覆盖镜像中的构建产物。
     volumes: ["./frontend:/app"]

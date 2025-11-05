@@ -1,18 +1,103 @@
-import React, { useContext } from 'react';
-import { Card, Button } from 'antd';
+import React, { useContext, useState } from 'react';
+import { Card, Button, Tabs, Form, Input, message } from 'antd';
+import { useIntl } from 'react-intl';
 import AuthContext from '../contexts/AuthContext.jsx';
 
-export default function UserPanel() {
-  const { user, logout } = useContext(AuthContext);
+const { TabPane } = Tabs;
 
-  if (!user) return <Card>未登录</Card>;
+export default function UserPanel() {
+  const { user, logout, login, register } = useContext(AuthContext);
+  const intl = useIntl();
+  const [loadingLogin, setLoadingLogin] = useState(false);
+  const [loadingRegister, setLoadingRegister] = useState(false);
+  const [activeTab, setActiveTab] = useState('login');
+
+  const onLogin = async (values) => {
+    setLoadingLogin(true);
+    try {
+      const ok = await login(values.username, values.password);
+      if (ok) {
+        message.success(intl.formatMessage({ id: 'login.success', defaultMessage: '登录成功' }));
+      } else {
+        message.error(intl.formatMessage({ id: 'login.failed', defaultMessage: '登录失败' }));
+      }
+    } catch (e) {
+      console.error(e);
+      message.error(intl.formatMessage({ id: 'login.error', defaultMessage: '登录出错' }));
+    } finally {
+      setLoadingLogin(false);
+    }
+  };
+
+  const onRegister = async (values) => {
+    setLoadingRegister(true);
+    try {
+      const result = await register({ username: values.username, password: values.password });
+      if (result && result.success) {
+        if (result.autoLogin) {
+          message.success(intl.formatMessage({ id: 'register.success', defaultMessage: '注册并已自动登录' }));
+        } else {
+          message.success(intl.formatMessage({ id: 'register.success', defaultMessage: '注册成功，请登录' }));
+          setActiveTab('login');
+        }
+      } else {
+        // 注册失败：尝试显示后端返回的错误信息
+        const errMsg = result && result.errors ? JSON.stringify(result.errors) : intl.formatMessage({ id: 'register.failed', defaultMessage: '注册失败' });
+        message.error(errMsg);
+      }
+    } catch (e) {
+      console.error(e);
+      message.error(intl.formatMessage({ id: 'register.failed', defaultMessage: '注册失败' }));
+    } finally {
+      setLoadingRegister(false);
+    }
+  };
+
+  if (!user) {
+    return (
+      <Card title={intl.formatMessage({ id: 'user.center.title', defaultMessage: '用户中心' })} style={{ maxWidth: 720, margin: '0 auto' }}>
+        <Tabs activeKey={activeTab} onChange={setActiveTab} centered>
+          <TabPane tab={intl.formatMessage({ id: 'login.tab', defaultMessage: '登录' })} key="login">
+            <Form name="login" layout="vertical" onFinish={onLogin}>
+              <Form.Item name="username" label={intl.formatMessage({ id: 'login.username.label', defaultMessage: '用户名' })} rules={[{ required: true, message: intl.formatMessage({ id: 'login.username.required', defaultMessage: '请输入用户名' }) }]}>
+                <Input placeholder={intl.formatMessage({ id: 'login.username.placeholder', defaultMessage: '用户名' })} />
+              </Form.Item>
+              <Form.Item name="password" label={intl.formatMessage({ id: 'login.password.label', defaultMessage: '密码' })} rules={[{ required: true, message: intl.formatMessage({ id: 'login.password.required', defaultMessage: '请输入密码' }) }]}>
+                <Input.Password placeholder={intl.formatMessage({ id: 'login.password.placeholder', defaultMessage: '密码' })} />
+              </Form.Item>
+              <Form.Item>
+                <Button type="primary" htmlType="submit" block loading={loadingLogin}>{intl.formatMessage({ id: 'login.button', defaultMessage: '登录' })}</Button>
+              </Form.Item>
+            </Form>
+          </TabPane>
+
+          <TabPane tab={intl.formatMessage({ id: 'register.tab', defaultMessage: '注册' })} key="register">
+            <Form name="register" layout="vertical" onFinish={onRegister}>
+              <Form.Item name="username" label={intl.formatMessage({ id: 'register.username.label', defaultMessage: '用户名' })} rules={[{ required: true, message: intl.formatMessage({ id: 'register.username.required', defaultMessage: '请输入用户名' }) }]}>
+                <Input placeholder={intl.formatMessage({ id: 'register.username.placeholder', defaultMessage: '用户名' })} />
+              </Form.Item>
+              <Form.Item name="password" label={intl.formatMessage({ id: 'register.password.label', defaultMessage: '密码' })} rules={[{ required: true, message: intl.formatMessage({ id: 'register.password.required', defaultMessage: '请输入密码' }) }]} hasFeedback>
+                <Input.Password placeholder={intl.formatMessage({ id: 'register.password.placeholder', defaultMessage: '密码' })} />
+              </Form.Item>
+              <Form.Item name="confirm" label={intl.formatMessage({ id: 'register.confirm.label', defaultMessage: '确认密码' })} dependencies={["password"]} hasFeedback rules={[{ required: true, message: intl.formatMessage({ id: 'register.confirm.required', defaultMessage: '请确认密码' }) }, ({ getFieldValue }) => ({ validator(_, value) { if (!value || getFieldValue('password') === value) { return Promise.resolve(); } return Promise.reject(new Error(intl.formatMessage({ id: 'register.confirm.mismatch', defaultMessage: '两次输入的密码不一致' }))); }, }), ]}>
+                <Input.Password placeholder={intl.formatMessage({ id: 'register.confirm.placeholder', defaultMessage: '确认密码' })} />
+              </Form.Item>
+              <Form.Item>
+                <Button type="primary" htmlType="submit" block loading={loadingRegister}>{intl.formatMessage({ id: 'register.button', defaultMessage: '注册' })}</Button>
+              </Form.Item>
+            </Form>
+          </TabPane>
+        </Tabs>
+      </Card>
+    );
+  }
 
   return (
-    <Card title="用户面板">
-      <p>用户名: {user.username}</p>
-      <p>邮箱: {user.email || '-'}</p>
-      <p>权限: {user.is_staff ? '管理员' : '普通用户'}</p>
-      <Button danger onClick={logout}>登出</Button>
+    <Card title={intl.formatMessage({ id: 'user.center.title', defaultMessage: '用户中心' })} style={{ maxWidth: 720, margin: '0 auto' }}>
+      <p><strong>{intl.formatMessage({ id: 'user.field.username', defaultMessage: '用户名' })}:</strong> {user.username}</p>
+      <p><strong>{intl.formatMessage({ id: 'user.field.email', defaultMessage: '邮箱' })}:</strong> {user.email || '-'}</p>
+      <p><strong>{intl.formatMessage({ id: 'user.field.role', defaultMessage: '权限' })}:</strong> {user.is_staff ? intl.formatMessage({ id: 'user.role.admin', defaultMessage: '管理员' }) : intl.formatMessage({ id: 'user.role.user', defaultMessage: '普通用户' })}</p>
+      <Button danger onClick={logout}>{intl.formatMessage({ id: 'user.logout', defaultMessage: '登出' })}</Button>
     </Card>
   );
 }

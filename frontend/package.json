@@ -5,6 +5,7 @@
     "antd": "^5.14.0",
     "axios": "^1.6.0",
     "echarts": "^5.5.0",
+    "react-intl": "^6.6.8",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "react-router-dom": "^6.23.0"

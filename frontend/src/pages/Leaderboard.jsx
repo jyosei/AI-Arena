@@ -11,7 +11,21 @@ export default function Leaderboard() {
     setLoading(true);
     try {
       const res = await getLeaderboard(metric);
-      setRows(res.data || []);
+      const data = res.data || [];
+
+      // 后端当前返回的 /models/ 接口没有 "rank" 和 "value" 字段，
+      // 为了兼容并避免页面报错，这里做一次映射：
+      // - 如果后端已经返回了 value 字段（例如真实 leaderboard），直接使用
+      // - 否则把模型列表当作占位数据，构造 rank 和 value（value 用 '-' 占位）
+      const mapped = data.map((item, idx) => ({
+        id: item.id ?? idx,
+        rank: item.rank ?? idx + 1,
+        name: item.name || item.model_name || item.id || `模型-${idx + 1}`,
+        owner_name: item.owner_name || item.owner || '-',
+        value: item.value ?? item.score ?? '-',
+      }));
+
+      setRows(mapped);
     } finally { setLoading(false); }
   };
 
