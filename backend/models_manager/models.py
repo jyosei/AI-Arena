@@ -16,14 +16,12 @@ class BattleVote(models.Model):
     winner = models.CharField(max_length=100, help_text="获胜方的名称, 'tie', 或 'both_bad'")
 
     # 投票者 (可选，如果你的系统有用户登录)
-    """
     voter = models.ForeignKey(
         settings.AUTH_USER_MODEL, 
         on_delete=models.SET_NULL, 
         null=True, 
         blank=True
     )
-    """
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

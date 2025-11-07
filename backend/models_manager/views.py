@@ -29,7 +29,7 @@ class RecordVoteView(APIView):
             model_b=model_b,
             prompt=prompt,
             winner=winner,
-            voter=request.user if request.user.is_authenticated else None
+            #voter=request.user if request.user.is_authenticated else None
         )
 
         return Response({'message': 'Vote recorded successfully.'}, status=status.HTTP_201_CREATED)

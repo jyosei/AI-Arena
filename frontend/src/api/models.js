@@ -44,7 +44,7 @@ export const recordVote = (data) => {
     prompt: data.prompt,
     winner: data.winner,
   };
-  return apiClient.post('/battles/record_vote/', payload);
+  return apiClient.post('/models/record_vote/', payload);
 }
 export const getModel = (id) => {
   return apiClient.get(`models/${id}/`);
