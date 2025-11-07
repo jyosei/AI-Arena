@@ -8,8 +8,11 @@ import {
 import { 
   RobotOutlined, UserOutlined, SendOutlined, LikeOutlined, DislikeOutlined, 
   SwapOutlined, MehOutlined, TableOutlined, ThunderboltOutlined, 
-  MessageOutlined, DownOutlined 
+  MessageOutlined, DownOutlined ,UpSquareOutlined
 } from '@ant-design/icons';
+import{
+  ArrowUp,SquareArrowUp
+}from 'lucide-react';
 import { getModels, evaluateModel, battleModels, recordVote } from '../api/models';
 
 const { TextArea } = Input; // Search 不再需要
@@ -197,12 +200,6 @@ export default function ArenaPage() {
 
   return (
     <>
-      {/* --- 对战/聊天功能区域 (保持不变) --- */}
-      <Title level={2}>Model Arena</Title>
-      <Paragraph type="secondary" style={{ marginBottom: '24px' }}>
-        Choose a mode, select models, and start your comparison.
-      </Paragraph>
-
       <Row justify="space-between" align="middle" style={{ marginBottom: 24 }}>
         <Col>
           <Space wrap size="large">
@@ -246,24 +243,32 @@ export default function ArenaPage() {
         </Col>
       </Row>
 
-      <TextArea
-        rows={4}
-        value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
-        placeholder="Enter your prompt here..."
-        style={{ marginBottom: 16 }}
-      />
-      
-      <Button 
-        type="primary" 
-        size="large"
-        onClick={startBattle} 
-        loading={battleLoading}
-        style={{ marginBottom: 24 }}
-      >
-        {mode === 'direct-chat' ? 'Start Chat' : 'Start Battle'}
-      </Button>
-
+      <div style={{ position: 'relative', marginBottom: 24 }}>
+        <TextArea
+          rows={4}
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          placeholder="Ask anything..."
+          style={{ 
+            paddingRight: '50px', // 为发送按钮留出空间
+            paddingBottom: '30px' // 为底部按钮留出空间 (可选)
+          }}
+          onPressEnter={e => !e.shiftKey && (e.preventDefault(), startBattle())}
+        />
+        <Button 
+          type="primary"
+          icon={<SquareArrowUp />}
+          size="large"
+          onClick={startBattle}
+          loading={battleLoading}
+          disabled={!prompt.trim()}
+          style={{
+            position: 'absolute',
+            right: '5px',
+            bottom: '5px',
+          }}
+        />
+      </div>
       {battleError && <Alert message={battleError} type="error" closable onClose={() => setBattleError(null)} style={{ marginBottom: 16 }} />}
 
       {battleLoading && (
@@ -278,9 +283,6 @@ export default function ArenaPage() {
         </Row>
       )}
 
-      {/* ... (投票按钮区域保持不变) ... */}
-
-      {/* 聊天对话框 (保持不变) */}
       <ChatDialog 
         visible={chatVisible} 
         onClose={() => setChatVisible(false)} 

@@ -4,6 +4,29 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI Arena</title>
+
+    <style>
+      /* 自定义发送按钮样式 */
+      .custom-send-button {
+        background-color: #333 !important; /* 深灰色背景 */
+        border-color: #333 !important;     /* 边框颜色匹配背景 */
+        transition: background-color 0.3s ease; /* 平滑的过渡效果 */
+      }
+
+      /* 鼠标悬停时的效果 */
+      .custom-send-button:hover:not(:disabled) {
+        background-color: #555 !important; /* 悬停时颜色变亮 */
+        border-color: #555 !important;
+      }
+
+      /* 按钮被禁用时的效果 */
+      .custom-send-button:disabled {
+        background-color: #555 !important; /* 禁用时使用较亮的灰色 */
+        border-color: #555 !important;
+        opacity: 0.6; /* 增加一点透明度 */
+      }
+    </style>
+
   </head>
   <body>
     <script>

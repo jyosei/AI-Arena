@@ -51,5 +51,5 @@ export const getModel = (id) => {
 };
 
 export const getLeaderboard = (metric = 'score') => {
-  return apiClient.get('leaderboard/', { params: { metric } });
+  return apiClient.get('/models/leaderboard/', { params: { metric } });
 };
