@@ -36,9 +36,9 @@ const mockUser = {
 
 // 菜单项定义
 const menuItems = [
-  { key: 'battle', label: <span clasName = "menu-font-label">Battle</span>, icon: <Swords size={16}/> },
-  { key: 'side-by-side', label: <span clasName = "menu-font-label">Side by side</span>, icon: <Columns2 size={16}/> },
-  { key: 'direct-chat', label: <span clasName = "menu-font-label">Direct chat</span>, icon: <SendHorizontal size={16}/> },
+  { key: 'battle', label: <span className = "menu-font-label">Battle</span>, icon: <Swords size={16}/> },
+  { key: 'side-by-side', label: <span className = "menu-font-label">Side by side</span>, icon: <Columns2 size={16}/> },
+  { key: 'direct-chat', label: <span className = "menu-font-label">Direct chat</span>, icon: <SendHorizontal size={16}/> },
 ];
 
 const AppLayout = () => {
