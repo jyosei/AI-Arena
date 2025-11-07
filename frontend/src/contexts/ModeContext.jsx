@@ -1,18 +1,41 @@
-import React, { createContext, useState, useContext } from 'react';
+import React, { createContext, useState, useContext, useEffect } from 'react';
+import { getModels } from '../api/models'; // 导入 API
 
-// 1. 创建 Context
 const ModeContext = createContext(null);
 
-// 2. 创建 Provider 组件
 export const ModeProvider = ({ children }) => {
-  const [mode, setMode] = useState('battle'); // 将 mode 状态移到这里
+  // 模式状态
+  const [mode, setMode] = useState('battle');
+  
+  // 模型列表和选择状态
+  const [models, setModels] = useState([]);
+  const [leftModel, setLeftModel] = useState(null);
+  const [rightModel, setRightModel] = useState(null);
 
-  const value = { mode, setMode };
+  // 在 Provider 加载时获取模型列表
+  useEffect(() => {
+    const fetchModels = async () => {
+      try {
+        const res = await getModels();
+        setModels(res.data || []);
+      } catch (error) {
+        console.error("Failed to fetch models in context:", error);
+      }
+    };
+    fetchModels();
+  }, []);
+
+  // 将所有需要共享的状态和函数放入 value
+  const value = { 
+    mode, setMode,
+    models,
+    leftModel, setLeftModel,
+    rightModel, setRightModel
+  };
 
   return <ModeContext.Provider value={value}>{children}</ModeContext.Provider>;
 };
 
-// 3. 创建一个自定义 Hook，方便使用
 export const useMode = () => {
   const context = useContext(ModeContext);
   if (!context) {

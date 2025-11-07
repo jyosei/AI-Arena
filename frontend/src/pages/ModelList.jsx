@@ -1,25 +1,16 @@
 import React, { useEffect, useState } from 'react';
-// --- 1. 移除不再需要的 List, Card, Link ---
 import { 
-  Input, Select, Button, Spin, Modal, Typography, Row, Col, 
-  Space, Avatar, Alert, Dropdown, Menu, message 
+  Input, Button, Spin, Modal, Typography, Row, Col, 
+  Space, Avatar, Alert, message 
 } from 'antd';
-// import { Link } from 'react-router-dom'; // 不再需要
 import { 
-  RobotOutlined, UserOutlined, SendOutlined, LikeOutlined, DislikeOutlined, 
-  SwapOutlined, MehOutlined, TableOutlined, ThunderboltOutlined, 
-  MessageOutlined, DownOutlined ,UpSquareOutlined
+  RobotOutlined, UserOutlined, SendOutlined 
 } from '@ant-design/icons';
-import{
-  ArrowUp,SquareArrowUp
-}from 'lucide-react';
-import { getModels, evaluateModel, battleModels, recordVote } from '../api/models';
-import { useMode } from '../contexts/ModeContext'; // 1. 导入 useMode
+import { useMode } from '../contexts/ModeContext';
 
-const { TextArea } = Input; // Search 不再需要
+const { TextArea } = Input;
 const { Title, Paragraph } = Typography;
 
-// ChatDialog 组件可以保持不变
 function ChatDialog({ visible, onClose, model }) {
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
@@ -75,69 +66,56 @@ function ChatDialog({ visible, onClose, model }) {
   );
 }
 
-// --- 2. 重命名组件以反映其新功能 ---
 export default function ArenaPage() {
-  // --- 3. 移除与模型列表相关的 State ---
-  const [models, setModels] = useState([]);
-  const [chatVisible, setChatVisible] = useState(false);
-  const [selectedModelForChat, setSelectedModelForChat] = useState(null);
-  
-  // --- 对战/聊天功能的 State (保持不变) ---
-  const [leftModel, setLeftModel] = useState(null);
-  const [rightModel, setRightModel] = useState(null);
-  const [results, setResults] = useState([]);
+  const { mode, models, leftModel, rightModel, setLeftModel, setRightModel } = useMode();
+
   const [prompt, setPrompt] = useState('');
+  const [results, setResults] = useState([]);
   const [battleLoading, setBattleLoading] = useState(false);
   const [battleError, setBattleError] = useState(null);
   const [voted, setVoted] = useState(false);
   const [isAnonymous, setIsAnonymous] = useState(false);
+  const [chatVisible, setChatVisible] = useState(false);
+  const [selectedModelForChat, setSelectedModelForChat] = useState(null);
 
-  const { mode, setMode } = useMode(); // 2. 从 Context 获取 mode，移除本地的 mode state
-
-  const modelOptions = models.map(m => ({ label: m.name, value: m.name }));
-
-  // --- 4. 简化 fetchModels 函数 ---
-  const fetchModels = async () => {
-    try {
-      // 不再需要加载动画或处理搜索/筛选
-      const res = await getModels();
-      setModels(res.data || []);
-    } catch (error) {
-      console.error("Failed to fetch models:", error);
-    }
-  };
-
-  useEffect(() => { 
-    fetchModels(); 
-  }, []);
-
-  // 4. (可选但推荐) 监听 mode 变化来清空模型选择
   useEffect(() => {
-    setLeftModel(null);
-    setRightModel(null);
     setResults([]);
-  }, [mode]); // 当从 Header 切换模式时，这个 effect 会触发
+  }, [mode]);
 
-  // --- 对战/聊天功能的函数 (保持不变) ---
   const startBattle = async () => {
     if (!prompt.trim()) {
       setBattleError("请输入提示内容。");
       return;
     }
-    if (mode === 'side-by-side' && (!leftModel || !rightModel)) {
-      setBattleError("请选择左右两个模型。");
+
+    let modelA = leftModel;
+    let modelB = rightModel;
+
+    if (mode === 'battle') {
+      if (models.length < 2) {
+        setBattleError("模型数量不足，无法进行 Battle。");
+        return;
+      }
+      const shuffled = [...models].sort(() => 0.5 - Math.random());
+      modelA = shuffled[0].name;
+      modelB = shuffled[1].name;
+      setLeftModel(modelA);
+      setRightModel(modelB);
+    }
+
+    if (mode === 'side-by-side' && (!modelA || !modelB)) {
+      setBattleError("请在顶部选择左右两个模型。");
       return;
+    }
+    
+    if (mode === 'direct-chat') {
+        return;
     }
 
     setBattleLoading(true);
-    setBattleError(null);
-    setResults([]);
-    setVoted(false); // 重置投票状态
 
     try {
-      const payload = mode === 'side-by-side' 
-        ? { prompt, modelA: leftModel, modelB: rightModel }
-        : { prompt };
+      const payload = { prompt, modelA, modelB };
       const response = await battleModels(payload);
       setResults(response.data.results);
       setIsAnonymous(response.data.is_anonymous);
@@ -173,56 +151,14 @@ export default function ArenaPage() {
     try {
       await recordVote({ modelA, modelB, prompt, winner });
       message.success('感谢您的反馈！');
-      setVoted(true); // 标记为已投票，禁用按钮
+      setVoted(true);
     } catch (err) {
       message.error('提交反馈失败，请稍后再试。');
-      console.error("Failed to record vote:", err);
     }
   };
 
   return (
     <>
-      {/* 5. 移除整个下拉菜单的 Row */}
-      {/* <Row justify="space-between" align="middle" ... > ... </Row> */}
-
-      {/* 直接从模型选择器开始 */}
-      <Row justify="start" align="middle" style={{ marginBottom: 24 }}>
-        <Col>
-          <Space wrap size="large">
-            <Select
-              showSearch
-              size="large"
-              placeholder={mode === 'direct-chat' ? "选择一个模型" : "选择左侧模型"}
-              value={leftModel}
-              onChange={setLeftModel}
-              style={{ width: 240 }}
-              options={modelOptions}
-              filterOption={(input, option) =>
-                (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-              }
-            />
-
-            {mode !== 'direct-chat' && (
-              <>
-                <Typography.Text strong>VS</Typography.Text>
-                <Select
-                  showSearch
-                  size="large"
-                  placeholder="选择右侧模型"
-                  value={rightModel}
-                  onChange={setRightModel}
-                  style={{ width: 240 }}
-                  options={modelOptions}
-                  filterOption={(input, option) =>
-                    (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                  }
-                />
-              </>
-            )}
-          </Space>
-        </Col>
-      </Row>
-
       <div style={{ position: 'relative', marginBottom: 24 }}>
         <TextArea
           rows={4}
@@ -230,14 +166,14 @@ export default function ArenaPage() {
           onChange={(e) => setPrompt(e.target.value)}
           placeholder="Ask anything..."
           style={{ 
-            paddingRight: '50px', // 为发送按钮留出空间
-            paddingBottom: '30px' // 为底部按钮留出空间 (可选)
+            paddingRight: '50px',
+            paddingBottom: '30px'
           }}
           onPressEnter={e => !e.shiftKey && (e.preventDefault(), startBattle())}
         />
         <Button 
           type="primary"
-          icon={<SquareArrowUp />}
+          icon={<SendOutlined />}
           size="large"
           onClick={startBattle}
           loading={battleLoading}

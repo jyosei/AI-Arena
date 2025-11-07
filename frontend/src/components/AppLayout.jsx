@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layout, Menu, Dropdown, Button, Avatar,Space } from 'antd';
+import { Layout, Menu, Dropdown, Button, Avatar, Space, Select, Typography } from 'antd';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useMode } from '../contexts/ModeContext';
 import { 
@@ -44,7 +44,7 @@ const menuItems = [
 const AppLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { mode, setMode } = useMode();
+  const { mode, setMode, models, leftModel, setLeftModel, rightModel, setRightModel } = useMode();
 
   const handleLogout = () => {
     // 在这里处理登出逻辑，例如清除 token
@@ -60,6 +60,8 @@ const AppLayout = () => {
   const currentModeItem = menuItems.find(item => item.key === mode);
   const currentModeIcon = currentModeItem ? currentModeItem.icon : null;
   const currentModeLabel = currentModeItem ? currentModeItem.label : 'Select Mode';
+
+  const modelOptions = models.map(m => ({ label: m.name, value: m.name }));
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -96,16 +98,54 @@ const AppLayout = () => {
         </div>
       </Sider>
       <Layout>
-        <Header style={{ background: '#fff', padding: '0 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Dropdown overlay={menu}>
-          <Button size="large">
-              <Space align="center">
-                {currentModeIcon}
-                {currentModeLabel}
-                <DownOutlined />
-              </Space>
-            </Button>
-          </Dropdown>
+        <Header style={{ background: '#fff', padding: '0 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
+          <Space size="large">
+            <Dropdown overlay={menu}>
+              <Button size="large">
+                <Space align="center">
+                  {currentModeIcon}
+                  {currentModeLabel}
+                  <DownOutlined />
+                </Space>
+              </Button>
+            </Dropdown>
+
+            {mode === 'side-by-side' && (
+              <>
+                <Select
+                  showSearch
+                  placeholder="选择左侧模型"
+                  value={leftModel}
+                  onChange={setLeftModel}
+                  style={{ width: 180 }}
+                  options={modelOptions}
+                  filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+                />
+                <Typography.Text strong>VS</Typography.Text>
+                <Select
+                  showSearch
+                  placeholder="选择右侧模型"
+                  value={rightModel}
+                  onChange={setRightModel}
+                  style={{ width: 180 }}
+                  options={modelOptions}
+                  filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+                />
+              </>
+            )}
+            {mode === 'direct-chat' && (
+              <Select
+                showSearch
+                placeholder="选择一个模型"
+                value={leftModel}
+                onChange={setLeftModel}
+                style={{ width: 180 }}
+                options={modelOptions}
+                filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+              />
+            )}
+          </Space>
+
           {mockUser.isLoggedIn ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
               <Avatar icon={<UserOutlined />} />
