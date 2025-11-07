@@ -92,7 +92,7 @@ REST_FRAMEWORK = {
 # 新增：配置 Simple JWT
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60), # 访问令牌有效期
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),    # 刷新令牌有效期
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=10),    # 刷新令牌有效期
 }
 
 # CORS 配置：允许通过环境变量控制

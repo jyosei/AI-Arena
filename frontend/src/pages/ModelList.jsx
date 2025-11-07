@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { SearchOutlined, TrophyOutlined, SwapOutlined, TeamOutlined, MessageOutlined, UserOutlined, RobotOutlined, SendOutlined } from '@ant-design/icons';
 // 导入新的 API 函数
 import { getModels, evaluateModel } from '../api/models';
-import axios from 'axios'
+
 const { Search, TextArea } = Input;
 const { Title, Paragraph } = Typography;
 // 聊天对话框组件
@@ -84,6 +84,8 @@ export default function ModelList() {
     try {
       const res = await getModels({ search: query, type: filter === 'all' ? undefined : filter });
       setModels(res.data || []);
+    } catch (error) {
+      console.error("Failed to fetch models:", error);
     } finally {
       setLoading(false);
     }

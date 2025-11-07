@@ -3,8 +3,36 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny # 导入 AllowAny
 from rest_framework import status
 from .services import get_model_service
+from .models import BattleVote
 import random
+class RecordVoteView(APIView):
+    """接收并记录一次对战的投票结果"""
+    permission_classes = [AllowAny] # 允许任何人投票
 
+    def post(self, request, *args, **kwargs):
+        model_a = request.data.get('model_a')
+        model_b = request.data.get('model_b')
+        prompt = request.data.get('prompt')
+        winner = request.data.get('winner')
+
+        if not all([model_a, model_b, prompt, winner]):
+            return Response({'error': 'Missing required fields (model_a, model_b, prompt, winner).'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 验证 winner 的值是否有效
+        valid_winners = [model_a, model_b, 'tie', 'both_bad']
+        if winner not in valid_winners:
+            return Response({'error': f'Invalid winner. Must be one of {valid_winners}'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 创建并保存投票记录
+        BattleVote.objects.create(
+            model_a=model_a,
+            model_b=model_b,
+            prompt=prompt,
+            winner=winner,
+            voter=request.user if request.user.is_authenticated else None
+        )
+
+        return Response({'message': 'Vote recorded successfully.'}, status=status.HTTP_201_CREATED)
 # 新增：模型列表视图
 class ModelListView(APIView):
     # 允许任何人查看模型列表，所以暂时不需要登录
@@ -55,37 +83,57 @@ class EvaluateModelView(APIView):
             return Response({"error": f"服务器内部错误: {e}"}, status=500)
 
 class BattleModelView(APIView):
-    """permission_classes = [IsAuthenticated]"""
     permission_classes = [AllowAny]
-    def post(self , request , *args , **kwargs):
-        #1.请求模型的名称和prompt
+
+    def post(self, request, *args, **kwargs):
         model_a_name = request.data.get("model_a")
         model_b_name = request.data.get("model_b")
         prompt = request.data.get("prompt")
-        if not all([model_a_name, model_b_name, prompt]):
-            return Response({"error": "model_a, model_b, and prompt are required."}, status=400)
+
+        if not prompt:
+            return Response({"error": "prompt is required."}, status=400)
+
+        # --- 逻辑分叉 ---
+        # 场景1：匿名对战 (Anonymous Battle)
+        # 如果前端没有提供 model_a 或 model_b，则进入匿名对战模式
+        if not model_a_name or not model_b_name:
+            # 1. 从可用模型列表中随机选择两个不重复的模型
+            #    在真实应用中，这里应该从数据库中获取一个“可用于对战”的模型列表
+            available_models = ["gpt-3.5-turbo", "glm-4", "deepseek-chat", "qwen-max"]
+            if len(available_models) < 2:
+                 return Response({"error": "Not enough models available for a battle."}, status=500)
+            
+            chosen_models = random.sample(available_models, 2)
+            model_a_name, model_b_name = chosen_models[0], chosen_models[1]
+
+        # 场景2：指定对战 (Side-by-Side)
+        # 如果前端提供了 model_a 和 model_b，则代码会自然地执行到这里
+        # 无需额外处理
 
         try:
-            # 2. 获取两个模型对应的服务实例
+            # 获取两个模型对应的服务实例
             model_a_service = get_model_service(model_a_name)
             model_b_service = get_model_service(model_b_name)
 
-            # 3. 调用各自的 evaluate 方法
-            # 注意：这里是串行调用，后续可以优化为并行调用以提高速度
+            # 调用各自的 evaluate 方法 (后续可优化为并行)
             response_a_data = model_a_service.evaluate(prompt, model_a_name)
             response_b_data = model_b_service.evaluate(prompt, model_b_name)
 
-            # 4. 随机打乱顺序，实现“盲测”
+            # 准备返回结果
             battle_results = [
                 {"model": model_a_name, "response": response_a_data},
                 {"model": model_b_name, "response": response_b_data},
             ]
-            random.shuffle(battle_results)
+            # 关键：只有在匿名对战模式下才打乱顺序
+            is_anonymous = not request.data.get("model_a") or not request.data.get("model_b")
+            if is_anonymous:
+                random.shuffle(battle_results)
 
-            # 5. 返回包含两个模型结果的响应
+            # 返回包含两个模型结果的响应
             return Response({
                 "prompt": prompt,
-                "results": battle_results
+                "results": battle_results,
+                "is_anonymous": is_anonymous # 向前端明确指出这是否是一场匿名对战
             })
             
         except ValueError as e:

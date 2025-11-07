@@ -1,44 +1,69 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react'; // 确保导入 useEffect
 import { Modal, Input, Button, List, Avatar, Spin } from 'antd';
 import { SendOutlined, UserOutlined, RobotOutlined } from '@ant-design/icons';
+import apiClient from '../api/apiClient'; // 1. 导入 apiClient
 
 const { TextArea } = Input;
 
-export default function ChatDialog({ visible, onClose }) {
+// 2. 接收 model 作为 prop
+export default function ChatDialog({ visible, onClose, model }) {
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // 当对话框打开时，清空旧消息
+  useEffect(() => {
+    if (visible) {
+      setMessages([]);
+    }
+  }, [visible]);
+
   const handleSend = async () => {
-    if (!inputValue.trim()) return;
+    if (!inputValue.trim() || !model) return;
 
     const userMessage = {
       id: Date.now(),
       content: inputValue,
       isUser: true,
-      timestamp: new Date()
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const currentInput = inputValue;
     setInputValue('');
     setLoading(true);
 
-    // 模拟 AI 回复（实际使用时需要连接后端 API）
-    setTimeout(() => {
+    try {
+      // 3. 使用 apiClient 发送请求
+      const response = await apiClient.post('/models/evaluate/', {
+        model_name: model.name, // 传递模型名称
+        prompt: currentInput,   // 传递用户输入
+      });
+
       const aiMessage = {
         id: Date.now() + 1,
-        content: `这是对"${inputValue}"的模拟回复。在实际应用中，这里会调用真实的 AI 模型 API。`,
+        content: response.data.response, // 使用后端返回的真实回复
         isUser: false,
-        timestamp: new Date()
       };
       setMessages(prev => [...prev, aiMessage]);
+
+    } catch (error) {
+      console.error("API call failed:", error);
+      const errorMessage = {
+        id: Date.now() + 1,
+        content: `请求失败: ${error.response?.data?.error || error.message}`,
+        isUser: false,
+        isError: true, // 可以添加一个错误标记用于特殊样式
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
 
   return (
     <Modal
-      title="💬 与 AI 对话"
+      // 4. 动态显示模型名称
+      title={model ? `与 ${model.name} 对话` : '与 AI 对话'}
       open={visible}
       onCancel={onClose}
       footer={null}
