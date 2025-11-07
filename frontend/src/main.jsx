@@ -9,6 +9,7 @@ import Compare from "./pages/Compare.jsx";
 import Login from "./pages/Login.jsx";
 import { AuthProvider } from "./contexts/AuthContext.jsx";
 import AppLayout from "./components/AppLayout.jsx";
+import { ModeProvider } from './contexts/ModeContext'; // 1. 导入 Provider
 
 const DialogContext = createContext();
 
@@ -85,14 +86,17 @@ export const useDialog = () => {
 
 function App() {
   return (
-    <Routes>
-      <Route element={<AppLayout />}>
-        <Route path="/" element={<ModelList />} />
-        <Route path="/compare" element={<Compare />} />
-        <Route path="/leaderboard" element={<Leaderboard />} />
-      </Route>
-      <Route path="/login" element={<Login />} />
-    </Routes>
+    // 2. 用 Provider 包裹整个路由
+    <ModeProvider>
+      <Routes>
+        <Route element={<AppLayout />}>
+          <Route path="/" element={<ModelList />} />
+          <Route path="/compare" element={<Compare />} />
+          <Route path="/leaderboard" element={<Leaderboard />} />
+        </Route>
+        <Route path="/login" element={<Login />} />
+      </Routes>
+    </ModeProvider>
   );
 }
 

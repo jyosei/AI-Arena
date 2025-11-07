@@ -91,14 +91,14 @@ export default function Compare() {
   // --- 新增：模式选择的菜单项 ---
   const menuItems = [
     {
-      key: 'side-by-side',
-      label: 'Side by Side',
-      icon: <TableOutlined />,
-    },
-    {
       key: 'battle',
       label: 'Battle',
       icon: <ThunderboltOutlined />,
+    },
+    {
+      key: 'side-by-side',
+      label: 'Side by Side',
+      icon: <TableOutlined />,
     },
     {
       key: 'direct-chat',

@@ -14,6 +14,7 @@ import{
   ArrowUp,SquareArrowUp
 }from 'lucide-react';
 import { getModels, evaluateModel, battleModels, recordVote } from '../api/models';
+import { useMode } from '../contexts/ModeContext'; // 1. 导入 useMode
 
 const { TextArea } = Input; // Search 不再需要
 const { Title, Paragraph } = Typography;
@@ -82,7 +83,6 @@ export default function ArenaPage() {
   const [selectedModelForChat, setSelectedModelForChat] = useState(null);
   
   // --- 对战/聊天功能的 State (保持不变) ---
-  const [mode, setMode] = useState('side-by-side');
   const [leftModel, setLeftModel] = useState(null);
   const [rightModel, setRightModel] = useState(null);
   const [results, setResults] = useState([]);
@@ -91,6 +91,8 @@ export default function ArenaPage() {
   const [battleError, setBattleError] = useState(null);
   const [voted, setVoted] = useState(false);
   const [isAnonymous, setIsAnonymous] = useState(false);
+
+  const { mode, setMode } = useMode(); // 2. 从 Context 获取 mode，移除本地的 mode state
 
   const modelOptions = models.map(m => ({ label: m.name, value: m.name }));
 
@@ -108,6 +110,13 @@ export default function ArenaPage() {
   useEffect(() => { 
     fetchModels(); 
   }, []);
+
+  // 4. (可选但推荐) 监听 mode 变化来清空模型选择
+  useEffect(() => {
+    setLeftModel(null);
+    setRightModel(null);
+    setResults([]);
+  }, [mode]); // 当从 Header 切换模式时，这个 effect 会触发
 
   // --- 对战/聊天功能的函数 (保持不变) ---
   const startBattle = async () => {
@@ -171,44 +180,15 @@ export default function ArenaPage() {
     }
   };
 
-  const handleMenuClick = (e) => {
-    setMode(e.key);
-    setLeftModel(null);
-    setRightModel(null);
-    setResults([]);
-  };
-
-  const menuItems = [
-    {
-      key: 'side-by-side',
-      label: 'Side by Side',
-      icon: <TableOutlined />,
-    },
-    {
-      key: 'battle',
-      label: 'Battle',
-      icon: <ThunderboltOutlined />,
-    },
-    {
-      key: 'direct-chat',
-      label: 'Direct Chat',
-      icon: <MessageOutlined />,
-    },
-  ];
-  const menu = <Menu onClick={handleMenuClick} items={menuItems} />;
-  const currentModeLabel = menuItems.find(item => item.key === mode)?.label || 'Select Mode';
-
   return (
     <>
-      <Row justify="space-between" align="middle" style={{ marginBottom: 24 }}>
+      {/* 5. 移除整个下拉菜单的 Row */}
+      {/* <Row justify="space-between" align="middle" ... > ... </Row> */}
+
+      {/* 直接从模型选择器开始 */}
+      <Row justify="start" align="middle" style={{ marginBottom: 24 }}>
         <Col>
           <Space wrap size="large">
-            <Dropdown overlay={menu}>
-              <Button size="large">
-                {currentModeLabel} <DownOutlined />
-              </Button>
-            </Dropdown>
-
             <Select
               showSearch
               size="large"

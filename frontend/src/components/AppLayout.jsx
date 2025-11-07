@@ -1,8 +1,23 @@
-import React, { useState } from 'react';
-import { Layout, Menu, Button, Avatar } from 'antd';
-import { Link, Outlet, useNavigate } from 'react-router-dom';
-import { EditOutlined, TrophyOutlined, UserOutlined, LogoutOutlined } from '@ant-design/icons';
+import React from 'react';
+import { Layout, Menu, Dropdown, Button, Avatar,Space } from 'antd';
+import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { useMode } from '../contexts/ModeContext';
+import { 
+  EditOutlined, 
+  TrophyOutlined, 
+  UserOutlined, 
+  LogoutOutlined, 
+  ThunderboltOutlined, 
+  TableOutlined, 
+  MessageOutlined, 
+  DownOutlined 
+} from '@ant-design/icons';
 
+import{
+    Swords,
+    Columns2,
+    SendHorizontal,
+}from 'lucide-react';
 const { Sider, Content, Header } = Layout;
 
 // 模拟的聊天记录数据
@@ -19,14 +34,32 @@ const mockUser = {
   email: 'duwenyu93@gmail.com',
 };
 
+// 菜单项定义
+const menuItems = [
+  { key: 'battle', label: <span clasName = "menu-font-label">Battle</span>, icon: <Swords size={16}/> },
+  { key: 'side-by-side', label: <span clasName = "menu-font-label">Side by side</span>, icon: <Columns2 size={16}/> },
+  { key: 'direct-chat', label: <span clasName = "menu-font-label">Direct chat</span>, icon: <SendHorizontal size={16}/> },
+];
+
 const AppLayout = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { mode, setMode } = useMode();
 
   const handleLogout = () => {
     // 在这里处理登出逻辑，例如清除 token
     console.log('User logged out');
     navigate('/login'); // 跳转到登录页
   };
+
+  const handleMenuClick = (e) => {
+    setMode(e.key);
+  };
+
+  const menu = <Menu onClick={handleMenuClick} items={menuItems} />;
+  const currentModeItem = menuItems.find(item => item.key === mode);
+  const currentModeIcon = currentModeItem ? currentModeItem.icon : null;
+  const currentModeLabel = currentModeItem ? currentModeItem.label : 'Select Mode';
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -63,7 +96,16 @@ const AppLayout = () => {
         </div>
       </Sider>
       <Layout>
-        <Header style={{ background: '#fff', padding: '0 24px', borderBottom: '1px solid #f0f0f0', display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+        <Header style={{ background: '#fff', padding: '0 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Dropdown overlay={menu}>
+          <Button size="large">
+              <Space align="center">
+                {currentModeIcon}
+                {currentModeLabel}
+                <DownOutlined />
+              </Space>
+            </Button>
+          </Dropdown>
           {mockUser.isLoggedIn ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
               <Avatar icon={<UserOutlined />} />
@@ -77,10 +119,8 @@ const AppLayout = () => {
               Login
             </Button>
           )}
-          
         </Header>
         <Content style={{ margin: '24px', background: '#fff', padding: '24px', borderRadius: '8px' }}>
-          {/* 子路由的页面内容会在这里渲染 */}
           <Outlet />
         </Content>
       </Layout>
