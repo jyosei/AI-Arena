@@ -9,7 +9,8 @@ import Compare from "./pages/Compare.jsx";
 import Login from "./pages/Login.jsx";
 import { AuthProvider } from "./contexts/AuthContext.jsx";
 import AppLayout from "./components/AppLayout.jsx";
-import { ModeProvider } from './contexts/ModeContext'; // 1. 导入 Provider
+import { ModeProvider } from './contexts/ModeContext';
+import { ChatProvider } from './contexts/ChatContext'; // 1. 导入 Provider
 
 const DialogContext = createContext();
 
@@ -109,7 +110,9 @@ root.render(
       <AuthProvider>
         <DialogProvider>
           <Router>
-            <App />
+            <ChatProvider>
+              <App />
+            </ChatProvider>
           </Router>
         </DialogProvider>
       </AuthProvider>

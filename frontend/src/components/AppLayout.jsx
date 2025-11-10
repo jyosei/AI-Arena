@@ -1,7 +1,8 @@
 import React from 'react';
-import { Layout, Menu, Dropdown, Button, Avatar, Space, Select, Typography, Form, Input, Modal, message } from 'antd';
+import { Layout, Menu, Dropdown, Button, Avatar, Space, Select, Typography, Form, Input, Modal, message, Tooltip } from 'antd';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useMode } from '../contexts/ModeContext';
+import { useChat } from '../contexts/ChatContext';
 import { 
   EditOutlined, 
   TrophyOutlined, 
@@ -10,7 +11,9 @@ import {
   ThunderboltOutlined, 
   TableOutlined, 
   MessageOutlined, 
-  DownOutlined 
+  DownOutlined,
+  DeleteOutlined,
+  HistoryOutlined
 } from '@ant-design/icons';
 import{
     Swords,
@@ -22,13 +25,7 @@ import { useIntl } from 'react-intl';
 import AuthContext from '../contexts/AuthContext.jsx';
 const { Sider, Content, Header } = Layout;
 
-// 模拟的聊天记录数据
-const chatHistory = [
-  { id: 1, title: '你好' },
-  { id: 2, title: '生成清华大学二校门' },
-  { id: 3, title: 'write a poem about a...' },
-  { id: 4, title: 'who is the best ai' },
-];
+// 已删除模拟数据，使用 ChatContext 的真实数据
 
 // 模拟的用户信息和登录状态
 const mockUser = {
@@ -47,6 +44,7 @@ const AppLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { mode, setMode, models, leftModel, setLeftModel, rightModel, setRightModel } = useMode();
+  const { chatHistory, clearHistory } = useChat();
   const [showRegister, setShowRegister] = React.useState(false);
   const [showLogin, setShowLogin] = React.useState(false);
   const intl = useIntl();
@@ -74,29 +72,67 @@ const AppLayout = () => {
   const LoginForm = () => {
     const [loading, setLoading] = React.useState(false);
     const [form] = Form.useForm();
-    const onFinish = async (values) => {
-      setLoading(true);
-      try {
-        const ok = await login(values.username, values.password);
-        if (ok) {
-          message.success(intl.formatMessage({ id: 'login.success', defaultMessage: '登录成功' }));
-          setIsLoggedIn(true);
-          setUserEmail(values.username);
-          setShowLogin(false);
-        } else {
-          message.error(intl.formatMessage({ id: 'login.failed', defaultMessage: '登录失败' }));
-        }
-      } catch (e) {
-        console.error(e);
-        message.error(intl.formatMessage({ id: 'login.error', defaultMessage: '登录出错' }));
-      } finally {
-        setLoading(false);
-      }
+    const handleSubmit = () => {
+      form.validateFields()
+        .then(async (values) => {
+          setLoading(true);
+          try {
+            const ok = await login(values.username, values.password);
+            if (ok) {
+              message.success('登录成功！');
+              setShowLogin(false);
+              form.resetFields();
+            } else {
+              message.error('用户名或密码错误');
+            }
+          } catch (e) {
+            const errorMsg = e.response?.data?.detail || e.response?.data?.error || '登录失败，请重试';
+            message.error(errorMsg);
+          } finally {
+            setLoading(false);
+          }
+        })
+        .catch(() => {
+          // 表单验证失败，这里不需要做任何事情，因为 Form.Item 会自动显示错误消息
+        });
     };
+
     return (
-      <Form form={form} name="login" layout="vertical" onFinish={onFinish}>
-        <Form.Item name="username" label={intl.formatMessage({ id: 'login.username.label', defaultMessage: '用户名' })} rules={[{ required: true, message: intl.formatMessage({ id: 'login.username.required', defaultMessage: '请输入用户名' }) }]}> <Input placeholder={intl.formatMessage({ id: 'login.username.placeholder', defaultMessage: '用户名' })} /> </Form.Item>
-        <Form.Item name="password" label={intl.formatMessage({ id: 'login.password.label', defaultMessage: '密码' })} rules={[{ required: true, message: intl.formatMessage({ id: 'login.password.required', defaultMessage: '请输入密码' }) }]}> <Input.Password placeholder={intl.formatMessage({ id: 'login.password.placeholder', defaultMessage: '密码' })} /> </Form.Item>
+      <Form form={form} name="login" layout="vertical" onFinish={handleSubmit}>
+        <Form.Item 
+          name="username" 
+          label="用户名"
+          validateTrigger="onBlur"
+          rules={[
+            { 
+              required: true,
+              message: '请输入用户名'
+            },
+            {
+              min: 3,
+              message: '用户名至少3个字符'
+            }
+          ]}
+        >
+          <Input placeholder="请输入用户名" />
+        </Form.Item>
+        <Form.Item 
+          name="password" 
+          label="密码"
+          validateTrigger="onBlur"
+          rules={[
+            { 
+              required: true,
+              message: '请输入密码'
+            },
+            {
+              min: 6,
+              message: '密码至少6个字符'
+            }
+          ]}
+        >
+          <Input.Password placeholder="请输入密码" />
+        </Form.Item>
         <Form.Item>
           <Button type="primary" htmlType="submit" block loading={loading}>{intl.formatMessage({ id: 'login.button', defaultMessage: '登录' })}</Button>
         </Form.Item>
@@ -130,12 +166,77 @@ const AppLayout = () => {
           ]}
         />
         <div style={{ padding: '0 16px', marginTop: '24px' }}>
-          <p style={{ color: '#8c8c8c', fontSize: '12px' }}>Chat History</p>
-          {chatHistory.map(chat => (
-            <div key={chat.id} style={{ padding: '8px', borderRadius: '4px', cursor: 'pointer', hover: { background: '#e6f7ff' } }}>
-              {chat.title}
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center',
+            marginBottom: '12px' 
+          }}>
+            <p style={{ 
+              color: '#8c8c8c', 
+              fontSize: '13px', 
+              fontWeight: 500,
+              margin: 0 
+            }}>聊天记录</p>
+            {chatHistory.length > 0 && (
+              <Button 
+                type="text" 
+                size="small"
+                style={{ color: '#8c8c8c', fontSize: '12px' }}
+                onClick={() => message.info('清除历史记录功能开发中')}
+              >
+                清除记录
+              </Button>
+            )}
+          </div>
+          {chatHistory.length === 0 ? (
+            <div style={{ 
+              textAlign: 'center', 
+              color: '#8c8c8c', 
+              fontSize: '14px',
+              padding: '32px 0' 
+            }}>
+              <MessageOutlined style={{ fontSize: '24px', marginBottom: '8px', display: 'block' }} />
+              暂无聊天记录
             </div>
-          ))}
+          ) : (
+            <div style={{ maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}>
+              {chatHistory.map(chat => (
+                <div 
+                  key={chat.id} 
+                  style={{ 
+                    padding: '12px', 
+                    borderRadius: '8px', 
+                    cursor: 'pointer',
+                    marginBottom: '8px',
+                    transition: 'all 0.3s ease',
+                    ':hover': {
+                      background: '#e6f7ff'
+                    }
+                  }}
+                  onClick={() => navigate(`/chat/${chat.id}`)}
+                >
+                  <div style={{ 
+                    fontSize: '14px',
+                    fontWeight: 500,
+                    color: '#1f1f1f',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis'
+                  }}>
+                    {chat.title}
+                  </div>
+                  <div style={{ 
+                    fontSize: '12px',
+                    color: '#8c8c8c',
+                    marginTop: '4px'
+                  }}>
+                    {chat.time || '刚刚'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </Sider>
       <Layout>
@@ -206,7 +307,14 @@ const AppLayout = () => {
             </Space>
           )}
           {/* 注册弹窗 */}
-          <RegisterModal visible={showRegister} onClose={() => setShowRegister(false)} />
+          <RegisterModal 
+            visible={showRegister} 
+            onClose={() => setShowRegister(false)} 
+            onShowLogin={() => {
+              setShowRegister(false);
+              setShowLogin(true);
+            }}
+          />
           {/* 登录弹窗美化 */}
           <Modal
             title={<div style={{ textAlign: 'center', fontWeight: 600, fontSize: 20 }}><UserOutlined style={{ color: '#1890ff', marginRight: 8 }} />登录</div>}

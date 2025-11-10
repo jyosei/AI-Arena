@@ -1,9 +1,8 @@
-import React, { useState } from 'react';
-// 1. 确保导入了 Dropdown, Space, Menu
+import React, { useState, useEffect } from 'react';
 import { Card, Select, Button, Row, Col, Input, Typography, Spin, Alert, Dropdown, Space, Menu, message } from 'antd';
-// 2. 导入新的图标
 import { LikeOutlined, DislikeOutlined, SwapOutlined, MehOutlined, TableOutlined, ThunderboltOutlined, MessageOutlined, DownOutlined } from '@ant-design/icons';
 import { battleModels, recordVote } from '../api/models';
+import { useChat } from '../contexts/ChatContext';
 
 const { TextArea } = Input;
 const { Paragraph } = Typography;
@@ -26,28 +25,41 @@ export default function Compare() {
     { label: 'Qwen-Max', value: 'qwen-max' },
   ];
 
+  const { addChat } = useChat();
+
   const startBattle = async (isSideBySide) => {
     if (!prompt.trim()) {
       setError("请输入提示内容。");
       return;
     }
-    if (isSideBySide && (!leftModel || !rightModel)) {
-      setError("请选择左右两个模型。");
+    if (mode !== 'direct-chat' && (!leftModel || !rightModel)) {
+      setError("请选择模型。");
+      return;
+    }
+    if (mode === 'direct-chat' && !leftModel) {
+      setError("请选择一个模型进行对话。");
       return;
     }
 
     setLoading(true);
     setError(null);
     setResults([]);
-    setVoted(false); // 重置投票状态
+    setVoted(false);
 
     try {
-      const payload = isSideBySide 
-        ? { prompt, modelA: leftModel, modelB: rightModel }
-        : { prompt };
-      const response = await battleModels(payload);
+      const response = await battleModels({
+        prompt,
+        modelA: leftModel,
+        modelB: rightModel,
+        isDirectChat: mode === 'direct-chat'
+      });
       setResults(response.data.results);
       setIsAnonymous(response.data.is_anonymous);
+
+      // 将对话添加到历史记录
+      const chatTitle = prompt.length > 50 ? prompt.substring(0, 47) + '...' : prompt;
+      const selectedModel = mode === 'direct-chat' ? leftModel : `${leftModel} vs ${rightModel}`;
+      addChat(`[${selectedModel}] ${chatTitle}`);
     } catch (err) {
       setError(err.response?.data?.error || "请求失败，请稍后重试。");
     } finally {
@@ -200,11 +212,66 @@ export default function Compare() {
 
       {results.length > 0 && (
         <Row gutter={16}>
-          {/* ... (结果展示的 Card 组件保持不变) ... */}
+          {results.map((result, index) => (
+            <Col span={mode === 'side-by-side' ? 12 : 24} key={index}>
+              <Card 
+                title={
+                  <Space>
+                    {result.model}
+                    {!isAnonymous && (
+                      <Typography.Text type="secondary">
+                        得分: {result.score}
+                      </Typography.Text>
+                    )}
+                  </Space>
+                }
+                style={{ marginBottom: 16 }}
+              >
+                <Paragraph
+                  style={{ 
+                    whiteSpace: 'pre-wrap',
+                    fontSize: '14px',
+                    lineHeight: '1.6'
+                  }}
+                >
+                  {result.response}
+                </Paragraph>
+              </Card>
+            </Col>
+          ))}
         </Row>
       )}
 
-      {/* ... (投票按钮区域保持不变) ... */}
+      {results.length > 0 && mode !== 'direct-chat' && !voted && (
+        <Row justify="center" style={{ marginTop: 24 }}>
+          <Space size="large">
+            <Button 
+              icon={<LikeOutlined />} 
+              onClick={() => handleVote('left')}
+            >
+              左侧更好
+            </Button>
+            <Button 
+              icon={<SwapOutlined />} 
+              onClick={() => handleVote('tie')}
+            >
+              不相上下
+            </Button>
+            <Button 
+              icon={<LikeOutlined />} 
+              onClick={() => handleVote('right')}
+            >
+              右侧更好
+            </Button>
+            <Button 
+              icon={<DislikeOutlined />} 
+              onClick={() => handleVote('both_bad')}
+            >
+              都不满意
+            </Button>
+          </Space>
+        </Row>
+      )}
     </div>
   );
 }

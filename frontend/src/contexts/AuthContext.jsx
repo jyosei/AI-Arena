@@ -17,18 +17,36 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (username, password) => {
     try {
+      console.log('Sending login request...');
       const res = await request.post('token/', { username, password });
+      console.log('Login response:', res.data);
+      
       if (res.data && res.data.access) {
         localStorage.setItem('token', res.data.access);
-        // load user from backend profile endpoint
-        const profile = await request.get('users/profile/');
-        setUser(profile.data);
-        return true;
+        localStorage.setItem('refresh', res.data.refresh);
+        
+        // 设置默认的 Authorization header
+        request.defaults.headers.common['Authorization'] = `Bearer ${res.data.access}`;
+        
+        // 获取用户资料
+        console.log('Fetching user profile...');
+        try {
+          const profile = await request.get('users/profile/');
+          console.log('Profile response:', profile.data);
+          setUser(profile.data);
+          return true;
+        } catch (profileError) {
+          console.error('Profile fetch error:', profileError);
+          localStorage.removeItem('token');
+          localStorage.removeItem('refresh');
+          throw new Error('无法获取用户资料');
+        }
       }
       return false;
-    } catch (e) {
-      // 登录失败（例如 401），不要抛出到上层，返回 false
-      return false;
+    } catch (error) {
+      console.error('Login error:', error.response || error);
+      // 转发错误到上层以显示具体错误信息
+      throw error;
     }
   };
 

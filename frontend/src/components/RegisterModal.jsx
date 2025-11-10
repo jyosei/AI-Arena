@@ -5,34 +5,29 @@ import { useIntl } from 'react-intl';
 import AuthContext from '../contexts/AuthContext.jsx';
 import { useNavigate } from 'react-router-dom';
 
-export default function RegisterModal({ visible, onClose }) {
+export default function RegisterModal({ visible, onClose, onShowLogin }) {
   const [loading, setLoading] = useState(false);
   const { register } = useContext(AuthContext);
   const intl = useIntl();
-  const navigate = useNavigate();
 
   const onFinish = async (values) => {
     setLoading(true);
     try {
       const result = await register({ username: values.username, password: values.password });
       if (result && result.success) {
-        if (result.autoLogin) {
-          message.success(intl.formatMessage({ id: 'register.success', defaultMessage: '注册并已自动登录' }));
-          onClose();
-          navigate('/user');
-        } else {
-          message.success(intl.formatMessage({ id: 'register.success', defaultMessage: '注册成功，请登录' }));
-          onClose();
-          navigate('/login');
-        }
-      } else {
         message.success(intl.formatMessage({ id: 'register.success', defaultMessage: '注册成功，请登录' }));
         onClose();
-        navigate('/login');
+        onShowLogin();
+      } else {
+        // 如果有具体的错误信息，显示它
+        const errorMessage = result.errors?.username || result.errors?.password || result.errors?.non_field_errors || '注册失败';
+        message.error(errorMessage);
+        console.error('Registration failed:', result.errors);
       }
     } catch (e) {
-      console.error(e);
-      message.error(intl.formatMessage({ id: 'register.failed', defaultMessage: '注册失败' }));
+      console.error('Registration error:', e.response?.data || e);
+      const errorMessage = e.response?.data?.username || e.response?.data?.password || e.response?.data?.non_field_errors || '注册失败';
+      message.error(errorMessage);
     } finally {
       setLoading(false);
     }

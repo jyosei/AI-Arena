@@ -89,10 +89,35 @@ class BattleModelView(APIView):
         model_a_name = request.data.get("model_a")
         model_b_name = request.data.get("model_b")
         prompt = request.data.get("prompt")
+        is_direct_chat = request.data.get("is_direct_chat", False)
+        model_name = request.data.get("model_name")  # 用于 Direct Chat 模式
 
         if not prompt:
             return Response({"error": "prompt is required."}, status=400)
 
+            # Direct Chat 模式
+            if is_direct_chat:
+                if not model_name and not model_a_name:
+                    return Response({"error": "model_name is required for direct chat mode."}, status=400)
+            
+                try:
+                    # 使用 model_name 或 model_a_name（为了兼容性）
+                    model_name = model_name or model_a_name
+                    model_service = get_model_service(model_name)
+                    response_data = model_service.evaluate(prompt, model_name)
+                
+                    return Response({
+                        "prompt": prompt,
+                        "results": [
+                            {"model": model_name, "response": response_data}
+                        ],
+                        "is_anonymous": False,
+                        "is_direct_chat": True
+                    })
+                except ValueError as e:
+                    return Response({"error": str(e)}, status=400)
+                except Exception as e:
+                    return Response({"error": f"服务器内部错误: {e}"}, status=500)
         # --- 逻辑分叉 ---
         # 场景1：匿名对战 (Anonymous Battle)
         # 如果前端没有提供 model_a 或 model_b，则进入匿名对战模式
