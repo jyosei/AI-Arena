@@ -1,5 +1,6 @@
 import React, { useState, useContext } from 'react';
 import { Modal, Form, Input, Button, message } from 'antd';
+import { UserOutlined } from '@ant-design/icons';
 import { useIntl } from 'react-intl';
 import AuthContext from '../contexts/AuthContext.jsx';
 import { useNavigate } from 'react-router-dom';
@@ -39,28 +40,32 @@ export default function RegisterModal({ visible, onClose }) {
 
   return (
     <Modal
-      title={intl.formatMessage({ id: 'register.title', defaultMessage: '注册' })}
+      title={<div style={{ textAlign: 'center', fontWeight: 600, fontSize: 20 }}><UserOutlined style={{ color: '#1890ff', marginRight: 8 }} />注册</div>}
       open={visible}
       onCancel={onClose}
       footer={null}
       destroyOnClose
+      centered
+      bodyStyle={{ padding: '32px 32px 16px 32px', borderRadius: 16 }}
     >
-      <Form name="register" layout="vertical" onFinish={onFinish}>
-        <Form.Item name="username" label={intl.formatMessage({ id: 'register.username.label', defaultMessage: '用户名' })} rules={[{ required: true, message: intl.formatMessage({ id: 'register.username.required', defaultMessage: '请输入用户名' }) }]}> 
-          <Input placeholder={intl.formatMessage({ id: 'register.username.placeholder', defaultMessage: '用户名' })} />
-        </Form.Item>
-        <Form.Item name="password" label={intl.formatMessage({ id: 'register.password.label', defaultMessage: '密码' })} rules={[{ required: true, message: intl.formatMessage({ id: 'register.password.required', defaultMessage: '请输入密码' }) }]} hasFeedback>
-          <Input.Password placeholder={intl.formatMessage({ id: 'register.password.placeholder', defaultMessage: '密码' })} />
-        </Form.Item>
-        <Form.Item name="confirm" label={intl.formatMessage({ id: 'register.confirm.label', defaultMessage: '确认密码' })} dependencies={["password"]} hasFeedback rules={[{ required: true, message: intl.formatMessage({ id: 'register.confirm.required', defaultMessage: '请确认密码' }) }, ({ getFieldValue }) => ({ validator(_, value) { if (!value || getFieldValue('password') === value) { return Promise.resolve(); } return Promise.reject(new Error(intl.formatMessage({ id: 'register.confirm.mismatch', defaultMessage: '两次输入的密码不一致' }))); }, }), ]}>
-          <Input.Password placeholder={intl.formatMessage({ id: 'register.confirm.placeholder', defaultMessage: '确认密码' })} />
-        </Form.Item>
-        <Form.Item>
-          <Button type="primary" htmlType="submit" block loading={loading}>
-            {intl.formatMessage({ id: 'register.button', defaultMessage: '注册' })}
-          </Button>
-        </Form.Item>
-      </Form>
+      <div style={{ maxWidth: 360, margin: '0 auto' }}>
+        <Form name="register" layout="vertical" onFinish={onFinish}>
+          <Form.Item name="username" label={intl.formatMessage({ id: 'register.username.label', defaultMessage: '用户名' })} rules={[{ required: true, message: intl.formatMessage({ id: 'register.username.required', defaultMessage: '请输入用户名' }) }]}> 
+            <Input placeholder={intl.formatMessage({ id: 'register.username.placeholder', defaultMessage: '用户名' })} style={{ borderRadius: 12 }} />
+          </Form.Item>
+          <Form.Item name="password" label={intl.formatMessage({ id: 'register.password.label', defaultMessage: '密码' })} rules={[{ required: true, message: intl.formatMessage({ id: 'register.password.required', defaultMessage: '请输入密码' }) }]} hasFeedback>
+            <Input.Password placeholder={intl.formatMessage({ id: 'register.password.placeholder', defaultMessage: '密码' })} style={{ borderRadius: 12 }} />
+          </Form.Item>
+          <Form.Item name="confirm" label={intl.formatMessage({ id: 'register.confirm.label', defaultMessage: '确认密码' })} dependencies={["password"]} hasFeedback rules={[{ required: true, message: intl.formatMessage({ id: 'register.confirm.required', defaultMessage: '请确认密码' }) }, ({ getFieldValue }) => ({ validator(_, value) { if (!value || getFieldValue('password') === value) { return Promise.resolve(); } return Promise.reject(new Error(intl.formatMessage({ id: 'register.confirm.mismatch', defaultMessage: '两次输入的密码不一致' }))); }, }), ]}>
+            <Input.Password placeholder={intl.formatMessage({ id: 'register.confirm.placeholder', defaultMessage: '确认密码' })} style={{ borderRadius: 12 }} />
+          </Form.Item>
+          <Form.Item>
+            <Button type="primary" htmlType="submit" block loading={loading} style={{ borderRadius: 20, fontWeight: 500, minHeight: 40 }}>
+              {intl.formatMessage({ id: 'register.button', defaultMessage: '注册' })}
+            </Button>
+          </Form.Item>
+        </Form>
+      </div>
     </Modal>
   );
 }

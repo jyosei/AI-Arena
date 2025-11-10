@@ -188,34 +188,38 @@ const AppLayout = () => {
           </Space>
 
           {isLoggedIn ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <Avatar icon={<UserOutlined />} />
-              <span>{userEmail}</span>
-              <Button icon={<LogoutOutlined />} onClick={handleLogout}>
-                Logout
+            <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+              <Avatar icon={<UserOutlined />} style={{ background: '#1890ff' }} />
+              <span style={{ fontWeight: 500, fontSize: 16 }}>{userEmail}</span>
+              <Button icon={<LogoutOutlined />} shape="round" type="default" style={{ borderRadius: 20, fontWeight: 500 }} onClick={handleLogout}>
+                退出登录
               </Button>
             </div>
           ) : (
-            <Space>
-              <Button type="primary" onClick={() => setShowLogin(true)}>
+            <Space size="middle">
+              <Button type="primary" shape="round" style={{ borderRadius: 20, fontWeight: 500, minWidth: 90 }} onClick={() => setShowLogin(true)}>
                 登录
               </Button>
-              <Button onClick={() => setShowRegister(true)}>
+              <Button shape="round" style={{ borderRadius: 20, fontWeight: 500, minWidth: 90, background: '#f0f5ff', color: '#1890ff', border: 'none' }} onClick={() => setShowRegister(true)}>
                 注册
               </Button>
             </Space>
           )}
           {/* 注册弹窗 */}
           <RegisterModal visible={showRegister} onClose={() => setShowRegister(false)} />
-          {/* 登录弹窗 */}
+          {/* 登录弹窗美化 */}
           <Modal
-            title={intl.formatMessage({ id: 'login.title', defaultMessage: '登录' })}
+            title={<div style={{ textAlign: 'center', fontWeight: 600, fontSize: 20 }}><UserOutlined style={{ color: '#1890ff', marginRight: 8 }} />登录</div>}
             open={showLogin}
             onCancel={() => setShowLogin(false)}
             footer={null}
             destroyOnClose
+            centered
+            bodyStyle={{ padding: '32px 32px 16px 32px', borderRadius: 16 }}
           >
-            <LoginForm />
+            <div style={{ maxWidth: 360, margin: '0 auto' }}>
+              <LoginForm />
+            </div>
           </Modal>
         </Header>
         <Content style={{ margin: '24px', background: '#fff', padding: '24px', borderRadius: '8px' }}>
