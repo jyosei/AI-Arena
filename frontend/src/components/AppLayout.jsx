@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layout, Menu, Dropdown, Button, Avatar, Space, Select, Typography } from 'antd';
+import { Layout, Menu, Dropdown, Button, Avatar, Space, Select, Typography, Form, Input, Modal, message } from 'antd';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useMode } from '../contexts/ModeContext';
 import { 
@@ -12,12 +12,14 @@ import {
   MessageOutlined, 
   DownOutlined 
 } from '@ant-design/icons';
-
 import{
     Swords,
     Columns2,
     SendHorizontal,
 }from 'lucide-react';
+import RegisterModal from './RegisterModal';
+import { useIntl } from 'react-intl';
+import AuthContext from '../contexts/AuthContext.jsx';
 const { Sider, Content, Header } = Layout;
 
 // 模拟的聊天记录数据
@@ -45,11 +47,16 @@ const AppLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { mode, setMode, models, leftModel, setLeftModel, rightModel, setRightModel } = useMode();
+  const [showRegister, setShowRegister] = React.useState(false);
+  const [showLogin, setShowLogin] = React.useState(false);
+  const intl = useIntl();
+  const { login, logout, user } = React.useContext(AuthContext);
+  const isLoggedIn = !!user;
+  const userEmail = user?.email || user?.username || '';
 
   const handleLogout = () => {
-    // 在这里处理登出逻辑，例如清除 token
-    console.log('User logged out');
-    navigate('/login'); // 跳转到登录页
+    logout();
+    message.success('已登出');
   };
 
   const handleMenuClick = (e) => {
@@ -62,6 +69,40 @@ const AppLayout = () => {
   const currentModeLabel = currentModeItem ? currentModeItem.label : 'Select Mode';
 
   const modelOptions = models.map(m => ({ label: m.name, value: m.name }));
+
+  // 登录弹窗表单内容
+  const LoginForm = () => {
+    const [loading, setLoading] = React.useState(false);
+    const [form] = Form.useForm();
+    const onFinish = async (values) => {
+      setLoading(true);
+      try {
+        const ok = await login(values.username, values.password);
+        if (ok) {
+          message.success(intl.formatMessage({ id: 'login.success', defaultMessage: '登录成功' }));
+          setIsLoggedIn(true);
+          setUserEmail(values.username);
+          setShowLogin(false);
+        } else {
+          message.error(intl.formatMessage({ id: 'login.failed', defaultMessage: '登录失败' }));
+        }
+      } catch (e) {
+        console.error(e);
+        message.error(intl.formatMessage({ id: 'login.error', defaultMessage: '登录出错' }));
+      } finally {
+        setLoading(false);
+      }
+    };
+    return (
+      <Form form={form} name="login" layout="vertical" onFinish={onFinish}>
+        <Form.Item name="username" label={intl.formatMessage({ id: 'login.username.label', defaultMessage: '用户名' })} rules={[{ required: true, message: intl.formatMessage({ id: 'login.username.required', defaultMessage: '请输入用户名' }) }]}> <Input placeholder={intl.formatMessage({ id: 'login.username.placeholder', defaultMessage: '用户名' })} /> </Form.Item>
+        <Form.Item name="password" label={intl.formatMessage({ id: 'login.password.label', defaultMessage: '密码' })} rules={[{ required: true, message: intl.formatMessage({ id: 'login.password.required', defaultMessage: '请输入密码' }) }]}> <Input.Password placeholder={intl.formatMessage({ id: 'login.password.placeholder', defaultMessage: '密码' })} /> </Form.Item>
+        <Form.Item>
+          <Button type="primary" htmlType="submit" block loading={loading}>{intl.formatMessage({ id: 'login.button', defaultMessage: '登录' })}</Button>
+        </Form.Item>
+      </Form>
+    );
+  };
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -146,19 +187,36 @@ const AppLayout = () => {
             )}
           </Space>
 
-          {mockUser.isLoggedIn ? (
+          {isLoggedIn ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
               <Avatar icon={<UserOutlined />} />
-              <span>{mockUser.email}</span>
+              <span>{userEmail}</span>
               <Button icon={<LogoutOutlined />} onClick={handleLogout}>
                 Logout
               </Button>
             </div>
           ) : (
-            <Button type="primary" onClick={() => navigate('/login')}>
-              Login
-            </Button>
+            <Space>
+              <Button type="primary" onClick={() => setShowLogin(true)}>
+                登录
+              </Button>
+              <Button onClick={() => setShowRegister(true)}>
+                注册
+              </Button>
+            </Space>
           )}
+          {/* 注册弹窗 */}
+          <RegisterModal visible={showRegister} onClose={() => setShowRegister(false)} />
+          {/* 登录弹窗 */}
+          <Modal
+            title={intl.formatMessage({ id: 'login.title', defaultMessage: '登录' })}
+            open={showLogin}
+            onCancel={() => setShowLogin(false)}
+            footer={null}
+            destroyOnClose
+          >
+            <LoginForm />
+          </Modal>
         </Header>
         <Content style={{ margin: '24px', background: '#fff', padding: '24px', borderRadius: '8px' }}>
           <Outlet />
