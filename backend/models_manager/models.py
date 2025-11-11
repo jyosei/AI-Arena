@@ -26,3 +26,36 @@ class BattleVote(models.Model):
 
     def __str__(self):
         return f"Battle between {self.model_a} and {self.model_b} - Winner: {self.winner}"
+
+
+class ChatConversation(models.Model):
+    """存储用户的聊天会话（用于在前端展示历史会话）。"""
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='chat_conversations'
+    )
+    title = models.CharField(max_length=200)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.user} - {self.title} ({self.created_at})"
+
+
+class ChatMessage(models.Model):
+    """存储会话中的每条消息（用户或AI的回复）。"""
+    conversation = models.ForeignKey(
+        ChatConversation,
+        on_delete=models.CASCADE,
+        related_name='messages'
+    )
+    content = models.TextField()
+    is_user = models.BooleanField(default=True, help_text="True表示用户消息，False表示AI回复")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        sender = "用户" if self.is_user else "AI"
+        return f"{sender}: {self.content[:50]}..."

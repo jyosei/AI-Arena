@@ -7,6 +7,7 @@ import ModelList from "./pages/ModelList.jsx";
 import Leaderboard from "./pages/Leaderboard.jsx";
 import Compare from "./pages/Compare.jsx";
 import Login from "./pages/Login.jsx";
+import Chat from "./pages/Chat.jsx";
 import { AuthProvider } from "./contexts/AuthContext.jsx";
 import AppLayout from "./components/AppLayout.jsx";
 import { ModeProvider } from './contexts/ModeContext';
@@ -92,6 +93,7 @@ function App() {
       <Routes>
         <Route element={<AppLayout />}>
           <Route path="/" element={<ModelList />} />
+          <Route path="/chat/:id" element={<Chat />} />
           <Route path="/compare" element={<Compare />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
         </Route>

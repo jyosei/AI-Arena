@@ -44,7 +44,7 @@ const AppLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { mode, setMode, models, leftModel, setLeftModel, rightModel, setRightModel } = useMode();
-  const { chatHistory, clearHistory } = useChat();
+  const { chatHistory, clearHistory, addChat } = useChat();
   const [showRegister, setShowRegister] = React.useState(false);
   const [showLogin, setShowLogin] = React.useState(false);
   const intl = useIntl();
@@ -152,16 +152,31 @@ const AppLayout = () => {
           mode="inline"
           defaultSelectedKeys={['1']}
           style={{ background: '#f7f7f8', borderRight: 0 }}
+          onClick={async ({ key }) => {
+            try {
+              if (key === '1') {
+                // 创建新会话并跳转到该会话
+                const id = await addChat('新会话');
+                navigate(`/chat/${id}`);
+              } else if (key === '2') {
+                navigate('/leaderboard');
+              }
+            } catch (err) {
+              console.error('Menu action failed:', err);
+              message.error('操作失败，请重试');
+            }
+          }}
           items={[
             {
               key: '1',
               icon: <EditOutlined />,
-              label: <Link to="/">New Chat / Models</Link>,
+              // 保持显示文本不变，但使用纯文本以便点击由 onClick 处理
+              label: <span>New Chat / Models</span>,
             },
             {
               key: '2',
               icon: <TrophyOutlined />,
-              label: <Link to="/leaderboard">Leaderboard</Link>,
+              label: <span>Leaderboard</span>,
             },
           ]}
         />
@@ -183,7 +198,7 @@ const AppLayout = () => {
                 type="text" 
                 size="small"
                 style={{ color: '#8c8c8c', fontSize: '12px' }}
-                onClick={() => message.info('清除历史记录功能开发中')}
+                onClick={() => clearHistory()}
               >
                 清除记录
               </Button>
