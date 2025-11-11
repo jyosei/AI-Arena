@@ -4,7 +4,12 @@ from rest_framework.permissions import IsAuthenticated, AllowAny # 导入 AllowA
 from rest_framework import status
 from .services import get_model_service
 from .models import BattleVote
+from .models import ChatConversation
+from .models import ChatMessage
+from .serializers import ChatConversationSerializer
+from .serializers import ChatMessageSerializer
 import random
+from rest_framework.permissions import IsAuthenticated
 class RecordVoteView(APIView):
     """接收并记录一次对战的投票结果"""
     permission_classes = [AllowAny] # 允许任何人投票
@@ -200,3 +205,70 @@ class LeaderboardView(APIView):
             item['rank'] = idx + 1
 
         return Response(scored, status=status.HTTP_200_OK)
+
+
+class ChatHistoryView(APIView):
+    """返回当前认证用户的会话历史（按时间倒序）。"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        convs = ChatConversation.objects.filter(user=request.user).order_by('-created_at')
+        serializer = ChatConversationSerializer(convs, many=True)
+        return Response(serializer.data)
+
+
+class CreateConversationView(APIView):
+    """允许认证用户创建新的会话（用于保存标题/会话条目）。"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        title = request.data.get('title') or '新会话'
+        conv = ChatConversation.objects.create(user=request.user, title=title)
+        serializer = ChatConversationSerializer(conv)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class DeleteAllConversationsView(APIView):
+    """删除当前用户的所有会话（谨慎调用）。"""
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, *args, **kwargs):
+        ChatConversation.objects.filter(user=request.user).delete()
+        return Response({'message': 'deleted'}, status=status.HTTP_200_OK)
+
+
+class ConversationMessagesView(APIView):
+    """获取指定会话的所有消息（按时间升序）。"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, conversation_id, *args, **kwargs):
+        try:
+            conv = ChatConversation.objects.get(id=conversation_id, user=request.user)
+        except ChatConversation.DoesNotExist:
+            return Response({'error': 'Conversation not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        messages = conv.messages.all()
+        serializer = ChatMessageSerializer(messages, many=True)
+        return Response(serializer.data)
+
+
+class CreateMessageView(APIView):
+    """为指定会话创建新消息（用户或AI消息）。"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        conversation_id = request.data.get('conversation_id')
+        content = request.data.get('content')
+        is_user = request.data.get('is_user', True)
+
+        if not conversation_id or not content:
+            return Response({'error': 'conversation_id and content are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            conv = ChatConversation.objects.get(id=conversation_id, user=request.user)
+        except ChatConversation.DoesNotExist:
+            return Response({'error': 'Conversation not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        message = ChatMessage.objects.create(conversation=conv, content=content, is_user=is_user)
+        serializer = ChatMessageSerializer(message)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
