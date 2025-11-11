@@ -26,21 +26,7 @@ services:
       DB_PORT: '3306'
       # 在这里添加您的 API Key
       OPENAI_API_KEY: 'sk-ser2cEa4NSlALdseJwob4oube3Trg0NOLwvXEH7yUAeYy9k9' 
-<<<<<<< HEAD
     command: sh -c "chmod +x ./wait-for-db.sh && ./wait-for-db.sh db 'python manage.py migrate && python manage.py runserver 0.0.0.0:8000'"
-=======
-    command: >
-      sh -c "
-        until nc -z db 3306; do
-          echo 'Waiting for database...';
-          sleep 1;
-        done;
-        echo 'Database is ready!';
-        python manage.py makemigrations;
-        python manage.py migrate;
-        python manage.py runserver 0.0.0.0:8000
-      "
->>>>>>> dfa2edf66422b761b9fc568c1b9e026fd805e62a
 
   frontend: # <-- 🌟 确保这里有正确的缩进，使其成为 services 的子项
     build:

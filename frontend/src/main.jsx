@@ -7,11 +7,7 @@ import ModelList from "./pages/ModelList.jsx";
 import Leaderboard from "./pages/Leaderboard.jsx";
 import Compare from "./pages/Compare.jsx";
 import Login from "./pages/Login.jsx";
-<<<<<<< HEAD
 import Forum from "./pages/Forum.jsx"; // 1. 导入新的 Forum 页面
-=======
-import Chat from "./pages/Chat.jsx";
->>>>>>> dfa2edf66422b761b9fc568c1b9e026fd805e62a
 import { AuthProvider } from "./contexts/AuthContext.jsx";
 import AppLayout from "./components/AppLayout.jsx";
 import { ModeProvider } from './contexts/ModeContext';
