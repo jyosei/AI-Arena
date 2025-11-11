@@ -21,23 +21,31 @@ export const ChatProvider = ({ children }) => {
         } catch (error) {
           console.error('Failed to load chat history:', error);
         }
+      } else {
+        setChatHistory([]);
       }
     };
 
     if (user) {
       // 登录用户：尝试从后端获取用户专属历史
+      console.log('User logged in, fetching chat history from backend...');
       request.get('models/chat/history/')
         .then(res => {
+          console.log('Backend chat history:', res.data);
           // 将后端数据适配为前端历史记录项格式（id/title/time）
           const adapted = res.data.map(item => ({ id: item.id, title: item.title, time: item.created_at }));
           setChatHistory(adapted);
+          // 同步到 localStorage 以便离线查看
+          saveToLocalStorage(adapted);
         })
         .catch(err => {
           console.error('Failed to fetch chat history from backend, fallback to local:', err);
           loadLocal();
         });
     } else {
-      // 未登录用户：使用本地存储
+      // 未登录用户：清空状态，使用本地存储
+      console.log('User logged out, loading from localStorage...');
+      setChatHistory([]);
       loadLocal();
     }
   }, [user]);
@@ -56,10 +64,14 @@ export const ChatProvider = ({ children }) => {
     // 如果用户已登录，优先将会话创建到后端
     if (user) {
       try {
+        console.log('Creating conversation on backend:', title);
         const res = await request.post('models/chat/conversation/', { title });
+        console.log('Conversation created:', res.data);
         const newChat = { id: res.data.id, title: res.data.title, time: res.data.created_at };
         const updatedHistory = [newChat, ...chatHistory];
         setChatHistory(updatedHistory);
+        // 同步到 localStorage
+        saveToLocalStorage(updatedHistory);
         return newChat.id;
       } catch (err) {
         console.error('Failed to create conversation on backend, falling back to local:', err);
