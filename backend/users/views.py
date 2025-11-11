@@ -8,6 +8,7 @@ class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [AllowAny]
+    authentication_classes = [] # 👈 添加这一行，告诉DRF不要对这个视图进行认证
     
     def create(self, request, *args, **kwargs):
         try:

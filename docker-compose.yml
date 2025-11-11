@@ -37,3 +37,5 @@ services:
     ports: ["8000:80"]  # 主机 8000 映射到容器内 Nginx 监听的 80 端口
     # 注意：开发时可以使用 volumes 挂载源码以便热重载，但在生产镜像中这会覆盖镜像中的构建产物。
     volumes: ["./frontend:/app"]
+    depends_on:
+      - backend  
