@@ -94,7 +94,6 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60), # 访问令牌有效期
     "REFRESH_TOKEN_LIFETIME": timedelta(days=30),    # 刷新令牌有效期
 }
-
 # CORS 配置：允许通过环境变量控制
 # 开发时可以设置 CORS_ALLOW_ALL_ORIGINS=1 以允许所有来源（仅开发）
 CORS_ALLOW_ALL_ORIGINS = os.getenv('CORS_ALLOW_ALL_ORIGINS', '0') in ('1', 'true', 'True')

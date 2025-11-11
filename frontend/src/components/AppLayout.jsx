@@ -10,7 +10,7 @@ import {
   LogoutOutlined, 
   ThunderboltOutlined, 
   TableOutlined, 
-  MessageOutlined, 
+  MessageOutlined, // <-- 确保这个图标已导入
   DownOutlined,
   DeleteOutlined,
   HistoryOutlined
@@ -25,14 +25,6 @@ import { useIntl } from 'react-intl';
 import AuthContext from '../contexts/AuthContext.jsx';
 const { Sider, Content, Header } = Layout;
 
-// 已删除模拟数据，使用 ChatContext 的真实数据
-
-// 模拟的用户信息和登录状态
-const mockUser = {
-  isLoggedIn: true, // 改为 false 来查看登录按钮
-  email: 'duwenyu93@gmail.com',
-};
-
 // 菜单项定义
 const menuItems = [
   { key: 'battle', label: <span className = "menu-font-label">Battle</span>, icon: <Swords size={16}/> },
@@ -42,7 +34,7 @@ const menuItems = [
 
 const AppLayout = () => {
   const navigate = useNavigate();
-  const location = useLocation();
+  const location = useLocation(); // <-- 1. 获取 location
   const { mode, setMode, models, leftModel, setLeftModel, rightModel, setRightModel } = useMode();
   const { chatHistory, clearHistory } = useChat();
   const [showRegister, setShowRegister] = React.useState(false);
@@ -51,6 +43,23 @@ const AppLayout = () => {
   const { login, logout, user } = React.useContext(AuthContext);
   const isLoggedIn = !!user;
   const userEmail = user?.email || user?.username || '';
+
+  // --- 2. 添加菜单高亮逻辑 ---
+  // 定义路由路径和菜单项 key 的映射
+  const pathKeyMap = {
+    '/': '1',
+    '/leaderboard': '2',
+    '/forum': '3',
+  };
+  
+  // 根据当前路径获取应高亮的 key
+  let currentKey = '1'; // 默认
+  if (location.pathname.startsWith('/chat/')) {
+    currentKey = '1';
+  } else {
+    currentKey = pathKeyMap[location.pathname] || '1';
+  }
+  // ---
 
   const handleLogout = () => {
     logout();
@@ -93,7 +102,7 @@ const AppLayout = () => {
           }
         })
         .catch(() => {
-          // 表单验证失败，这里不需要做任何事情，因为 Form.Item 会自动显示错误消息
+          // 表单验证失败
         });
     };
 
@@ -150,8 +159,10 @@ const AppLayout = () => {
         </div>
         <Menu
           mode="inline"
-          defaultSelectedKeys={['1']}
+          // --- 3. 更新高亮逻辑 ---
+          selectedKeys={[currentKey]} // <-- 使用动态计算的 key
           style={{ background: '#f7f7f8', borderRight: 0 }}
+          // --- 4. 添加 "社区论坛" 菜单项 ---
           items={[
             {
               key: '1',
@@ -163,7 +174,13 @@ const AppLayout = () => {
               icon: <TrophyOutlined />,
               label: <Link to="/leaderboard">Leaderboard</Link>,
             },
+            { // <-- 这是新添加的项
+              key: '3',
+              icon: <MessageOutlined />,
+              label: <Link to="/forum">社区论坛</Link>,
+            },
           ]}
+          // ---
         />
         <div style={{ padding: '0 16px', marginTop: '24px' }}>
           <div style={{ 

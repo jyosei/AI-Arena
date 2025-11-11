@@ -7,10 +7,11 @@ import ModelList from "./pages/ModelList.jsx";
 import Leaderboard from "./pages/Leaderboard.jsx";
 import Compare from "./pages/Compare.jsx";
 import Login from "./pages/Login.jsx";
+import Forum from "./pages/Forum.jsx"; // 1. 导入新的 Forum 页面
 import { AuthProvider } from "./contexts/AuthContext.jsx";
 import AppLayout from "./components/AppLayout.jsx";
 import { ModeProvider } from './contexts/ModeContext';
-import { ChatProvider } from './contexts/ChatContext'; // 1. 导入 Provider
+import { ChatProvider } from './contexts/ChatContext';
 
 const DialogContext = createContext();
 
@@ -87,13 +88,14 @@ export const useDialog = () => {
 
 function App() {
   return (
-    // 2. 用 Provider 包裹整个路由
     <ModeProvider>
       <Routes>
         <Route element={<AppLayout />}>
           <Route path="/" element={<ModelList />} />
           <Route path="/compare" element={<Compare />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
+          {/* 2. 在 AppLayout 中添加新的路由 */}
+          <Route path="/forum" element={<Forum />} />
         </Route>
         <Route path="/login" element={<Login />} />
       </Routes>
