@@ -35,7 +35,7 @@ export default function RegisterModal({ visible, onClose, onShowLogin }) {
 
   return (
     <Modal
-      title={<div style={{ textAlign: 'center', fontWeight: 600, fontSize: 20 }}><UserOutlined style={{ color: '#1890ff', marginRight: 8 }} />注册</div>}
+      title={<div style={{ textAlign: 'center', fontWeight: 600, fontSize: 20 }}><UserOutlined style={{ color: '#000', marginRight: 8 }} />注册</div>}
       open={visible}
       onCancel={onClose}
       footer={null}

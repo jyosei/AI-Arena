@@ -223,7 +223,8 @@ class CreateConversationView(APIView):
 
     def post(self, request, *args, **kwargs):
         title = request.data.get('title') or '新会话'
-        conv = ChatConversation.objects.create(user=request.user, title=title)
+        model_name = request.data.get('model_name')
+        conv = ChatConversation.objects.create(user=request.user, title=title, model_name=model_name)
         serializer = ChatConversationSerializer(conv)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -235,6 +236,19 @@ class DeleteAllConversationsView(APIView):
     def delete(self, request, *args, **kwargs):
         ChatConversation.objects.filter(user=request.user).delete()
         return Response({'message': 'deleted'}, status=status.HTTP_200_OK)
+
+
+class DeleteConversationView(APIView):
+    """删除单个会话。"""
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, conversation_id, *args, **kwargs):
+        try:
+            conv = ChatConversation.objects.get(id=conversation_id, user=request.user)
+            conv.delete()
+            return Response({'message': 'deleted'}, status=status.HTTP_200_OK)
+        except ChatConversation.DoesNotExist:
+            return Response({'error': 'Conversation not found'}, status=status.HTTP_404_NOT_FOUND)
 
 
 class ConversationMessagesView(APIView):

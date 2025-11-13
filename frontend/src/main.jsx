@@ -2,7 +2,7 @@ import React, { useState, useContext, createContext } from "react";
 import ReactDOM from "react-dom/client";
 import { IntlProvider } from "react-intl";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import { Modal } from "antd";
+import { Modal, ConfigProvider } from "antd";
 import ModelList from "./pages/ModelList.jsx";
 import Leaderboard from "./pages/Leaderboard.jsx";
 import Compare from "./pages/Compare.jsx";
@@ -110,16 +110,27 @@ const root = ReactDOM.createRoot(document.getElementById("root"));
 
 root.render(
   <React.StrictMode>
-    <IntlProvider locale="zh" messages={messages}>
-      <AuthProvider>
-        <DialogProvider>
-          <Router>
-            <ChatProvider>
-              <App />
-            </ChatProvider>
-          </Router>
-        </DialogProvider>
-      </AuthProvider>
-    </IntlProvider>
+    <ConfigProvider
+      theme={{
+        token: {
+          colorPrimary: '#000000',
+          colorInfo: '#000000',
+          colorLink: '#000000',
+          colorSuccess: '#595959',
+        },
+      }}
+    >
+      <IntlProvider locale="zh" messages={messages}>
+        <AuthProvider>
+          <DialogProvider>
+            <Router>
+              <ChatProvider>
+                <App />
+              </ChatProvider>
+            </Router>
+          </DialogProvider>
+        </AuthProvider>
+      </IntlProvider>
+    </ConfigProvider>
   </React.StrictMode>
 );

@@ -36,6 +36,7 @@ class ChatConversation(models.Model):
         related_name='chat_conversations'
     )
     title = models.CharField(max_length=200)
+    model_name = models.CharField(max_length=100, blank=True, null=True, help_text="对话使用的模型名称")
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

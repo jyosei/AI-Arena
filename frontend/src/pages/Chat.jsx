@@ -25,8 +25,9 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
 
-  // 选择模型：优先使用 ModeContext 的 leftModel，再回退到第一个 models
-  const modelName = leftModel || (models && models.length > 0 ? models[0].name : null);
+  // 选择模型：优先使用对话保存的模型，然后使用 ModeContext 的 leftModel，最后回退到第一个 models
+  const savedModelName = conv?.model_name;
+  const modelName = savedModelName || leftModel || (models && models.length > 0 ? models[0].name : null);
   const model = models.find(m => m.name === modelName) || (models[0] || null);
 
   useEffect(() => {
@@ -134,8 +135,8 @@ export default function ChatPage() {
             renderItem={message => (
               <List.Item style={{ border: 'none', padding: '8px 0' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', width: '100%', flexDirection: message.isUser ? 'row-reverse' : 'row' }}>
-                  <Avatar icon={message.isUser ? <UserOutlined /> : <RobotOutlined />} style={{ backgroundColor: message.isUser ? '#1890ff' : '#52c41a', margin: message.isUser ? '0 0 0 12px' : '0 12px 0 0' }} />
-                  <div style={{ background: message.isUser ? '#1890ff' : '#f5f5f5', color: message.isUser ? '#fff' : '#000', padding: '8px 12px', borderRadius: 12, maxWidth: '70%' }}>
+                  <Avatar icon={message.isUser ? <UserOutlined /> : <RobotOutlined />} style={{ backgroundColor: message.isUser ? '#000' : '#595959', margin: message.isUser ? '0 0 0 12px' : '0 12px 0 0' }} />
+                  <div style={{ background: message.isUser ? '#000' : '#f5f5f5', color: message.isUser ? '#fff' : '#000', padding: '8px 12px', borderRadius: 12, maxWidth: '70%' }}>
                     {message.content}
                   </div>
                 </div>
@@ -146,7 +147,7 @@ export default function ChatPage() {
 
         {loading && (
           <div style={{ display: 'flex', alignItems: 'flex-start', marginTop: 8 }}>
-            <Avatar icon={<RobotOutlined />} style={{ backgroundColor: '#52c41a', marginRight: 12 }} />
+            <Avatar icon={<RobotOutlined />} style={{ backgroundColor: '#595959', marginRight: 12 }} />
             <div style={{ background: '#f5f5f5', padding: 8, borderRadius: 12 }}>
               <Spin size="small" /> AI 正在思考...
             </div>

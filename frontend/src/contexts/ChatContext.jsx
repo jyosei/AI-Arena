@@ -32,8 +32,13 @@ export const ChatProvider = ({ children }) => {
       request.get('models/chat/history/')
         .then(res => {
           console.log('Backend chat history:', res.data);
-          // 将后端数据适配为前端历史记录项格式（id/title/time）
-          const adapted = res.data.map(item => ({ id: item.id, title: item.title, time: item.created_at }));
+          // 将后端数据适配为前端历史记录项格式（id/title/model_name/time）
+          const adapted = res.data.map(item => ({ 
+            id: item.id, 
+            title: item.title, 
+            model_name: item.model_name,
+            time: item.created_at 
+          }));
           setChatHistory(adapted);
           // 同步到 localStorage 以便离线查看
           saveToLocalStorage(adapted);
@@ -60,14 +65,14 @@ export const ChatProvider = ({ children }) => {
   };
 
   // 添加新的聊天记录
-  const addChat = async (title) => {
+  const addChat = async (title, modelName) => {
     // 如果用户已登录，优先将会话创建到后端
     if (user) {
       try {
-        console.log('Creating conversation on backend:', title);
-        const res = await request.post('models/chat/conversation/', { title });
+        console.log('Creating conversation on backend:', title, modelName);
+        const res = await request.post('models/chat/conversation/', { title, model_name: modelName });
         console.log('Conversation created:', res.data);
-        const newChat = { id: res.data.id, title: res.data.title, time: res.data.created_at };
+        const newChat = { id: res.data.id, title: res.data.title, model_name: res.data.model_name, time: res.data.created_at };
         const updatedHistory = [newChat, ...chatHistory];
         setChatHistory(updatedHistory);
         // 同步到 localStorage
@@ -83,6 +88,7 @@ export const ChatProvider = ({ children }) => {
     const newChat = {
       id: Date.now(),
       title,
+      model_name: modelName,
       time: new Date().toLocaleString(),
     };
     const updatedHistory = [newChat, ...chatHistory];
@@ -103,8 +109,12 @@ export const ChatProvider = ({ children }) => {
   // 删除聊天记录
   const deleteChat = async (id) => {
     if (user) {
-      // 后端未实现单个删除接口，此处先在客户端移除并不调用后端
-      // 可在未来扩展为调用 DELETE /chat/conversation/<id>/
+      try {
+        await request.delete(`models/chat/conversation/${id}/`);
+      } catch (err) {
+        console.error('Failed to delete conversation on backend:', err);
+        // 即使后端失败，仍然删除前端显示
+      }
     }
     const updatedHistory = chatHistory.filter(chat => chat.id !== id);
     setChatHistory(updatedHistory);

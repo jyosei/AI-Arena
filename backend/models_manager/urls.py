@@ -1,7 +1,7 @@
 from django.urls import path
 from .views import EvaluateModelView
 from .views import BattleModelView,ModelListView, LeaderboardView,RecordVoteView
-from .views import ChatHistoryView, CreateConversationView, DeleteAllConversationsView
+from .views import ChatHistoryView, CreateConversationView, DeleteAllConversationsView, DeleteConversationView
 from .views import ConversationMessagesView, CreateMessageView
 urlpatterns = [
     path('', ModelListView.as_view(), name='model-list'),
@@ -10,6 +10,7 @@ urlpatterns = [
     path('chat/history/', ChatHistoryView.as_view(), name='chat-history'),
     path('chat/conversation/', CreateConversationView.as_view(), name='create-conversation'),
     path('chat/conversation/delete_all/', DeleteAllConversationsView.as_view(), name='delete-conversations'),
+    path('chat/conversation/<int:conversation_id>/', DeleteConversationView.as_view(), name='delete-conversation'),
     path('chat/conversation/<int:conversation_id>/messages/', ConversationMessagesView.as_view(), name='conversation-messages'),
     path('chat/message/', CreateMessageView.as_view(), name='create-message'),
     # 简陋的排行榜接口（返回示例 rank/value），供前端在后端未实现真实排行榜时使用
