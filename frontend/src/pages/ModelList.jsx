@@ -28,15 +28,23 @@ export default function ArenaPage() {
   const [battleLoading, setBattleLoading] = useState(false);
   const [battleError, setBattleError] = useState(null);
   
+    // 用于维护对话的 conversation ID
+    const [directChatConvId, setDirectChatConvId] = useState(null); // Direct Chat 的 conversation ID
+    const [leftConvId, setLeftConvId] = useState(null); // Side-by-side 左侧的 conversation ID
+    const [rightConvId, setRightConvId] = useState(null); // Side-by-side 右侧的 conversation ID
+  
   const messagesEndRef = React.useRef(null);
   
   useEffect(() => {
-    // 切换模式时，清空所有结果
+      // 切换模式时,清空所有结果和 conversation ID
     setResults([]);
     setMessages([]);
     setLeftMessages([]);
     setRightMessages([]);
     setPrompt('');
+      setDirectChatConvId(null);
+      setLeftConvId(null);
+      setRightConvId(null);
   }, [mode]);
 
   // 自动滚动到底部
@@ -67,9 +75,15 @@ export default function ArenaPage() {
       setBattleError(null);
 
       try {
-        const response = await evaluateModel(leftModel, currentInput);
+          // 传递 conversation ID,如果是第一次则为 null,后端会创建新的
+          const response = await evaluateModel(leftModel, currentInput, directChatConvId);
         const aiMessage = { content: response.data.response, isUser: false };
         setMessages(prev => [...prev, aiMessage]);
+        
+          // 保存后端返回的 conversation_id
+          if (response.data.conversation_id && !directChatConvId) {
+            setDirectChatConvId(response.data.conversation_id);
+          }
       } catch (error) {
         const errorMessage = { content: `调用模型出错: ${error.response?.data?.detail || error.message}`, isUser: false };
         setMessages(prev => [...prev, errorMessage]);
@@ -95,10 +109,10 @@ export default function ArenaPage() {
       setBattleError(null);
 
       try {
-        // 同时调用两个模型
+          // 同时调用两个模型,传递各自的 conversation ID
         const [leftResponse, rightResponse] = await Promise.all([
-          evaluateModel(leftModel, currentInput).catch(err => ({ error: err })),
-          evaluateModel(rightModel, currentInput).catch(err => ({ error: err }))
+            evaluateModel(leftModel, currentInput, leftConvId).catch(err => ({ error: err })),
+            evaluateModel(rightModel, currentInput, rightConvId).catch(err => ({ error: err }))
         ]);
 
         // 处理左侧模型响应
@@ -112,6 +126,11 @@ export default function ArenaPage() {
         } else {
           const aiMessage = { content: leftResponse.data.response, isUser: false };
           setLeftMessages(prev => [...prev, aiMessage]);
+          
+            // 保存左侧的 conversation_id
+            if (leftResponse.data.conversation_id && !leftConvId) {
+              setLeftConvId(leftResponse.data.conversation_id);
+            }
         }
 
         // 处理右侧模型响应
@@ -125,6 +144,11 @@ export default function ArenaPage() {
         } else {
           const aiMessage = { content: rightResponse.data.response, isUser: false };
           setRightMessages(prev => [...prev, aiMessage]);
+          
+            // 保存右侧的 conversation_id
+            if (rightResponse.data.conversation_id && !rightConvId) {
+              setRightConvId(rightResponse.data.conversation_id);
+            }
         }
       } catch (error) {
         setBattleError(`发生错误: ${error.message}`);

@@ -28,19 +28,22 @@ export const battleModels = ({prompt, modelA, modelB, isDirectChat = false}) => 
 }
 /**
  * 评估单个模型
- * @param {object} data
  * @param {string} modelName - 模型名称
  * @param {string} prompt - 用户输入的提示
- * @param {string} [data.modelA]
- * @param {string} [data.modelB]
- * @param {string} [data.winner]
- * @returns Promise
+ * @param {number|null} conversationId - 对话 ID,如果为 null 则创建新对话
+ * @returns Promise - 返回 { response, conversation_id }
  */
-export const evaluateModel = (modelName, prompt) => {
-  return apiClient.post('/models/evaluate/', {
+export const evaluateModel = (modelName, prompt, conversationId = null) => {
+  const payload = {
     model_name: modelName,
     prompt: prompt,
-  });
+  };
+  
+  if (conversationId) {
+    payload.conversation_id = conversationId;
+  }
+  
+  return apiClient.post('/models/evaluate/', payload);
 };
 export const recordVote = (data) => {
   const payload = {

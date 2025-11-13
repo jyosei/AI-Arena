@@ -10,13 +10,16 @@ class BaseLanguageModel(ABC):
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
 
     @abstractmethod
-    def evaluate(self, prompt: str,model_name : str) -> str:
-        """接收一个提示，返回模型的响应字符串"""
+    def evaluate(self, prompt: str, model_name: str, messages=None) -> str:
+        """生成模型回复。
+        prompt: 当前用户输入（兼容旧接口）。
+        messages: 可选的完整对话历史（[{role, content}]），若提供则以其为准。
+        """
         pass
 
 # 2. 为 OpenAI 创建一个具体的实现类
 class OpenAIModel(BaseLanguageModel):
-    def evaluate(self, prompt: str,model_name : str) -> str:
+    def evaluate(self, prompt: str, model_name: str, messages=None) -> str:
         try:
             client = OpenAI(
                 # 使用从构造函数传入的 API Key
@@ -24,15 +27,20 @@ class OpenAIModel(BaseLanguageModel):
                 # 这里是您指定的国内代理地址
                 base_url="https://jeniya.cn/v1" 
             )
+            # 组装消息
+            openai_messages = [
+                {"role": "system", "content": "You are a helpful assistant."}
+            ]
+            if messages and isinstance(messages, list) and len(messages) > 0:
+                # 假设 messages 已是 [{role, content}] 形式
+                openai_messages.extend(messages)
+            else:
+                openai_messages.append({"role": "user", "content": prompt})
+
             response = client.chat.completions.create(
-                # 注意：这里的模型名称可能需要根据代理服务的要求来写
-                model=model_name, 
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant."},
-                    # 使用传入的 prompt 参数作为用户问题
-                    {"role": "user", "content": prompt} 
-                ],
-                max_tokens=4096, # 建议设置一个合理的 max_tokens 值
+                model=model_name,
+                messages=openai_messages,
+                max_tokens=4096,
                 temperature=0.7
             )
             # 返回模型的响应内容，而不是打印它

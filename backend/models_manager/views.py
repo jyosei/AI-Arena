@@ -65,27 +65,46 @@ class EvaluateModelView(APIView):
     def post(self, request, *args, **kwargs):
         model_name = request.data.get("model_name")
         prompt = request.data.get("prompt")
+        conversation_id = request.data.get("conversation_id")
 
         if not model_name or not prompt:
             return Response({"error": "model_name and prompt are required."}, status=400)
 
         try:
             model_service = get_model_service(model_name)
-            
-            # 重点：确保在这里传递了 prompt 和 model_name 两个参数
-            response_text = model_service.evaluate(prompt, model_name) 
-            
+
+            # 如果携带 conversation_id，则尝试构造完整历史
+            messages_payload = None
+            if conversation_id:
+                try:
+                    if request.user and request.user.is_authenticated:
+                        conv = ChatConversation.objects.get(id=conversation_id, user=request.user)
+                    else:
+                        conv = ChatConversation.objects.get(id=conversation_id)
+                    # 将历史消息转换为 OpenAI 兼容的格式
+                    msgs = conv.messages.all().order_by('created_at')
+                    messages_payload = [
+                        {"role": ("user" if m.is_user else "assistant"), "content": m.content}
+                        for m in msgs
+                    ]
+                    # 保险: 确保本次用户输入也在末尾
+                    if not messages_payload or messages_payload[-1].get("content") != prompt:
+                        messages_payload.append({"role": "user", "content": prompt})
+                except ChatConversation.DoesNotExist:
+                    return Response({"error": "Conversation not found."}, status=404)
+
+            response_text = model_service.evaluate(prompt, model_name, messages=messages_payload)
             return Response({
                 "prompt": prompt,
                 "model": model_name,
-                "response": response_text
+                "response": response_text,
+                "used_history": len(messages_payload) if messages_payload is not None else 0
             })
         except ValueError as e:
             return Response({"error": str(e)}, status=400)
         except Exception as e:
-            # 将内部错误包装起来，提供更友好的提示
-            # 注意：在生产环境中，不应暴露详细的内部错误 e
             return Response({"error": f"服务器内部错误: {e}"}, status=500)
+
 
 class BattleModelView(APIView):
     permission_classes = [AllowAny]
@@ -100,29 +119,29 @@ class BattleModelView(APIView):
         if not prompt:
             return Response({"error": "prompt is required."}, status=400)
 
-            # Direct Chat 模式
-            if is_direct_chat:
-                if not model_name and not model_a_name:
-                    return Response({"error": "model_name is required for direct chat mode."}, status=400)
-            
-                try:
-                    # 使用 model_name 或 model_a_name（为了兼容性）
-                    model_name = model_name or model_a_name
-                    model_service = get_model_service(model_name)
-                    response_data = model_service.evaluate(prompt, model_name)
-                
-                    return Response({
-                        "prompt": prompt,
-                        "results": [
-                            {"model": model_name, "response": response_data}
-                        ],
-                        "is_anonymous": False,
-                        "is_direct_chat": True
-                    })
-                except ValueError as e:
-                    return Response({"error": str(e)}, status=400)
-                except Exception as e:
-                    return Response({"error": f"服务器内部错误: {e}"}, status=500)
+        # Direct Chat 模式
+        if is_direct_chat:
+            if not model_name and not model_a_name:
+                return Response({"error": "model_name is required for direct chat mode."}, status=400)
+            try:
+                # 使用 model_name 或 model_a_name（为了兼容性）
+                model_name = model_name or model_a_name
+                model_service = get_model_service(model_name)
+                response_data = model_service.evaluate(prompt, model_name)
+
+                return Response({
+                    "prompt": prompt,
+                    "results": [
+                        {"model": model_name, "response": response_data}
+                    ],
+                    "is_anonymous": False,
+                    "is_direct_chat": True
+                })
+            except ValueError as e:
+                return Response({"error": str(e)}, status=400)
+            except Exception as e:
+                return Response({"error": f"服务器内部错误: {e}"}, status=500)
+
         # --- 逻辑分叉 ---
         # 场景1：匿名对战 (Anonymous Battle)
         # 如果前端没有提供 model_a 或 model_b，则进入匿名对战模式
@@ -131,8 +150,8 @@ class BattleModelView(APIView):
             #    在真实应用中，这里应该从数据库中获取一个“可用于对战”的模型列表
             available_models = ["gpt-3.5-turbo", "glm-4", "deepseek-chat", "qwen-max"]
             if len(available_models) < 2:
-                 return Response({"error": "Not enough models available for a battle."}, status=500)
-            
+                return Response({"error": "Not enough models available for a battle."}, status=500)
+
             chosen_models = random.sample(available_models, 2)
             model_a_name, model_b_name = chosen_models[0], chosen_models[1]
 
@@ -163,9 +182,8 @@ class BattleModelView(APIView):
             return Response({
                 "prompt": prompt,
                 "results": battle_results,
-                "is_anonymous": is_anonymous # 向前端明确指出这是否是一场匿名对战
+                "is_anonymous": is_anonymous
             })
-            
         except ValueError as e:
             return Response({"error": str(e)}, status=400)
         except Exception as e:

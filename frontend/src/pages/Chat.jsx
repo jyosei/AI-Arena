@@ -87,7 +87,7 @@ export default function ChatPage() {
     }
 
     try {
-      const res = await apiClient.post('/models/evaluate/', { model_name: model.name, prompt });
+      const res = await apiClient.post('/models/evaluate/', { model_name: model.name, prompt, conversation_id: id });
       const aiMessage = { id: Date.now() + 1, content: res.data.response, isUser: false };
       setMessages(prev => [...prev, aiMessage]);
 
