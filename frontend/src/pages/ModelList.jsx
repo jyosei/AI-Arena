@@ -28,8 +28,6 @@ export default function ArenaPage() {
   const [battleLoading, setBattleLoading] = useState(false);
   const [battleError, setBattleError] = useState(null);
   
-  const leftMessagesEndRef = React.useRef(null);
-  const rightMessagesEndRef = React.useRef(null);
   const messagesEndRef = React.useRef(null);
   
   useEffect(() => {
@@ -43,13 +41,10 @@ export default function ArenaPage() {
 
   // 自动滚动到底部
   useEffect(() => {
-    if (mode === 'side-by-side') {
-      leftMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-      rightMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    } else if (mode === 'direct-chat') {
+    if (mode === 'direct-chat') {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [leftMessages, rightMessages, messages, mode]);
+  }, [messages, mode]);
 
   const startBattle = async () => {
     if (!prompt.trim()) {
@@ -148,9 +143,14 @@ export default function ArenaPage() {
   // ... (handleVote 逻辑保持不变)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* 内容区域：根据模式和状态条件渲染 */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+      {/* 内容区域:根据模式和状态条件渲染 */}
+      <div style={{ 
+        flex: 1, 
+        overflowY: mode === 'side-by-side' ? 'hidden' : 'auto', 
+        padding: '20px',
+        minHeight: 0
+      }}>
         {/* 欢迎消息 - Battle模式 */}
         {mode === 'battle' && results.length === 0 && !battleLoading && (
           <div style={{ textAlign: 'center', paddingTop: '20vh' }}>
@@ -181,7 +181,7 @@ export default function ArenaPage() {
         {mode === 'side-by-side' && leftMessages.length > 0 && (
           <Row gutter={16} style={{ height: '100%' }}>
             {/* 左侧模型 */}
-            <Col span={12}>
+            <Col span={12} style={{ height: '100%' }}>
               <div style={{ 
                 borderRight: '1px solid #f0f0f0', 
                 paddingRight: '16px',
@@ -194,11 +194,16 @@ export default function ArenaPage() {
                   paddingBottom: '12px', 
                   borderBottom: '2px solid #f0f0f0',
                   fontWeight: 'bold',
-                  fontSize: '16px'
+                  fontSize: '16px',
+                  flexShrink: 0
                 }}>
                   {leftModel || 'Model A'}
                 </div>
-                <div style={{ flex: 1, overflowY: 'auto' }}>
+                <div style={{ 
+                  flex: 1,
+                  overflowY: 'auto',
+                  paddingRight: '8px'
+                }}>
                   {leftMessages.map((msg, index) => (
                     <div key={index} style={{ 
                       display: 'flex', 
@@ -237,13 +242,12 @@ export default function ArenaPage() {
                       </div>
                     </div>
                   )}
-                  <div ref={leftMessagesEndRef} />
                 </div>
               </div>
             </Col>
 
             {/* 右侧模型 */}
-            <Col span={12}>
+            <Col span={12} style={{ height: '100%' }}>
               <div style={{ 
                 paddingLeft: '16px',
                 height: '100%',
@@ -255,11 +259,16 @@ export default function ArenaPage() {
                   paddingBottom: '12px', 
                   borderBottom: '2px solid #f0f0f0',
                   fontWeight: 'bold',
-                  fontSize: '16px'
+                  fontSize: '16px',
+                  flexShrink: 0
                 }}>
                   {rightModel || 'Model B'}
                 </div>
-                <div style={{ flex: 1, overflowY: 'auto' }}>
+                <div style={{ 
+                  flex: 1,
+                  overflowY: 'auto',
+                  paddingRight: '8px'
+                }}>
                   {rightMessages.map((msg, index) => (
                     <div key={index} style={{ 
                       display: 'flex', 
@@ -298,7 +307,6 @@ export default function ArenaPage() {
                       </div>
                     </div>
                   )}
-                  <div ref={rightMessagesEndRef} />
                 </div>
               </div>
             </Col>

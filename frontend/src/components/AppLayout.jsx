@@ -370,7 +370,16 @@ const AppLayout = () => {
             </div>
           </Modal>
         </Header>
-        <Content style={{ margin: '24px', background: '#fff', padding: '24px', borderRadius: '8px' }}>
+        <Content style={{ 
+          margin: '24px', 
+          background: '#fff', 
+          padding: '24px', 
+          borderRadius: '8px',
+          height: 'calc(100vh - 64px - 48px)', // 减去 Header 高度和 margin
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column'
+        }}>
           {shouldShowModelSelectors && (
             <div style={{ marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid #f0f0f0' }}>
               <Space size="large">
