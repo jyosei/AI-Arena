@@ -27,12 +27,14 @@ export default function ArenaPage() {
   const [rightMessages, setRightMessages] = useState([]); // 用于 Side-by-side 右侧模型
   const [battleLoading, setBattleLoading] = useState(false);
   const [battleError, setBattleError] = useState(null);
-  
+  const [currentInput, setCurrentInput] = useState(''); // <-- 添加这个 state
     // 用于维护对话的 conversation ID
     const [directChatConvId, setDirectChatConvId] = useState(null); // Direct Chat 的 conversation ID
     const [leftConvId, setLeftConvId] = useState(null); // Side-by-side 左侧的 conversation ID
     const [rightConvId, setRightConvId] = useState(null); // Side-by-side 右侧的 conversation ID
-  
+    const [voted, setVoted] = useState(false); // 用于 Side-by-side 模式
+    const [directChatVoted, setDirectChatVoted] = useState(false); // 用于 Direct Chat 模式
+
   const messagesEndRef = React.useRef(null);
   
   useEffect(() => {
@@ -56,36 +58,33 @@ export default function ArenaPage() {
 
   const startBattle = async () => {
     if (!prompt.trim()) {
-      setBattleError("请输入提示内容。");
       return;
     }
 
+    const currentPrompt = prompt; // 将当前 prompt 保存到局部变量中
+    setCurrentInput(currentPrompt); // <-- 保存当前输入
+    setPrompt(''); // 立即清空输入框
+
     // Direct Chat 模式
     if (mode === 'direct-chat') {
-      if (!leftModel) {
-        setBattleError("请在顶部选择一个模型进行对话。");
-        return;
-      }
-      
-      const userMessage = { content: prompt, isUser: true };
+      setDirectChatVoted(false);
+      const userMessage = { content: currentPrompt, isUser: true };
       setMessages(prev => [...prev, userMessage]);
-      const currentInput = prompt;
-      setPrompt('');
       setBattleLoading(true);
-      setBattleError(null);
 
       try {
-          // 传递 conversation ID,如果是第一次则为 null,后端会创建新的
-          const response = await evaluateModel(leftModel, currentInput, directChatConvId);
+        const response = await evaluateModel(leftModel, currentPrompt, directChatConvId);
         const aiMessage = { content: response.data.response, isUser: false };
         setMessages(prev => [...prev, aiMessage]);
-        
-          // 保存后端返回的 conversation_id
-          if (response.data.conversation_id && !directChatConvId) {
-            setDirectChatConvId(response.data.conversation_id);
-          }
+        if (response.data.conversation_id && !directChatConvId) {
+          setDirectChatConvId(response.data.conversation_id);
+        }
       } catch (error) {
-        const errorMessage = { content: `调用模型出错: ${error.response?.data?.detail || error.message}`, isUser: false };
+        const errorMessage = { 
+          content: `调用模型出错: ${error.response?.data?.detail || error.message}`, 
+          isUser: false,
+          isError: true
+        };
         setMessages(prev => [...prev, errorMessage]);
       } finally {
         setBattleLoading(false);
@@ -96,23 +95,25 @@ export default function ArenaPage() {
     // Side-by-side 模式
     if (mode === 'side-by-side') {
       if (!leftModel || !rightModel) {
-        setBattleError("请在顶部选择左右两个模型进行对话。");
+        message.error('请在侧边栏选择两个模型进行比较。');
         return;
       }
+      
+      setVoted(false); // 重置投票状态
 
-      const userMessage = { content: prompt, isUser: true };
+      // --- 关键修复：将用户消息添加到左右两边的状态中 ---
+      const userMessage = { content: currentPrompt, isUser: true };
       setLeftMessages(prev => [...prev, userMessage]);
       setRightMessages(prev => [...prev, userMessage]);
-      const currentInput = prompt;
-      setPrompt('');
+      
       setBattleLoading(true);
       setBattleError(null);
 
       try {
-          // 同时调用两个模型,传递各自的 conversation ID
+        // 2. 直接使用局部变量 currentPrompt 进行 API 调用
         const [leftResponse, rightResponse] = await Promise.all([
-            evaluateModel(leftModel, currentInput, leftConvId).catch(err => ({ error: err })),
-            evaluateModel(rightModel, currentInput, rightConvId).catch(err => ({ error: err }))
+            evaluateModel(leftModel, currentPrompt, leftConvId).catch(err => ({ error: err })),
+            evaluateModel(rightModel, currentPrompt, rightConvId).catch(err => ({ error: err }))
         ]);
 
         // 处理左侧模型响应
@@ -126,11 +127,9 @@ export default function ArenaPage() {
         } else {
           const aiMessage = { content: leftResponse.data.response, isUser: false };
           setLeftMessages(prev => [...prev, aiMessage]);
-          
-            // 保存左侧的 conversation_id
-            if (leftResponse.data.conversation_id && !leftConvId) {
-              setLeftConvId(leftResponse.data.conversation_id);
-            }
+          if (leftResponse.data.conversation_id && !leftConvId) {
+            setLeftConvId(leftResponse.data.conversation_id);
+          }
         }
 
         // 处理右侧模型响应
@@ -144,11 +143,9 @@ export default function ArenaPage() {
         } else {
           const aiMessage = { content: rightResponse.data.response, isUser: false };
           setRightMessages(prev => [...prev, aiMessage]);
-          
-            // 保存右侧的 conversation_id
-            if (rightResponse.data.conversation_id && !rightConvId) {
-              setRightConvId(rightResponse.data.conversation_id);
-            }
+          if (rightResponse.data.conversation_id && !rightConvId) {
+            setRightConvId(rightResponse.data.conversation_id);
+          }
         }
       } catch (error) {
         setBattleError(`发生错误: ${error.message}`);
@@ -164,8 +161,56 @@ export default function ArenaPage() {
     // ... (其他Battle逻辑)
   };
 
-  // ... (handleVote 逻辑保持不变)
+  // --- 新增：投票处理函数 ---
+  const handleVote = async (winnerChoice) => {
+    // --- 关键修复：直接从 state 获取 prompt ---
+    if (!currentInput) {
+      message.error("无法找到用于投票的提示。");
+      return;
+    }
 
+    const voteData = {
+      model_a: leftModel,
+      model_b: rightModel,
+      prompt: currentInput, // <-- 使用保存的输入
+      winner: winnerChoice, // 'model_a', 'model_b', 'tie', 'bad'
+    };
+
+    try {
+      await recordVote(voteData);
+      message.success('感谢您的投票！');
+      setVoted(true);
+    } catch (error) {
+      const errorMsg = error.response?.data?.error || error.message;
+      message.error(`投票失败: ${errorMsg}`);
+    }
+  };
+  const handleDirectChatVote = async (choice) => {
+    // 获取最后一条用户消息和AI消息
+    const lastUserMessage = messages.filter(m => m.isUser).pop();
+    const lastAiMessage = messages.filter(m => !m.isUser && !m.isError).pop();
+
+    if (!lastUserMessage || !lastAiMessage) {
+      message.error("无法找到用于投票的对话。");
+      return;
+    }
+
+    const voteData = {
+      model_a: leftModel, // 在 Direct Chat 中，我们只关心一个模型
+      model_b: null,      // 第二个模型可以为 null
+      prompt: lastUserMessage.content,
+      winner: choice, // 'good' or 'bad'
+    };
+
+    try {
+      await recordVote(voteData);
+      message.success('感谢您的反馈！');
+      setDirectChatVoted(true); // 投票成功后禁用按钮
+    } catch (error) {
+      const errorMsg = error.response?.data?.error || error.message;
+      message.error(`提交反馈失败: ${errorMsg}`);
+    }
+  };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       {/* 内容区域:根据模式和状态条件渲染 */}
@@ -203,138 +248,151 @@ export default function ArenaPage() {
 
         {/* Side-by-side 模式的分栏聊天展示 */}
         {mode === 'side-by-side' && leftMessages.length > 0 && (
-          <Row gutter={16} style={{ height: '100%' }}>
-            {/* 左侧模型 */}
-            <Col span={12} style={{ height: '100%' }}>
-              <div style={{ 
-                borderRight: '1px solid #f0f0f0', 
-                paddingRight: '16px',
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column'
-              }}>
+          <>
+            <Row gutter={16} style={{ height: '100%' }}>
+              {/* 左侧模型 Col */}
+              <Col span={12} style={{ height: '100%' }}>
                 <div style={{ 
-                  marginBottom: '16px', 
-                  paddingBottom: '12px', 
-                  borderBottom: '2px solid #f0f0f0',
-                  fontWeight: 'bold',
-                  fontSize: '16px',
-                  flexShrink: 0
+                  borderRight: '1px solid #f0f0f0', 
+                  paddingRight: '16px',
+                  height: '100%',
+                  display: 'flex',
+                  flexDirection: 'column'
                 }}>
-                  {leftModel || 'Model A'}
-                </div>
-                <div style={{ 
-                  flex: 1,
-                  overflowY: 'auto',
-                  paddingRight: '8px'
-                }}>
-                  {leftMessages.map((msg, index) => (
-                    <div key={index} style={{ 
-                      display: 'flex', 
-                      justifyContent: msg.isUser ? 'flex-end' : 'flex-start', 
-                      marginBottom: 12 
-                    }}>
-                      {!msg.isUser && (
-                        <Avatar icon={<RobotOutlined />} style={{ 
-                          backgroundColor: '#595959', 
-                          marginRight: 8 
-                        }} />
-                      )}
-                      <div style={{ 
-                        background: msg.isUser ? '#000' : (msg.isError ? '#ffebee' : '#f5f5f5'), 
-                        color: msg.isUser ? 'white' : (msg.isError ? '#c62828' : 'black'), 
-                        padding: '8px 12px', 
-                        borderRadius: '8px', 
-                        maxWidth: '80%',
-                        wordBreak: 'break-word'
+                  <div style={{ 
+                    marginBottom: '16px', 
+                    paddingBottom: '12px', 
+                    borderBottom: '2px solid #f0f0f0',
+                    fontWeight: 'bold',
+                    fontSize: '16px',
+                    flexShrink: 0
+                  }}>
+                    {leftModel || 'Model A'}
+                  </div>
+                  <div style={{ 
+                    flex: 1,
+                    overflowY: 'auto',
+                    paddingRight: '8px'
+                  }}>
+                    {leftMessages.map((msg, index) => (
+                      <div key={index} style={{ 
+                        display: 'flex', 
+                        justifyContent: msg.isUser ? 'flex-end' : 'flex-start', 
+                        marginBottom: 12 
                       }}>
-                        {msg.content}
+                        {!msg.isUser && (
+                          <Avatar icon={<RobotOutlined />} style={{ 
+                            backgroundColor: '#595959', 
+                            marginRight: 8 
+                          }} />
+                        )}
+                        <div style={{ 
+                          background: msg.isUser ? '#000' : (msg.isError ? '#ffebee' : '#f5f5f5'), 
+                          color: msg.isUser ? 'white' : (msg.isError ? '#c62828' : 'black'), 
+                          padding: '8px 12px', 
+                          borderRadius: '8px', 
+                          maxWidth: '80%',
+                          wordBreak: 'break-word'
+                        }}>
+                          {msg.content}
+                        </div>
+                        {msg.isUser && (
+                          <Avatar icon={<UserOutlined />} style={{ 
+                            backgroundColor: '#000', 
+                            marginLeft: 8 
+                          }} />
+                        )}
                       </div>
-                      {msg.isUser && (
-                        <Avatar icon={<UserOutlined />} style={{ 
-                          backgroundColor: '#000', 
-                          marginLeft: 8 
-                        }} />
-                      )}
-                    </div>
-                  ))}
-                  {battleLoading && (
-                    <div style={{ display: 'flex', alignItems: 'center', marginTop: 12 }}>
-                      <Avatar icon={<RobotOutlined />} style={{ backgroundColor: '#595959', marginRight: 8 }} />
-                      <div style={{ background: '#f5f5f5', padding: '8px 12px', borderRadius: '8px' }}>
-                        <Spin size="small" /> 思考中...
+                    ))}
+                    {battleLoading && (
+                      <div style={{ display: 'flex', alignItems: 'center', marginTop: 12 }}>
+                        <Avatar icon={<RobotOutlined />} style={{ backgroundColor: '#595959', marginRight: 8 }} />
+                        <div style={{ background: '#f5f5f5', padding: '8px 12px', borderRadius: '8px' }}>
+                          <Spin size="small" /> 思考中...
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
-            </Col>
+              </Col>
 
-            {/* 右侧模型 */}
-            <Col span={12} style={{ height: '100%' }}>
-              <div style={{ 
-                paddingLeft: '16px',
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column'
-              }}>
+              {/* 右侧模型 */}
+              <Col span={12} style={{ height: '100%' }}>
                 <div style={{ 
-                  marginBottom: '16px', 
-                  paddingBottom: '12px', 
-                  borderBottom: '2px solid #f0f0f0',
-                  fontWeight: 'bold',
-                  fontSize: '16px',
-                  flexShrink: 0
+                  paddingLeft: '16px',
+                  height: '100%',
+                  display: 'flex',
+                  flexDirection: 'column'
                 }}>
-                  {rightModel || 'Model B'}
-                </div>
-                <div style={{ 
-                  flex: 1,
-                  overflowY: 'auto',
-                  paddingRight: '8px'
-                }}>
-                  {rightMessages.map((msg, index) => (
-                    <div key={index} style={{ 
-                      display: 'flex', 
-                      justifyContent: msg.isUser ? 'flex-end' : 'flex-start', 
-                      marginBottom: 12 
-                    }}>
-                      {!msg.isUser && (
-                        <Avatar icon={<RobotOutlined />} style={{ 
-                          backgroundColor: '#595959', 
-                          marginRight: 8 
-                        }} />
-                      )}
-                      <div style={{ 
-                        background: msg.isUser ? '#000' : (msg.isError ? '#ffebee' : '#f5f5f5'), 
-                        color: msg.isUser ? 'white' : (msg.isError ? '#c62828' : 'black'), 
-                        padding: '8px 12px', 
-                        borderRadius: '8px', 
-                        maxWidth: '80%',
-                        wordBreak: 'break-word'
+                  <div style={{ 
+                    marginBottom: '16px', 
+                    paddingBottom: '12px', 
+                    borderBottom: '2px solid #f0f0f0',
+                    fontWeight: 'bold',
+                    fontSize: '16px',
+                    flexShrink: 0
+                  }}>
+                    {rightModel || 'Model B'}
+                  </div>
+                  <div style={{ 
+                    flex: 1,
+                    overflowY: 'auto',
+                    paddingRight: '8px'
+                  }}>
+                    {rightMessages.map((msg, index) => (
+                      <div key={index} style={{ 
+                        display: 'flex', 
+                        justifyContent: msg.isUser ? 'flex-end' : 'flex-start', 
+                        marginBottom: 12 
                       }}>
-                        {msg.content}
+                        {!msg.isUser && (
+                          <Avatar icon={<RobotOutlined />} style={{ 
+                            backgroundColor: '#595959', 
+                            marginRight: 8 
+                          }} />
+                        )}
+                        <div style={{ 
+                          background: msg.isUser ? '#000' : (msg.isError ? '#ffebee' : '#f5f5f5'), 
+                          color: msg.isUser ? 'white' : (msg.isError ? '#c62828' : 'black'), 
+                          padding: '8px 12px', 
+                          borderRadius: '8px', 
+                          maxWidth: '80%',
+                          wordBreak: 'break-word'
+                        }}>
+                          {msg.content}
+                        </div>
+                        {msg.isUser && (
+                          <Avatar icon={<UserOutlined />} style={{ 
+                            backgroundColor: '#000', 
+                            marginLeft: 8 
+                          }} />
+                        )}
                       </div>
-                      {msg.isUser && (
-                        <Avatar icon={<UserOutlined />} style={{ 
-                          backgroundColor: '#000', 
-                          marginLeft: 8 
-                        }} />
-                      )}
-                    </div>
-                  ))}
-                  {battleLoading && (
-                    <div style={{ display: 'flex', alignItems: 'center', marginTop: 12 }}>
-                      <Avatar icon={<RobotOutlined />} style={{ backgroundColor: '#595959', marginRight: 8 }} />
-                      <div style={{ background: '#f5f5f5', padding: '8px 12px', borderRadius: '8px' }}>
-                        <Spin size="small" /> 思考中...
+                    ))}
+                    {battleLoading && (
+                      <div style={{ display: 'flex', alignItems: 'center', marginTop: 12 }}>
+                        <Avatar icon={<RobotOutlined />} style={{ backgroundColor: '#595959', marginRight: 8 }} />
+                        <div style={{ background: '#f5f5f5', padding: '8px 12px', borderRadius: '8px' }}>
+                          <Spin size="small" /> 思考中...
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
-            </Col>
-          </Row>
+              </Col>
+            </Row>
+
+            {/* --- 新增：Side-by-side 模式下的投票按钮 --- */}
+            <div style={{ textAlign: 'center', marginTop: '24px', flexShrink: 0 }}>
+              <Title level={4}>哪个模型的回答更好？</Title>
+              <Space size="large">
+                <Button onClick={() => handleVote('model_a')}>← 左边更好</Button>
+                <Button onClick={() => handleVote('tie')}>不分上下</Button>
+                <Button onClick={() => handleVote('bad')}>都很差</Button>
+                <Button onClick={() => handleVote('model_b')}>右边更好 →</Button>
+              </Space>
+            </div>
+          </>
         )}
 
         {/* Direct Chat 的聊天记录展示 */}
@@ -355,7 +413,14 @@ export default function ArenaPage() {
           </div>
         )}
       </div>
-
+      {mode === 'direct-chat' && messages.some(m => !m.isUser && !m.isError) && (
+          <div style={{ textAlign: 'center', marginTop: '24px', paddingBottom: '12px' }}>
+            <Space size="large">
+              <Button onClick={() => handleDirectChatVote('good')} disabled={directChatVoted}>👍 Good</Button>
+              <Button onClick={() => handleDirectChatVote('bad')} disabled={directChatVoted}>👎 Bad</Button>
+            </Space>
+          </div>
+        )}
       {/* --- 输入框区域：始终在底部 --- */}
       <div style={{ padding: '0 20px 20px 20px' }}>
         {battleError && <Alert message={battleError} type="error" closable onClose={() => setBattleError(null)} style={{ marginBottom: 16 }} />}

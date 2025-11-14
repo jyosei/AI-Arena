@@ -47,8 +47,8 @@ export const evaluateModel = (modelName, prompt, conversationId = null) => {
 };
 export const recordVote = (data) => {
   const payload = {
-    model_a: data.modelA,
-    model_b: data.modelB,
+    model_a: data.model_a,
+    model_b: data.model_b,
     prompt: data.prompt,
     winner: data.winner,
   };

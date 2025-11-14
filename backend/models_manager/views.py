@@ -16,28 +16,36 @@ class RecordVoteView(APIView):
 
     def post(self, request, *args, **kwargs):
         model_a = request.data.get('model_a')
-        model_b = request.data.get('model_b')
+        model_b = request.data.get('model_b') # 可能是 null
         prompt = request.data.get('prompt')
         winner = request.data.get('winner')
 
-        if not all([model_a, model_b, prompt, winner]):
-            return Response({'error': 'Missing required fields (model_a, model_b, prompt, winner).'}, status=status.HTTP_400_BAD_REQUEST)
+        # --- 修改验证逻辑 ---
+        if not all([model_a, prompt, winner]):
+            return Response({'error': 'Missing required fields: model_a, prompt, winner'}, status=status.HTTP_400_BAD_REQUEST)
 
         # 验证 winner 的值是否有效
-        valid_winners = [model_a, model_b, 'tie', 'both_bad']
+        # 允许 model_b 为 None 的情况
+        valid_winners = [model_a]
+        if model_b:
+            valid_winners.append(model_b)
+        
+        # 添加所有可能的投票选项
+        valid_winners.extend(['tie', 'bad', 'good'])
+
         if winner not in valid_winners:
             return Response({'error': f'Invalid winner. Must be one of {valid_winners}'}, status=status.HTTP_400_BAD_REQUEST)
 
         # 创建并保存投票记录
         BattleVote.objects.create(
             model_a=model_a,
-            model_b=model_b,
+            model_b=model_b, # 可以为 null
             prompt=prompt,
             winner=winner,
-            #voter=request.user if request.user.is_authenticated else None
+            # voter=request.user if request.user.is_authenticated else None
         )
 
-        return Response({'message': 'Vote recorded successfully.'}, status=status.HTTP_201_CREATED)
+        return Response(status=status.HTTP_200_OK)
 # 新增：模型列表视图
 class ModelListView(APIView):
     # 允许任何人查看模型列表，所以暂时不需要登录
