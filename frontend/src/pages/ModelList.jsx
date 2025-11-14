@@ -155,10 +155,65 @@ export default function ArenaPage() {
       return;
     }
 
-    // Battle 模式 (保持原有逻辑)
-    let modelA = leftModel;
-    let modelB = rightModel;
-    // ... (其他Battle逻辑)
+    // --- Battle 模式重构 ---
+    if (mode === 'battle') {
+      if (models.length < 2) {
+        message.error('模型列表不足，无法开始对战。');
+        return;
+      }
+      
+      // 随机选择两个不重复的模型
+      const modelIndices = new Set();
+      while (modelIndices.size < 2) {
+        modelIndices.add(Math.floor(Math.random() * models.length));
+      }
+      const [indexA, indexB] = Array.from(modelIndices);
+      const modelA = models[indexA].name;
+      const modelB = models[indexB].name;
+
+      // 更新 state 以便 handleVote 可以使用
+      setLeftModel(modelA);
+      setRightModel(modelB);
+
+      setVoted(false); // 重置投票状态
+      setBattleError(null);
+
+      const userMessage = { content: currentPrompt, isUser: true };
+      setLeftMessages([userMessage]); // 开始新对战时，清空并设置用户消息
+      setRightMessages([userMessage]);
+
+      setBattleLoading(true);
+
+      try {
+        const [leftResponse, rightResponse] = await Promise.all([
+            evaluateModel(modelA, currentPrompt).catch(err => ({ error: err })),
+            evaluateModel(modelB, currentPrompt).catch(err => ({ error: err }))
+        ]);
+
+        // 处理左侧模型响应
+        if (leftResponse.error) {
+          const errorMessage = { content: `调用模型出错: ${leftResponse.error.message}`, isUser: false, isError: true };
+          setLeftMessages(prev => [...prev, errorMessage]);
+        } else {
+          const aiMessage = { content: leftResponse.data.response, isUser: false };
+          setLeftMessages(prev => [...prev, aiMessage]);
+        }
+
+        // 处理右侧模型响应
+        if (rightResponse.error) {
+          const errorMessage = { content: `调用模型出错: ${rightResponse.error.message}`, isUser: false, isError: true };
+          setRightMessages(prev => [...prev, errorMessage]);
+        } else {
+          const aiMessage = { content: rightResponse.data.response, isUser: false };
+          setRightMessages(prev => [...prev, aiMessage]);
+        }
+      } catch (error) {
+        setBattleError(`发生错误: ${error.message}`);
+      } finally {
+        setBattleLoading(false);
+      }
+      return;
+    }
   };
 
   // --- 新增：投票处理函数 ---
