@@ -213,7 +213,7 @@ export default function ArenaPage() {
   };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-      {/* 内容区域:根据模式和状态条件渲染 */}
+      {/* 内容区域 */}
       <div style={{ 
         flex: 1, 
         overflowY: mode === 'side-by-side' ? 'hidden' : 'auto', 
@@ -246,153 +246,103 @@ export default function ArenaPage() {
           <Row gutter={16}>{/* Battle结果 */}</Row>
         )}
 
-        {/* Side-by-side 模式的分栏聊天展示 */}
+        {/* Side-by-side 模式的分栏聊天展示 (只保留 Row) */}
         {mode === 'side-by-side' && leftMessages.length > 0 && (
-          <>
-            <Row gutter={16} style={{ height: '100%' }}>
-              {/* 左侧模型 Col */}
-              <Col span={12} style={{ height: '100%' }}>
-                <div style={{ 
-                  borderRight: '1px solid #f0f0f0', 
-                  paddingRight: '16px',
-                  height: '100%',
-                  display: 'flex',
-                  flexDirection: 'column'
-                }}>
-                  <div style={{ 
-                    marginBottom: '16px', 
-                    paddingBottom: '12px', 
-                    borderBottom: '2px solid #f0f0f0',
-                    fontWeight: 'bold',
-                    fontSize: '16px',
-                    flexShrink: 0
+          <Row gutter={16} style={{ height: '100%' }}>
+            {/* 左侧 Col */}
+            <Col span={12} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ marginBottom: '16px', paddingBottom: '12px', borderBottom: '2px solid #f0f0f0', fontWeight: 'bold', fontSize: '16px', flexShrink: 0 }}>
+                {leftModel || 'Model A'}
+              </div>
+              <div style={{ flex: 1, overflowY: 'auto', paddingRight: '8px' }}>
+                {leftMessages.map((msg, index) => (
+                  <div key={index} style={{ 
+                    display: 'flex', 
+                    justifyContent: msg.isUser ? 'flex-end' : 'flex-start', 
+                    marginBottom: 12 
                   }}>
-                    {leftModel || 'Model A'}
-                  </div>
-                  <div style={{ 
-                    flex: 1,
-                    overflowY: 'auto',
-                    paddingRight: '8px'
-                  }}>
-                    {leftMessages.map((msg, index) => (
-                      <div key={index} style={{ 
-                        display: 'flex', 
-                        justifyContent: msg.isUser ? 'flex-end' : 'flex-start', 
-                        marginBottom: 12 
-                      }}>
-                        {!msg.isUser && (
-                          <Avatar icon={<RobotOutlined />} style={{ 
-                            backgroundColor: '#595959', 
-                            marginRight: 8 
-                          }} />
-                        )}
-                        <div style={{ 
-                          background: msg.isUser ? '#000' : (msg.isError ? '#ffebee' : '#f5f5f5'), 
-                          color: msg.isUser ? 'white' : (msg.isError ? '#c62828' : 'black'), 
-                          padding: '8px 12px', 
-                          borderRadius: '8px', 
-                          maxWidth: '80%',
-                          wordBreak: 'break-word'
-                        }}>
-                          {msg.content}
-                        </div>
-                        {msg.isUser && (
-                          <Avatar icon={<UserOutlined />} style={{ 
-                            backgroundColor: '#000', 
-                            marginLeft: 8 
-                          }} />
-                        )}
-                      </div>
-                    ))}
-                    {battleLoading && (
-                      <div style={{ display: 'flex', alignItems: 'center', marginTop: 12 }}>
-                        <Avatar icon={<RobotOutlined />} style={{ backgroundColor: '#595959', marginRight: 8 }} />
-                        <div style={{ background: '#f5f5f5', padding: '8px 12px', borderRadius: '8px' }}>
-                          <Spin size="small" /> 思考中...
-                        </div>
-                      </div>
+                    {!msg.isUser && (
+                      <Avatar icon={<RobotOutlined />} style={{ 
+                        backgroundColor: '#595959', 
+                        marginRight: 8 
+                      }} />
+                    )}
+                    <div style={{ 
+                      background: msg.isUser ? '#000' : (msg.isError ? '#ffebee' : '#f5f5f5'), 
+                      color: msg.isUser ? 'white' : (msg.isError ? '#c62828' : 'black'), 
+                      padding: '8px 12px', 
+                      borderRadius: '8px', 
+                      maxWidth: '80%',
+                      wordBreak: 'break-word'
+                    }}>
+                      {msg.content}
+                    </div>
+                    {msg.isUser && (
+                      <Avatar icon={<UserOutlined />} style={{ 
+                        backgroundColor: '#000', 
+                        marginLeft: 8 
+                      }} />
                     )}
                   </div>
-                </div>
-              </Col>
-
-              {/* 右侧模型 */}
-              <Col span={12} style={{ height: '100%' }}>
-                <div style={{ 
-                  paddingLeft: '16px',
-                  height: '100%',
-                  display: 'flex',
-                  flexDirection: 'column'
-                }}>
-                  <div style={{ 
-                    marginBottom: '16px', 
-                    paddingBottom: '12px', 
-                    borderBottom: '2px solid #f0f0f0',
-                    fontWeight: 'bold',
-                    fontSize: '16px',
-                    flexShrink: 0
-                  }}>
-                    {rightModel || 'Model B'}
+                ))}
+                {battleLoading && (
+                  <div style={{ display: 'flex', alignItems: 'center', marginTop: 12 }}>
+                    <Avatar icon={<RobotOutlined />} style={{ backgroundColor: '#595959', marginRight: 8 }} />
+                    <div style={{ background: '#f5f5f5', padding: '8px 12px', borderRadius: '8px' }}>
+                      <Spin size="small" /> 思考中...
+                    </div>
                   </div>
-                  <div style={{ 
-                    flex: 1,
-                    overflowY: 'auto',
-                    paddingRight: '8px'
+                )}
+              </div>
+            </Col>
+
+            {/* 右侧 Col */}
+            <Col span={12} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ marginBottom: '16px', paddingBottom: '12px', borderBottom: '2px solid #f0f0f0', fontWeight: 'bold', fontSize: '16px', flexShrink: 0 }}>
+                {rightModel || 'Model B'}
+              </div>
+              <div style={{ flex: 1, overflowY: 'auto', paddingRight: '8px' }}>
+                {rightMessages.map((msg, index) => (
+                  <div key={index} style={{ 
+                    display: 'flex', 
+                    justifyContent: msg.isUser ? 'flex-end' : 'flex-start', 
+                    marginBottom: 12 
                   }}>
-                    {rightMessages.map((msg, index) => (
-                      <div key={index} style={{ 
-                        display: 'flex', 
-                        justifyContent: msg.isUser ? 'flex-end' : 'flex-start', 
-                        marginBottom: 12 
-                      }}>
-                        {!msg.isUser && (
-                          <Avatar icon={<RobotOutlined />} style={{ 
-                            backgroundColor: '#595959', 
-                            marginRight: 8 
-                          }} />
-                        )}
-                        <div style={{ 
-                          background: msg.isUser ? '#000' : (msg.isError ? '#ffebee' : '#f5f5f5'), 
-                          color: msg.isUser ? 'white' : (msg.isError ? '#c62828' : 'black'), 
-                          padding: '8px 12px', 
-                          borderRadius: '8px', 
-                          maxWidth: '80%',
-                          wordBreak: 'break-word'
-                        }}>
-                          {msg.content}
-                        </div>
-                        {msg.isUser && (
-                          <Avatar icon={<UserOutlined />} style={{ 
-                            backgroundColor: '#000', 
-                            marginLeft: 8 
-                          }} />
-                        )}
-                      </div>
-                    ))}
-                    {battleLoading && (
-                      <div style={{ display: 'flex', alignItems: 'center', marginTop: 12 }}>
-                        <Avatar icon={<RobotOutlined />} style={{ backgroundColor: '#595959', marginRight: 8 }} />
-                        <div style={{ background: '#f5f5f5', padding: '8px 12px', borderRadius: '8px' }}>
-                          <Spin size="small" /> 思考中...
-                        </div>
-                      </div>
+                    {!msg.isUser && (
+                      <Avatar icon={<RobotOutlined />} style={{ 
+                        backgroundColor: '#595959', 
+                        marginRight: 8 
+                      }} />
+                    )}
+                    <div style={{ 
+                      background: msg.isUser ? '#000' : (msg.isError ? '#ffebee' : '#f5f5f5'), 
+                      color: msg.isUser ? 'white' : (msg.isError ? '#c62828' : 'black'), 
+                      padding: '8px 12px', 
+                      borderRadius: '8px', 
+                      maxWidth: '80%',
+                      wordBreak: 'break-word'
+                    }}>
+                      {msg.content}
+                    </div>
+                    {msg.isUser && (
+                      <Avatar icon={<UserOutlined />} style={{ 
+                        backgroundColor: '#000', 
+                        marginLeft: 8 
+                      }} />
                     )}
                   </div>
-                </div>
-              </Col>
-            </Row>
-
-            {/* --- 新增：Side-by-side 模式下的投票按钮 --- */}
-            <div style={{ textAlign: 'center', marginTop: '24px', flexShrink: 0 }}>
-              <Title level={4}>哪个模型的回答更好？</Title>
-              <Space size="large">
-                <Button onClick={() => handleVote('model_a')}>← 左边更好</Button>
-                <Button onClick={() => handleVote('tie')}>不分上下</Button>
-                <Button onClick={() => handleVote('bad')}>都很差</Button>
-                <Button onClick={() => handleVote('model_b')}>右边更好 →</Button>
-              </Space>
-            </div>
-          </>
+                ))}
+                {battleLoading && (
+                  <div style={{ display: 'flex', alignItems: 'center', marginTop: 12 }}>
+                    <Avatar icon={<RobotOutlined />} style={{ backgroundColor: '#595959', marginRight: 8 }} />
+                    <div style={{ background: '#f5f5f5', padding: '8px 12px', borderRadius: '8px' }}>
+                      <Spin size="small" /> 思考中...
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Col>
+          </Row>
         )}
 
         {/* Direct Chat 的聊天记录展示 */}
@@ -413,16 +363,33 @@ export default function ArenaPage() {
           </div>
         )}
       </div>
+
+      {/* --- 关键修改：将投票区移动到内容区之外 --- */}
+      {/* Side-by-side 模式下的投票按钮 */}
+      {mode === 'side-by-side' && leftMessages.length > 0 && !battleLoading && (
+        <div style={{ padding: '0 20px 12px 20px', textAlign: 'center', flexShrink: 0 }}>
+          <Title level={4}>哪个模型的回答更好？</Title>
+          <Space size="large">
+            <Button onClick={() => handleVote(leftModel)} disabled={voted}>← 左边更好</Button>
+            <Button onClick={() => handleVote('tie')} disabled={voted}>不分上下</Button>
+            <Button onClick={() => handleVote('bad')} disabled={voted}>都很差</Button>
+            <Button onClick={() => handleVote(rightModel)} disabled={voted}>→ 右边更好</Button>
+          </Space>
+        </div>
+      )}
+
+      {/* Direct Chat 模式下的投票按钮 */}
       {mode === 'direct-chat' && messages.some(m => !m.isUser && !m.isError) && (
-          <div style={{ textAlign: 'center', marginTop: '24px', paddingBottom: '12px' }}>
-            <Space size="large">
-              <Button onClick={() => handleDirectChatVote('good')} disabled={directChatVoted}>👍 Good</Button>
-              <Button onClick={() => handleDirectChatVote('bad')} disabled={directChatVoted}>👎 Bad</Button>
-            </Space>
-          </div>
-        )}
-      {/* --- 输入框区域：始终在底部 --- */}
-      <div style={{ padding: '0 20px 20px 20px' }}>
+        <div style={{ padding: '0 20px 12px 20px', textAlign: 'center', flexShrink: 0 }}>
+          <Space size="large">
+            <Button onClick={() => handleDirectChatVote('good')} disabled={directChatVoted}>👍 Good</Button>
+            <Button onClick={() => handleDirectChatVote('bad')} disabled={directChatVoted}>👎 Bad</Button>
+          </Space>
+        </div>
+      )}
+
+      {/* 输入框区域 */}
+      <div style={{ padding: '0 20px 20px 20px', flexShrink: 0 }}>
         {battleError && <Alert message={battleError} type="error" closable onClose={() => setBattleError(null)} style={{ marginBottom: 16 }} />}
         
         {/* --- 核心修改 1：为容器 div 添加样式 --- */}
