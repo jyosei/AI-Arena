@@ -213,19 +213,22 @@ export default function ArenaPage() {
   };
 
   const handleVote = async (winnerChoice) => {
+    // 确保我们有用于投票的 prompt
     if (!currentInput) {
       message.error("无法找到用于投票的提示。");
       return;
     }
 
-    // --- 关键修复：简化逻辑 ---
-    // winnerChoice 现在直接就是后端需要的值 ('model_a', 'model_b', 'tie', 'bad', 或真实模型名)
+    // --- 关键修复：确保 model_a 和 model_b 始终有值 ---
     const voteData = {
-      model_a: leftModel,
-      model_b: rightModel,
+      model_a: leftModel,  // 在 battle 模式下，leftModel 和 rightModel 在请求后被设置
+      model_b: rightModel, // 在 side-by-side 模式下，它们从一开始就有值
       prompt: currentInput,
-      winner: winnerChoice, // 直接使用传入的 winnerChoice
+      winner: winnerChoice, // winnerChoice 已经是正确的值 ('model_a', 'model_b', 'tie', 'bad', 或真实模型名)
     };
+
+    // 增加一个日志来调试发送的数据
+    console.log("Submitting vote data:", voteData);
 
     try {
       await recordVote(voteData);
@@ -233,6 +236,7 @@ export default function ArenaPage() {
       setVoted(true);
     } catch (error) {
       const errorMsg = error.response?.data?.error || error.message;
+      console.error("Vote failed:", error.response?.data || error);
       message.error(`投票失败: ${errorMsg}`);
     }
   };
