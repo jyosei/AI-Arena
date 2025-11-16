@@ -11,21 +11,7 @@ export const getModels = (params) => {
 export const compareModels = (ids = []) => {
   return apiClient.get('models/compare/', { params: { ids: ids.join(',') } });
 };
-export const battleModels = ({prompt, modelA, modelB, isDirectChat = false}) => {
-  const payload = {
-    prompt,
-    is_direct_chat: isDirectChat
-  };
   
-  if (isDirectChat) {
-    payload.model_name = modelA;
-  } else {
-    payload.model_a = modelA;
-    payload.model_b = modelB;
-  }
-  
-  return apiClient.post('/models/battle/', payload);
-}
 /**
  * 评估单个模型
  * @param {string} modelName - 模型名称

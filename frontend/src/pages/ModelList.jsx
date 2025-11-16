@@ -3,25 +3,22 @@ import {
   Input, Button, Spin, Typography, Row, Col, 
   Space, Avatar, Alert, message 
 } from 'antd'; // 移除了 Modal
-import { RobotOutlined, UserOutlined, SendOutlined } from '@ant-design/icons';
+import { RobotOutlined, UserOutlined, SendOutlined, LikeOutlined, DislikeOutlined, SwapOutlined, MehOutlined, TableOutlined, ThunderboltOutlined, MessageOutlined } from '@ant-design/icons';
 import {
   ArrowUp
 }from 'lucide-react'
 import { useMode } from '../contexts/ModeContext';
-// 确保导入了 battleModels 和 evaluateModel
-import { battleModels, evaluateModel, recordVote } from '../api/models'; 
+import { recordVote } from '../api/models';
+import { useChat } from '../contexts/ChatContext';
+import {evaluateModel } from '../api/models'; 
 
 const { TextArea } = Input;
 const { Title, Paragraph } = Typography;
-
-// --- 核心修改 1：移除整个 ChatDialog 组件 ---
-// function ChatDialog({ ... }) { ... } // (REMOVE)
 
 export default function ArenaPage() {
   const { mode, models, leftModel, rightModel, setLeftModel, setRightModel } = useMode();
 
   const [prompt, setPrompt] = useState('');
-  const [results, setResults] = useState([]); // 用于 Battle 模式
   const [messages, setMessages] = useState([]); // 用于 Direct Chat 模式
   const [leftMessages, setLeftMessages] = useState([]); // 用于 Side-by-side 左侧模型
   const [rightMessages, setRightMessages] = useState([]); // 用于 Side-by-side 右侧模型
@@ -39,7 +36,6 @@ export default function ArenaPage() {
   
   useEffect(() => {
       // 切换模式时,清空所有结果和 conversation ID
-    setResults([]);
     setMessages([]);
     setLeftMessages([]);
     setRightMessages([]);
@@ -171,10 +167,6 @@ export default function ArenaPage() {
       const modelA = models[indexA].name;
       const modelB = models[indexB].name;
 
-      // 更新 state 以便 handleVote 可以使用
-      setLeftModel(modelA);
-      setRightModel(modelB);
-
       setVoted(false); // 重置投票状态
       setBattleError(null);
 
@@ -189,6 +181,10 @@ export default function ArenaPage() {
             evaluateModel(modelA, currentPrompt).catch(err => ({ error: err })),
             evaluateModel(modelB, currentPrompt).catch(err => ({ error: err }))
         ]);
+
+        // 在请求成功后，再更新外部状态，用于投票
+        setLeftModel(modelA);
+        setRightModel(modelB);
 
         // 处理左侧模型响应
         if (leftResponse.error) {
@@ -216,19 +212,19 @@ export default function ArenaPage() {
     }
   };
 
-  // --- 新增：投票处理函数 ---
   const handleVote = async (winnerChoice) => {
-    // --- 关键修复：直接从 state 获取 prompt ---
     if (!currentInput) {
       message.error("无法找到用于投票的提示。");
       return;
     }
 
+    // --- 关键修复：简化逻辑 ---
+    // winnerChoice 现在直接就是后端需要的值 ('model_a', 'model_b', 'tie', 'bad', 或真实模型名)
     const voteData = {
       model_a: leftModel,
       model_b: rightModel,
-      prompt: currentInput, // <-- 使用保存的输入
-      winner: winnerChoice, // 'model_a', 'model_b', 'tie', 'bad'
+      prompt: currentInput,
+      winner: winnerChoice, // 直接使用传入的 winnerChoice
     };
 
     try {
@@ -240,74 +236,67 @@ export default function ArenaPage() {
       message.error(`投票失败: ${errorMsg}`);
     }
   };
+
   const handleDirectChatVote = async (choice) => {
-    // 获取最后一条用户消息和AI消息
+    // --- 关键修复：将变量定义移到函数顶部 ---
     const lastUserMessage = messages.filter(m => m.isUser).pop();
     const lastAiMessage = messages.filter(m => !m.isUser && !m.isError).pop();
 
+    // 现在，检查逻辑可以正常工作
     if (!lastUserMessage || !lastAiMessage) {
       message.error("无法找到用于投票的对话。");
       return;
     }
 
     const voteData = {
-      model_a: leftModel, // 在 Direct Chat 中，我们只关心一个模型
-      model_b: null,      // 第二个模型可以为 null
-      prompt: lastUserMessage.content,
-      winner: choice, // 'good' or 'bad'
+      model_a: leftModel,
+      model_b: null,
+      prompt: lastUserMessage.content, // <-- 现在 lastUserMessage 是有定义的
+      winner: choice,
     };
 
     try {
       await recordVote(voteData);
       message.success('感谢您的反馈！');
-      setDirectChatVoted(true); // 投票成功后禁用按钮
+      setDirectChatVoted(true);
     } catch (error) {
       const errorMsg = error.response?.data?.error || error.message;
       message.error(`提交反馈失败: ${errorMsg}`);
     }
   };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-      {/* 内容区域 */}
       <div style={{ 
         flex: 1, 
-        overflowY: mode === 'side-by-side' ? 'hidden' : 'auto', 
+        overflowY: (mode === 'side-by-side' || mode === 'battle') ? 'hidden' : 'auto', 
         padding: '20px',
         minHeight: 0
       }}>
-        {/* 欢迎消息 - Battle模式 */}
-        {mode === 'battle' && results.length === 0 && !battleLoading && (
+        {mode === 'battle' && leftMessages.length === 0 && !battleLoading && (
           <div style={{ textAlign: 'center', paddingTop: '20vh' }}>
             <Title level={2} style={{ color: '#ccc' }}>Welcome to Battle Mode</Title>
+            <Paragraph style={{ color: '#999' }}>Two models will anonymously answer your prompt. You vote for the winner.</Paragraph>
           </div>
         )}
 
-        {/* 欢迎消息 - Side-by-side模式 */}
         {mode === 'side-by-side' && leftMessages.length === 0 && !battleLoading && (
           <div style={{ textAlign: 'center', paddingTop: '20vh' }}>
             <Title level={2} style={{ color: '#ccc' }}>Compare {leftModel || 'Model A'} vs {rightModel || 'Model B'}</Title>
           </div>
         )}
         
-        {/* 欢迎消息 - Direct Chat模式 */}
         {mode === 'direct-chat' && messages.length === 0 && !battleLoading && (
           <div style={{ textAlign: 'center', paddingTop: '20vh' }}>
             <Title level={2} style={{ color: '#ccc' }}>Start chatting with {leftModel || 'a model'}</Title>
           </div>
         )}
 
-        {/* Battle 模式的结果展示 */}
-        {mode === 'battle' && results.length > 0 && (
-          <Row gutter={16}>{/* Battle结果 */}</Row>
-        )}
-
-        {/* Side-by-side 模式的分栏聊天展示 (只保留 Row) */}
-        {mode === 'side-by-side' && leftMessages.length > 0 && (
+        {(mode === 'side-by-side' || mode === 'battle') && leftMessages.length > 0 && (
           <Row gutter={16} style={{ height: '100%' }}>
-            {/* 左侧 Col */}
             <Col span={12} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
               <div style={{ marginBottom: '16px', paddingBottom: '12px', borderBottom: '2px solid #f0f0f0', fontWeight: 'bold', fontSize: '16px', flexShrink: 0 }}>
-                {leftModel || 'Model A'}
+                {mode === 'side-by-side' ? (leftModel || 'Model A') : '模型 A'}
               </div>
               <div style={{ flex: 1, overflowY: 'auto', paddingRight: '8px' }}>
                 {leftMessages.map((msg, index) => (
@@ -351,10 +340,9 @@ export default function ArenaPage() {
               </div>
             </Col>
 
-            {/* 右侧 Col */}
             <Col span={12} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
               <div style={{ marginBottom: '16px', paddingBottom: '12px', borderBottom: '2px solid #f0f0f0', fontWeight: 'bold', fontSize: '16px', flexShrink: 0 }}>
-                {rightModel || 'Model B'}
+                {mode === 'side-by-side' ? (rightModel || 'Model B') : '模型 B'}
               </div>
               <div style={{ flex: 1, overflowY: 'auto', paddingRight: '8px' }}>
                 {rightMessages.map((msg, index) => (
@@ -400,7 +388,6 @@ export default function ArenaPage() {
           </Row>
         )}
 
-        {/* Direct Chat 的聊天记录展示 */}
         {mode === 'direct-chat' && messages.map((msg, index) => (
           <div key={index} style={{ display: 'flex', justifyContent: msg.isUser ? 'flex-end' : 'flex-start', marginBottom: 12 }}>
             <Avatar icon={msg.isUser ? <UserOutlined /> : <RobotOutlined />} style={{ order: msg.isUser ? 2 : 1, marginLeft: msg.isUser ? 8 : 0, marginRight: msg.isUser ? 0 : 8, backgroundColor: msg.isUser ? '#000' : '#595959' }} />
@@ -411,29 +398,37 @@ export default function ArenaPage() {
         ))}
         {mode === 'direct-chat' && <div ref={messagesEndRef} />}
 
-        {/* 全局加载动画 */}
-        {battleLoading && (
+        {battleLoading && messages.length === 0 && leftMessages.length === 0 && (
           <div style={{ textAlign: 'center', padding: '50px 0' }}>
             <Spin size="large" tip="模型正在生成回应..." />
           </div>
         )}
       </div>
 
-      {/* --- 关键修改：将投票区移动到内容区之外 --- */}
-      {/* Side-by-side 模式下的投票按钮 */}
-      {mode === 'side-by-side' && leftMessages.length > 0 && !battleLoading && (
+      {/* Side-by-side 和 Battle 模式下的投票按钮 */}
+      {(mode === 'side-by-side' || mode === 'battle') && leftMessages.length > 0 && !battleLoading && (
         <div style={{ padding: '0 20px 12px 20px', textAlign: 'center', flexShrink: 0 }}>
           <Title level={4}>哪个模型的回答更好？</Title>
           <Space size="large">
-            <Button onClick={() => handleVote(leftModel)} disabled={voted}>← 左边更好</Button>
+            {/* --- 关键修复：根据模式传递不同的值 --- */}
+            <Button 
+              onClick={() => handleVote(mode === 'battle' ? 'model_a' : leftModel)} 
+              disabled={voted}
+            >
+              ← 左边更好
+            </Button>
             <Button onClick={() => handleVote('tie')} disabled={voted}>不分上下</Button>
             <Button onClick={() => handleVote('bad')} disabled={voted}>都很差</Button>
-            <Button onClick={() => handleVote(rightModel)} disabled={voted}>→ 右边更好</Button>
+            <Button 
+              onClick={() => handleVote(mode === 'battle' ? 'model_b' : rightModel)} 
+              disabled={voted}
+            >
+              → 右边更好
+            </Button>
           </Space>
         </div>
       )}
 
-      {/* Direct Chat 模式下的投票按钮 */}
       {mode === 'direct-chat' && messages.some(m => !m.isUser && !m.isError) && (
         <div style={{ padding: '0 20px 12px 20px', textAlign: 'center', flexShrink: 0 }}>
           <Space size="large">
@@ -443,34 +438,30 @@ export default function ArenaPage() {
         </div>
       )}
 
-      {/* 输入框区域 */}
       <div style={{ padding: '0 20px 20px 20px', flexShrink: 0 }}>
         {battleError && <Alert message={battleError} type="error" closable onClose={() => setBattleError(null)} style={{ marginBottom: 16 }} />}
         
-        {/* --- 核心修改 1：为容器 div 添加样式 --- */}
         <div style={{ 
           position: 'relative',
-          border: '1px solid #e0e0e0', // 添加一个浅灰色边框
-          borderRadius: '18px',         // 设置圆角
-          padding: '8px 12px',          // 添加内边距，给输入框留出空间
-          background: '#fff',           // 确保背景是白色
-          display: 'flex',              // 使用 Flexbox 布局
-          alignItems: 'center'          // 垂直居中对齐
+          border: '1px solid #e0e0e0',
+          borderRadius: '18px',
+          padding: '8px 12px',
+          background: '#fff',
+          display: 'flex',
+          alignItems: 'center'
         }}>
           <TextArea
-            // --- 核心修改 3：使用 autoSize 替代 rows ---
-            autoSize={{ minRows: 3, maxRows: 6 }} // 最小1行，最多6行
+            autoSize={{ minRows: 3, maxRows: 6 }}
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder="Ask anything..."
-            // --- 核心修改 2：“透明化”输入框 ---
             style={{ 
               paddingRight: '50px',
-              background: 'transparent', // 透明背景
-              border: 'none',            // 移除边框
-              boxShadow: 'none',         // 移除 Antd 默认的蓝色 focus 辉光
-              resize: 'none',            // 禁止用户手动调整大小
-              width: '100%'              // 确保它填满 flex 容器
+              background: 'transparent',
+              border: 'none',
+              boxShadow: 'none',
+              resize: 'none',
+              width: '100%'
             }}
             onPressEnter={e => !e.shiftKey && (e.preventDefault(), startBattle())}
           />
@@ -482,8 +473,6 @@ export default function ArenaPage() {
             onClick={startBattle}
             loading={battleLoading}
             disabled={!prompt.trim()}
-            // 按钮的位置现在由 Flexbox 和 margin 控制，而不是绝对定位
-            // style={{ position: 'absolute', right: '10px', bottom: '10px' }} // (REMOVE)
           />
         </div>
       </div>

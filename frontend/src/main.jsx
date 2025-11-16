@@ -3,17 +3,21 @@ import ReactDOM from "react-dom/client";
 import { IntlProvider } from "react-intl";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { Modal, ConfigProvider } from "antd";
+
+// 1. 导入所有页面和组件
 import ModelList from "./pages/ModelList.jsx";
 import Leaderboard from "./pages/Leaderboard.jsx";
-import Compare from "./pages/Compare.jsx";
 import Login from "./pages/Login.jsx";
-import Forum from "./pages/Forum.jsx"; // 1. 导入新的 Forum 页面
+import Forum from "./pages/Forum.jsx";
 import Chat from "./pages/Chat.jsx";
-import { AuthProvider } from "./contexts/AuthContext.jsx";
 import AppLayout from "./components/AppLayout.jsx";
+
+// 2. 导入所有需要的 Context Provider
+import { AuthProvider } from "./contexts/AuthContext.jsx";
 import { ModeProvider } from './contexts/ModeContext';
 import { ChatProvider } from './contexts/ChatContext';
 
+// 3. 定义 Dialog Context (如果它只在这里使用)
 const DialogContext = createContext();
 
 export const DialogProvider = ({ children }) => {
@@ -30,84 +34,49 @@ export const DialogProvider = ({ children }) => {
     maskClosable: true,
   });
 
-  const showDialog = (config) => {
-    setDialogConfig({
-      ...dialogConfig,
-      ...config,
-      open: true,
-    });
-  };
+  const showDialog = (config) => setDialogConfig({ ...dialogConfig, ...config, open: true });
+  const hideDialog = () => setDialogConfig({ ...dialogConfig, open: false });
 
-  const hideDialog = () => {
-    setDialogConfig({
-      ...dialogConfig,
-      open: false,
-    });
-  };
-
-  const handleOk = () => {
-    if (dialogConfig.onOk) {
-      dialogConfig.onOk();
-    }
-    hideDialog();
-  };
-
-  const handleCancel = () => {
-    if (dialogConfig.onCancel) {
-      dialogConfig.onCancel();
-    }
-    hideDialog();
-  };
+  const value = { showDialog, hideDialog };
 
   return (
-    <DialogContext.Provider value={{ showDialog, hideDialog }}>
+    <DialogContext.Provider value={value}>
       {children}
-      <Modal
-        title={dialogConfig.title}
-        open={dialogConfig.open}
-        onOk={handleOk}
-        onCancel={handleCancel}
-        okText={dialogConfig.okText}
-        cancelText={dialogConfig.cancelText}
-        width={dialogConfig.width}
-        closable={dialogConfig.closable}
-        maskClosable={dialogConfig.maskClosable}
-      >
-        {dialogConfig.content}
-      </Modal>
+      <Modal {...dialogConfig} onOk={dialogConfig.onOk} onCancel={dialogConfig.onCancel || hideDialog} />
     </DialogContext.Provider>
   );
 };
 
-export const useDialog = () => {
-  const context = useContext(DialogContext);
-  if (!context) {
-    throw new Error("useDialog must be used within a DialogProvider");
-  }
-  return context;
-};
+export const useDialog = () => useContext(DialogContext);
 
+
+// 4. 定义应用的根组件，它包含了所有路由和布局
 function App() {
   return (
-    <ModeProvider>
-      <Routes>
-        <Route element={<AppLayout />}>
-          <Route path="/" element={<ModelList />} />
-          <Route path="/chat/:id" element={<Chat />} />
-          <Route path="/compare" element={<Compare />} />
-          <Route path="/leaderboard" element={<Leaderboard />} />
-          {/* 2. 在 AppLayout 中添加新的路由 */}
-          <Route path="/forum" element={<Forum />} />
-        </Route>
-        <Route path="/login" element={<Login />} />
-      </Routes>
-    </ModeProvider>
+    <Router>
+      <AuthProvider>
+        <ModeProvider>
+          <ChatProvider>
+            <DialogProvider>
+              <Routes>
+                <Route element={<AppLayout />}>
+                  <Route path="/" element={<ModelList />} />
+                  <Route path="/chat/:id" element={<Chat />} />
+                  <Route path="/leaderboard" element={<Leaderboard />} />
+                  <Route path="/forum" element={<Forum />} />
+                </Route>
+                <Route path="/login" element={<Login />} />
+              </Routes>
+            </DialogProvider>
+          </ChatProvider>
+        </ModeProvider>
+      </AuthProvider>
+    </Router>
   );
 }
 
-const messages = {};
+// 5. 渲染应用
 const root = ReactDOM.createRoot(document.getElementById("root"));
-
 root.render(
   <React.StrictMode>
     <ConfigProvider
@@ -120,16 +89,8 @@ root.render(
         },
       }}
     >
-      <IntlProvider locale="zh" messages={messages}>
-        <AuthProvider>
-          <DialogProvider>
-            <Router>
-              <ChatProvider>
-                <App />
-              </ChatProvider>
-            </Router>
-          </DialogProvider>
-        </AuthProvider>
+      <IntlProvider locale="zh" messages={{}}>
+        <App />
       </IntlProvider>
     </ConfigProvider>
   </React.StrictMode>
