@@ -46,3 +46,23 @@ export const getModel = (id) => {
 export const getLeaderboard = (metric = 'score') => {
   return apiClient.get('/models/leaderboard/', { params: { metric } });
 };
+
+// --- 新增的图片生成 API 函数 ---
+
+/**
+ * 提交图片生成任务
+ * @param {string} prompt 
+ * @returns Promise - 返回 { task_id }
+ */
+export const generateImage = (prompt) => {
+  return apiClient.post('/models/generate-image/', { prompt });
+};
+
+/**
+ * 查询图片生成状态
+ * @param {string} taskId 
+ * @returns Promise - 返回 { status, image_url? }
+ */
+export const getImageStatus = (taskId) => {
+  return apiClient.get('/models/get-image-status/', { params: { task_id: taskId } });
+};

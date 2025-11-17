@@ -3,6 +3,8 @@ from .views import EvaluateModelView
 from .views import BattleModelView,ModelListView, LeaderboardView,RecordVoteView
 from .views import ChatHistoryView, CreateConversationView, DeleteAllConversationsView, DeleteConversationView
 from .views import ConversationMessagesView, CreateMessageView
+from .views import GenerateImageView, GetImageStatusView # 导入新的 View
+
 urlpatterns = [
     path('', ModelListView.as_view(), name='model-list'),
     path('evaluate/', EvaluateModelView.as_view(), name='evaluate-model'),
@@ -16,4 +18,6 @@ urlpatterns = [
     # 简陋的排行榜接口（返回示例 rank/value），供前端在后端未实现真实排行榜时使用
     path('leaderboard/', LeaderboardView.as_view(), name='leaderboard'),
     path('record_vote/', RecordVoteView.as_view(), name='record-vote'),
+    path('generate-image/', GenerateImageView.as_view(), name='generate-image'),
+    path('get-image-status/', GetImageStatusView.as_view(), name='get-image-status'),
 ]

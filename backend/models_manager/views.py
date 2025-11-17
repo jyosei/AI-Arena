@@ -10,6 +10,8 @@ from .serializers import ChatConversationSerializer
 from .serializers import ChatMessageSerializer
 import random
 from rest_framework.permissions import IsAuthenticated
+import time
+
 class RecordVoteView(APIView):
     """接收并记录一次对战的投票结果"""
     permission_classes = [AllowAny] # 允许任何人投票
@@ -65,7 +67,7 @@ class ModelListView(APIView):
             {"id": 4, "name": "gpt-5-codex", "owner_name": "OpenAI", "task": "通用"},
             {"id": 5, "name": "gpt-5-mini", "owner_name": "OpenAI", "task": "通用"},
             {"id": 6, "name": "gpt-5-search-api", "owner_name": "OpenAI", "task": "通用"},
-            {"id": 7, "name": "dall-e-3", "owner_name": "OpenAI", "task": "通用"},
+            {"id": 7, "name": "dall-e-3", "owner_name": "OpenAI", "task": "image"},
             {"id": 8, "name": "gpt-4", "owner_name": "OpenAI", "task": "通用"},
             {"id": 9, "name": "gpt-4-turbo", "owner_name": "OpenAI", "task": "通用"},
             {"id": 10, "name": "gpt-4.1", "owner_name": "OpenAI", "task": "通用"},
@@ -75,7 +77,7 @@ class ModelListView(APIView):
             {"id": 14, "name": "claude-3-sonnet-20240229", "owner_name": "Anthropic", "task": "通用"},
             {"id": 15, "name": "veo_3_1-fast", "owner_name": "google", "task": "通用"},
             {"id": 16, "name": "gemini-2.0-flash", "owner_name": "Google", "task": "通用"},
-            {"id": 17, "name": "gemini-2.5-flash", "owner_name": "Google", "task": "通用"},
+            {"id": 17, "name": "gemini-2.5-flash", "owner_name": "Google", "task": "image"},
             {"id": 18, "name": "gemini-2.5-flash-image", "owner_name": "Google", "task": "通用"},
             {"id": 19, "name": "gemini-2.5-pro", "owner_name": "Google", "task": "通用"},
             {"id": 20, "name": "glm-4", "owner_name": "ZhipuAI", "task": "通用"},
@@ -336,3 +338,45 @@ class CreateMessageView(APIView):
         message = ChatMessage.objects.create(conversation=conv, content=content, is_user=is_user)
         serializer = ChatMessageSerializer(message)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class GenerateImageView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        prompt = request.data.get("prompt")
+        if not prompt:
+            return Response({"error": "Prompt is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 1. 在这里调用真实的图片生成 API (如 DALL-E, Stable Diffusion)
+        #    task_id = some_image_api.submit_task(prompt=prompt)
+
+        # 2. 为了演示，我们生成一个假的 task_id
+        task_id = f"img_task_{int(time.time())}"
+
+        # 3. 立即将 task_id 返回给前端
+        return Response({"task_id": task_id}, status=status.HTTP_202_ACCEPTED)
+
+
+class GetImageStatusView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request, *args, **kwargs):
+        task_id = request.query_params.get("task_id")
+        if not task_id:
+            return Response({"error": "Task ID is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 1. 在这里调用图片生成 API 查询任务状态
+        #    status_response = some_image_api.get_task_status(task_id)
+
+        # 2. 为了演示，我们模拟一个过程 (假设 10 秒后完成)
+        task_creation_time = int(task_id.split('_')[2])
+        if time.time() - task_creation_time < 10:
+             return Response({"status": "processing"}, status=status.HTTP_200_OK)
+        else:
+             # 任务完成，返回一个假的图片 URL (使用 placeholder 服务)
+             dummy_image_url = f"https://picsum.photos/seed/{task_id}/512/512"
+             return Response({
+                 "status": "completed",
+                 "image_url": dummy_image_url
+             }, status=status.HTTP_200_OK)
