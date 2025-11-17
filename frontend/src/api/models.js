@@ -17,20 +17,19 @@ export const compareModels = (ids = []) => {
  * @param {string} modelName - 模型名称
  * @param {string} prompt - 用户输入的提示
  * @param {number|null} conversationId - 对话 ID,如果为 null 则创建新对话
+ * @param {boolean} is_battle - 是否为对战模式
  * @returns Promise - 返回 { response, conversation_id }
  */
-export const evaluateModel = (modelName, prompt, conversationId = null) => {
+export const evaluateModel = async (modelName, prompt, conversationId = null, is_battle = false) => {
   const payload = {
-    model_name: modelName,
+    model_name: modelName, // 关键修复：将 'model' 改为 'model_name'
     prompt: prompt,
+    conversation_id: conversationId,
+    is_battle: is_battle,
   };
-  
-  if (conversationId) {
-    payload.conversation_id = conversationId;
-  }
-  
   return apiClient.post('/models/evaluate/', payload);
 };
+
 export const recordVote = (data) => {
   const payload = {
     model_a: data.model_a,
