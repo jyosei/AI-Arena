@@ -2,6 +2,27 @@ import React, { useState, useEffect } from 'react'; // 确保导入 useEffect
 import { Modal, Input, Button, List, Avatar, Spin } from 'antd';
 import { SendOutlined, UserOutlined, RobotOutlined } from '@ant-design/icons';
 import apiClient from '../api/apiClient'; // 1. 导入 apiClient
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import remarkBreaks from 'remark-breaks';
+
+// 将 \(...\) 与 \[...\] 转换为 $...$ 与 $$...$$，并避免修改代码块中的内容
+function normalizeTexDelimiters(text) {
+  if (!text) return '';
+  const segments = text.split(/(```[\s\S]*?```)/g); // 保留代码块原样
+  return segments
+    .map((seg) => {
+      if (seg.startsWith('```')) return seg; // 代码块不处理
+      // 先处理块级公式 \[ ... \]
+      let out = seg.replace(/\\\[([\s\S]*?)\\\]/g, (m, p1) => `$$${p1}$$`);
+      // 再处理行内公式 \( ... \)
+      out = out.replace(/\\\(([\s\S]*?)\\\)/g, (m, p1) => `$${p1}$`);
+      return out;
+    })
+    .join('');
+}
 
 const { TextArea } = Input;
 
@@ -96,9 +117,30 @@ export default function ChatDialog({ visible, onClose, model }) {
                       color: message.isUser ? 'white' : 'black',
                       padding: '8px 12px',
                       borderRadius: '12px',
-                      maxWidth: '70%'
+                      maxWidth: '70%',
+                      overflowX: 'auto'
                     }}>
-                      {message.content}
+                      {message.isUser ? (
+                        message.content
+                      ) : (
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm, remarkBreaks, remarkMath]}
+                          rehypePlugins={[rehypeKatex]}
+                          linkTarget="_blank"
+                          components={{
+                            a: ({node, ...props}) => <a {...props} rel="noopener noreferrer" />,
+                            code: ({inline, className, children, ...props}) => {
+                              return (
+                                <code className={className} {...props}>
+                                  {children}
+                                </code>
+                              );
+                            }
+                          }}
+                        >
+                          {normalizeTexDelimiters(String(message.content || ''))}
+                        </ReactMarkdown>
+                      )}
                     </div>
                   </div>
                 </List.Item>

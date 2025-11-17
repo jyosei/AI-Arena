@@ -7,6 +7,27 @@ import request from '../api/request';
 import { useChat } from '../contexts/ChatContext';
 import { useMode } from '../contexts/ModeContext';
 import AuthContext from '../contexts/AuthContext';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import remarkBreaks from 'remark-breaks';
+
+// 与 ChatDialog 一致：将 \(...\)/\[...\] 转为 $...$/$$..$$ ，保持代码块原样
+function normalizeTexDelimiters(text) {
+  if (!text) return '';
+  const segments = text.split(/(```[\s\S]*?```)/g);
+  return segments
+    .map((seg) => {
+      if (seg.startsWith('```')) return seg;
+      // 先处理块级公式 \[ ... \]
+      let out = seg.replace(/\\\[([\s\S]*?)\\\]/g, (m, p1) => `$$${p1}$$`);
+      // 再处理行内公式 \( ... \)
+      out = out.replace(/\\\(([\s\S]*?)\\\)/g, (m, p1) => `$${p1}$`);
+      return out;
+    })
+    .join('');
+}
 
 const { TextArea } = Input;
 
@@ -136,8 +157,24 @@ export default function ChatPage() {
               <List.Item style={{ border: 'none', padding: '8px 0' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', width: '100%', flexDirection: message.isUser ? 'row-reverse' : 'row' }}>
                   <Avatar icon={message.isUser ? <UserOutlined /> : <RobotOutlined />} style={{ backgroundColor: message.isUser ? '#000' : '#595959', margin: message.isUser ? '0 0 0 12px' : '0 12px 0 0' }} />
-                  <div style={{ background: message.isUser ? '#000' : '#f5f5f5', color: message.isUser ? '#fff' : '#000', padding: '8px 12px', borderRadius: 12, maxWidth: '70%' }}>
-                    {message.content}
+                  <div style={{ background: message.isUser ? '#000' : '#f5f5f5', color: message.isUser ? '#fff' : '#000', padding: '8px 12px', borderRadius: 12, maxWidth: '70%', overflowX: 'auto' }}>
+                    {message.isUser ? (
+                      message.content
+                    ) : (
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm, remarkBreaks, remarkMath]}
+                        rehypePlugins={[rehypeKatex]}
+                        linkTarget="_blank"
+                        components={{
+                          a: ({node, ...props}) => <a {...props} rel="noopener noreferrer" />,
+                          code: ({inline, className, children, ...props}) => (
+                            <code className={className} {...props}>{children}</code>
+                          )
+                        }}
+                      >
+                        {normalizeTexDelimiters(String(message.content || ''))}
+                      </ReactMarkdown>
+                    )}
                   </div>
                 </div>
               </List.Item>

@@ -10,7 +10,30 @@ import {
 import { useMode } from '../contexts/ModeContext';
 import { recordVote } from '../api/models';
 import { useChat } from '../contexts/ChatContext';
-import {evaluateModel } from '../api/models'; 
+import {evaluateModel } from '../api/models';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import remarkBreaks from 'remark-breaks';
+
+// 与 ChatDialog 一致:将 \(...\)/\[...\] 转为 $...$/$$.$$,保持代码块原样
+function normalizeTexDelimiters(text) {
+  if (!text) return '';
+  const segments = text.split(/(```[\s\S]*?```)/g);
+  return segments
+    .map((seg) => {
+      if (seg.startsWith('```')) return seg;
+      let out = seg
+        .replace(/\\\[([\s\S]*?)\\\]/g, (m, p1) => `$$\n${p1}\n$$`)
+        .replace(/\\\\\[([\s\S]*?)\\\\\]/g, (m, p1) => `$$\n${p1}\n$$`);
+      out = out
+        .replace(/\\\(([\s\S]*?)\\\)/g, (m, p1) => `$${p1}$`)
+        .replace(/\\\\\(([\s\S]*?)\\\\\)/g, (m, p1) => `$${p1}$`);
+      return out;
+    })
+    .join('');
+}
 
 const { TextArea } = Input;
 const { Title, Paragraph } = Typography;
@@ -321,9 +344,26 @@ export default function ArenaPage() {
                       padding: '8px 12px', 
                       borderRadius: '8px', 
                       maxWidth: '80%',
-                      wordBreak: 'break-word'
+                      wordBreak: 'break-word',
+                      overflowX: 'auto'
                     }}>
-                      {msg.content}
+                      {msg.isUser || msg.isError ? (
+                        msg.content
+                      ) : (
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm, remarkBreaks, remarkMath]}
+                          rehypePlugins={[rehypeKatex]}
+                          linkTarget="_blank"
+                          components={{
+                            a: ({node, ...props}) => <a {...props} rel="noopener noreferrer" />,
+                            code: ({inline, className, children, ...props}) => (
+                              <code className={className} {...props}>{children}</code>
+                            )
+                          }}
+                        >
+                          {normalizeTexDelimiters(String(msg.content || ''))}
+                        </ReactMarkdown>
+                      )}
                     </div>
                     {msg.isUser && (
                       <Avatar icon={<UserOutlined />} style={{ 
@@ -367,9 +407,26 @@ export default function ArenaPage() {
                       padding: '8px 12px', 
                       borderRadius: '8px', 
                       maxWidth: '80%',
-                      wordBreak: 'break-word'
+                      wordBreak: 'break-word',
+                      overflowX: 'auto'
                     }}>
-                      {msg.content}
+                      {msg.isUser || msg.isError ? (
+                        msg.content
+                      ) : (
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm, remarkBreaks, remarkMath]}
+                          rehypePlugins={[rehypeKatex]}
+                          linkTarget="_blank"
+                          components={{
+                            a: ({node, ...props}) => <a {...props} rel="noopener noreferrer" />,
+                            code: ({inline, className, children, ...props}) => (
+                              <code className={className} {...props}>{children}</code>
+                            )
+                          }}
+                        >
+                          {normalizeTexDelimiters(String(msg.content || ''))}
+                        </ReactMarkdown>
+                      )}
                     </div>
                     {msg.isUser && (
                       <Avatar icon={<UserOutlined />} style={{ 
@@ -395,8 +452,24 @@ export default function ArenaPage() {
         {mode === 'direct-chat' && messages.map((msg, index) => (
           <div key={index} style={{ display: 'flex', justifyContent: msg.isUser ? 'flex-end' : 'flex-start', marginBottom: 12 }}>
             <Avatar icon={msg.isUser ? <UserOutlined /> : <RobotOutlined />} style={{ order: msg.isUser ? 2 : 1, marginLeft: msg.isUser ? 8 : 0, marginRight: msg.isUser ? 0 : 8, backgroundColor: msg.isUser ? '#000' : '#595959' }} />
-            <div style={{ background: msg.isUser ? '#000' : '#f5f5f5', color: msg.isUser ? 'white' : 'black', padding: '8px 12px', borderRadius: '8px', maxWidth: '70%' }}>
-              {msg.content}
+            <div style={{ background: msg.isUser ? '#000' : '#f5f5f5', color: msg.isUser ? 'white' : 'black', padding: '8px 12px', borderRadius: '8px', maxWidth: '70%', overflowX: 'auto' }}>
+              {msg.isUser ? (
+                msg.content
+              ) : (
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm, remarkBreaks, remarkMath]}
+                  rehypePlugins={[rehypeKatex]}
+                  linkTarget="_blank"
+                  components={{
+                    a: ({node, ...props}) => <a {...props} rel="noopener noreferrer" />,
+                    code: ({inline, className, children, ...props}) => (
+                      <code className={className} {...props}>{children}</code>
+                    )
+                  }}
+                >
+                  {normalizeTexDelimiters(String(msg.content || ''))}
+                </ReactMarkdown>
+              )}
             </div>
           </div>
         ))}
