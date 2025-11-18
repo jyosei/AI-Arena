@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { List, Avatar, Input, Button, Spin, message as antdMessage, Typography, Row, Col, Space, Alert } from 'antd';
 import { SendOutlined, UserOutlined, RobotOutlined } from '@ant-design/icons';
 import { ArrowUp } from 'lucide-react';
@@ -37,6 +37,7 @@ const { Title } = Typography;
 export default function ChatPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { chatHistory } = useChat();
   const { mode, setMode, models, leftModel, rightModel, setLeftModel, setRightModel } = useMode();
   const { user } = React.useContext(AuthContext);
@@ -44,6 +45,9 @@ export default function ChatPage() {
   const conv = chatHistory.find(c => String(c.id) === String(id));
   const title = conv ? conv.title : '会话';
   const savedMode = conv?.mode || 'direct-chat';
+
+  // 从 location.state 获取初始消息
+  const initialPrompt = location.state?.initialPrompt;
 
   // 当进入聊天页面时，恢复保存的模式
   React.useEffect(() => {
@@ -102,6 +106,16 @@ export default function ChatPage() {
     setLoadingHistory(true);
     loadMessages();
   }, [id, user, mode]);
+
+  // 处理从首页传来的初始消息
+  useEffect(() => {
+    if (initialPrompt && !loadingHistory && !loading) {
+      // 自动填充输入框
+      setInputValue(initialPrompt);
+      // 清除 location.state 避免重复发送
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [initialPrompt, loadingHistory]);
 
   const handleSend = async () => {
     if (!inputValue.trim()) return;
