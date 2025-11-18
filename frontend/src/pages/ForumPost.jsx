@@ -214,6 +214,13 @@ export default function ForumPost() {
     setReplyAttachments([]);
   }, [replyAttachments]);
 
+  const replyUploadButton = (
+    <div>
+      <PlusOutlined />
+      <div style={{ marginTop: 8 }}>上传</div>
+    </div>
+  );
+
   const loadPost = useCallback(async () => {
     if (!id) return;
     setLoading(true);
@@ -532,6 +539,23 @@ export default function ForumPost() {
           {post.content}
         </Paragraph>
 
+        {post.attachments?.length ? (
+          <Image.PreviewGroup>
+            <Space wrap size="small" style={{ marginBottom: 24 }}>
+              {post.attachments.map((attachment) => (
+                <Image
+                  key={attachment.id}
+                  src={attachment.url}
+                  width={180}
+                  height={180}
+                  style={{ objectFit: 'cover', borderRadius: 8 }}
+                  alt="帖子附件"
+                />
+              ))}
+            </Space>
+          </Image.PreviewGroup>
+        ) : null}
+
         <Divider />
 
         <div style={{ marginBottom: 16 }}>
@@ -583,9 +607,25 @@ export default function ForumPost() {
                     </Space>
                   }
                   description={
-                    <Paragraph style={{ margin: 0, fontSize: '15px', lineHeight: '1.6' }}>
-                      {comment.is_deleted ? '该评论已被删除' : comment.content}
-                    </Paragraph>
+                    <div>
+                      <Paragraph style={{ margin: 0, fontSize: '15px', lineHeight: '1.6' }}>
+                        {comment.is_deleted ? '该评论已被删除' : comment.content}
+                      </Paragraph>
+                      {!comment.is_deleted && comment.attachments?.length ? (
+                        <Space wrap size="small" style={{ marginTop: 12 }}>
+                          {comment.attachments.map((attachment) => (
+                            <Image
+                              key={attachment.id}
+                              src={attachment.url}
+                              width={140}
+                              height={140}
+                              style={{ objectFit: 'cover', borderRadius: 6 }}
+                              alt="评论附件"
+                            />
+                          ))}
+                        </Space>
+                      ) : null}
+                    </div>
                   }
                 />
               </List.Item>
@@ -615,6 +655,22 @@ export default function ForumPost() {
               rules={[{ required: true, message: '请输入回复内容' }]}
             >
               <TextArea rows={6} placeholder="请输入你的回复..." showCount maxLength={2000} />
+            </Form.Item>
+            <Form.Item label="图片附件">
+              <Upload
+                name="file"
+                listType="picture-card"
+                customRequest={handleReplyUpload}
+                onRemove={handleReplyRemove}
+                beforeUpload={beforeReplyUpload}
+                fileList={replyAttachments}
+                accept="image/*"
+                multiple
+                maxCount={maxReplyAttachments}
+              >
+                {replyAttachments.length >= maxReplyAttachments ? null : replyUploadButton}
+              </Upload>
+              <Text type="secondary">支持 PNG/JPG/GIF，单张不超过 5MB，最多上传 3 张。</Text>
             </Form.Item>
             <Space>
               <Button type="primary" htmlType="submit" loading={submitting} size="large">
