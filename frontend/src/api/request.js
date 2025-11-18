@@ -23,7 +23,7 @@ const request = axios.create({ baseURL: getBaseURL() });
 
 // request interceptor: attach token if available
 request.interceptors.request.use((config) => {
-	const token = localStorage.getItem('token');
+	const token = localStorage.getItem('access_token');
 	if (token) {
 		config.headers = config.headers || {};
 		config.headers.Authorization = `Bearer ${token}`;
@@ -45,7 +45,7 @@ request.interceptors.response.use(
 			
 			try {
 				// 尝试使用 refresh token 获取新的 access token
-				const refreshToken = localStorage.getItem('refresh');
+				const refreshToken = localStorage.getItem('refresh_token');
 				if (refreshToken) {
 					const res = await axios.post('api/token/refresh/', {
 						refresh: refreshToken

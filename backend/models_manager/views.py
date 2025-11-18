@@ -94,49 +94,83 @@ class ModelListView(APIView):
 
 
 class EvaluateModelView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]  # 要求用户必须登录
 
     def post(self, request, *args, **kwargs):
         model_name = request.data.get("model_name")
         prompt = request.data.get("prompt")
-        conversation_id = request.data.get("conversation_id")
+        conversation_id = request.data.get("conversation_id")  # 可选的对话 ID
 
         if not model_name or not prompt:
             return Response({"error": "model_name and prompt are required."}, status=400)
 
         try:
             model_service = get_model_service(model_name)
-
-            # 如果携带 conversation_id，则尝试构造完整历史
-            messages_payload = None
+            
+            # 获取或创建 conversation
             if conversation_id:
+                # 使用现有的对话，并验证所有权
                 try:
-                    if request.user and request.user.is_authenticated:
-                        conv = ChatConversation.objects.get(id=conversation_id, user=request.user)
-                    else:
-                        conv = ChatConversation.objects.get(id=conversation_id)
-                    # 将历史消息转换为 OpenAI 兼容的格式
-                    msgs = conv.messages.all().order_by('created_at')
-                    messages_payload = [
-                        {"role": ("user" if m.is_user else "assistant"), "content": m.content}
-                        for m in msgs
-                    ]
-                    # 保险: 确保本次用户输入也在末尾
-                    if not messages_payload or messages_payload[-1].get("content") != prompt:
-                        messages_payload.append({"role": "user", "content": prompt})
+                    conversation = ChatConversation.objects.get(
+                        id=conversation_id,
+                        user=request.user  # 确保只能访问自己的对话
+                    )
                 except ChatConversation.DoesNotExist:
-                    return Response({"error": "Conversation not found."}, status=404)
-
-            response_text = model_service.evaluate(prompt, model_name, messages=messages_payload)
+                    return Response({"error": "Conversation not found or access denied."}, status=404)
+            else:
+                # 创建新对话
+                conversation = ChatConversation.objects.create(
+                    user=request.user,
+                    title=f"{model_name} 对话",
+                    model_name=model_name
+                )
+            
+            # 保存用户消息
+            ChatMessage.objects.create(
+                conversation=conversation,
+                is_user=True,
+                content=prompt
+            )
+            
+            # 获取该对话的历史消息（包括刚保存的用户消息）
+            history_messages = ChatMessage.objects.filter(
+                conversation=conversation
+            ).order_by('created_at')
+            
+            # 将历史消息转换为模型需要的格式
+            messages_list = []
+            for msg in history_messages:
+                role = 'user' if msg.is_user else 'assistant'
+                messages_list.append({
+                    "role": role,
+                    "content": msg.content
+                })
+            
+            # 调用模型，传递完整的对话历史
+            response_text = model_service.evaluate(
+                prompt=prompt, 
+                model_name=model_name,
+                messages=messages_list
+            ) 
+            
+            # 保存 AI 响应
+            ChatMessage.objects.create(
+                conversation=conversation,
+                is_user=False,
+                content=response_text
+            )
+            
             return Response({
                 "prompt": prompt,
                 "model": model_name,
                 "response": response_text,
-                "used_history": len(messages_payload) if messages_payload is not None else 0
+                "conversation_id": conversation.id
             })
         except ValueError as e:
             return Response({"error": str(e)}, status=400)
         except Exception as e:
+            # 将内部错误包装起来，提供更友好的提示
+            # 注意：在生产环境中，不应暴露详细的内部错误 e
             return Response({"error": f"服务器内部错误: {e}"}, status=500)
 
 

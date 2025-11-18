@@ -7,7 +7,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('access_token');
     if (token) {
       // try to fetch current user profile
       // 后端提供的 profile 接口为 users/profile/
@@ -22,8 +22,8 @@ export const AuthProvider = ({ children }) => {
       console.log('Login response:', res.data);
       
       if (res.data && res.data.access) {
-        localStorage.setItem('token', res.data.access);
-        localStorage.setItem('refresh', res.data.refresh);
+        localStorage.setItem('access_token', res.data.access);
+        localStorage.setItem('refresh_token', res.data.refresh);
         
         // 设置默认的 Authorization header
         request.defaults.headers.common['Authorization'] = `Bearer ${res.data.access}`;
@@ -37,8 +37,8 @@ export const AuthProvider = ({ children }) => {
           return true;
         } catch (profileError) {
           console.error('Profile fetch error:', profileError);
-          localStorage.removeItem('token');
-          localStorage.removeItem('refresh');
+          localStorage.removeItem('access_token');
+          localStorage.removeItem('refresh_token');
           throw new Error('无法获取用户资料');
         }
       }
@@ -51,7 +51,8 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
     setUser(null);
   };
 

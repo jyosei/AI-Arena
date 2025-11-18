@@ -88,7 +88,7 @@ const AppLayout = () => {
   const handleNewChat = async () => {
     try {
       const modelName = leftModel || (models && models.length > 0 ? models[0].name : null);
-      const newChatId = await addChat('新会话', modelName);
+      const newChatId = await addChat('新会话', modelName, mode);
       if (newChatId) {
         navigate(`/chat/${newChatId}`);
       }
