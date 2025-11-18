@@ -125,14 +125,10 @@ class EvaluateModelView(APIView):
                     model_name=model_name
                 )
             
-            # 保存用户消息
-            ChatMessage.objects.create(
-                conversation=conversation,
-                is_user=True,
-                content=prompt
-            )
+            # 注意：不在这里保存用户消息，由前端统一保存
+            # 避免 Side-by-side 模式下重复保存（会调用两次 evaluateModel）
             
-            # 获取该对话的历史消息（包括刚保存的用户消息）
+            # 获取该对话的历史消息
             history_messages = ChatMessage.objects.filter(
                 conversation=conversation
             ).order_by('created_at')
@@ -153,12 +149,8 @@ class EvaluateModelView(APIView):
                 messages=messages_list
             ) 
             
-            # 保存 AI 响应
-            ChatMessage.objects.create(
-                conversation=conversation,
-                is_user=False,
-                content=response_text
-            )
+            # 注意：不在这里保存 AI 响应，由前端统一保存
+            # 这样前端可以为每条消息指定正确的 model_name
             
             return Response({
                 "prompt": prompt,
@@ -310,7 +302,13 @@ class CreateConversationView(APIView):
     def post(self, request, *args, **kwargs):
         title = request.data.get('title') or '新会话'
         model_name = request.data.get('model_name')
-        conv = ChatConversation.objects.create(user=request.user, title=title, model_name=model_name)
+        mode = request.data.get('mode', 'direct-chat')  # 获取模式，默认为 direct-chat
+        conv = ChatConversation.objects.create(
+            user=request.user, 
+            title=title, 
+            model_name=model_name,
+            mode=mode  # 保存模式
+        )
         serializer = ChatConversationSerializer(conv)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 

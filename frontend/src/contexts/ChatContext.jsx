@@ -71,9 +71,19 @@ export const ChatProvider = ({ children }) => {
     if (user) {
       try {
         console.log('Creating conversation on backend:', title, modelName, mode);
-        const res = await request.post('models/chat/conversation/', { title, model_name: modelName });
+        const res = await request.post('models/chat/conversation/', { 
+          title, 
+          model_name: modelName,
+          mode: mode  // 传递 mode 参数
+        });
         console.log('Conversation created:', res.data);
-        const newChat = { id: res.data.id, title: res.data.title, model_name: res.data.model_name, mode: mode, time: res.data.created_at };
+        const newChat = { 
+          id: res.data.id, 
+          title: res.data.title, 
+          model_name: res.data.model_name, 
+          mode: res.data.mode || mode,  // 使用后端返回的 mode，如果没有则用传入的
+          time: res.data.created_at 
+        };
         const updatedHistory = [newChat, ...chatHistory];
         setChatHistory(updatedHistory);
         // 同步到 localStorage

@@ -37,6 +37,16 @@ class ChatConversation(models.Model):
     )
     title = models.CharField(max_length=200)
     model_name = models.CharField(max_length=100, blank=True, null=True, help_text="对话使用的模型名称")
+    mode = models.CharField(
+        max_length=20, 
+        default='direct-chat',
+        choices=[
+            ('direct-chat', 'Direct Chat'),
+            ('side-by-side', 'Side by Side'),
+            ('battle', 'Battle')
+        ],
+        help_text="对话模式"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -52,11 +62,12 @@ class ChatMessage(models.Model):
     )
     content = models.TextField()
     is_user = models.BooleanField(default=True, help_text="True表示用户消息，False表示AI回复")
+    model_name = models.CharField(max_length=100, blank=True, null=True, help_text="生成此消息的模型名称（仅AI消息）")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ['created_at']
 
     def __str__(self):
-        sender = "用户" if self.is_user else "AI"
+        sender = "用户" if self.is_user else f"AI({self.model_name})"
         return f"{sender}: {self.content[:50]}..."
