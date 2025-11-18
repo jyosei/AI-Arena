@@ -10,6 +10,10 @@ import ModelList from "./pages/ModelList.jsx";
 import Leaderboard from "./pages/Leaderboard.jsx";
 import Login from "./pages/Login.jsx";
 import Forum from "./pages/Forum.jsx";
+<<<<<<< HEAD
+=======
+import ForumPost from "./pages/ForumPost.jsx"; // 新增导入
+>>>>>>> 40688ba (优化论坛功能，实现页面跳转)
 import Chat from "./pages/Chat.jsx";
 import AppLayout from "./components/AppLayout.jsx";
 
@@ -54,6 +58,7 @@ export const useDialog = () => useContext(DialogContext);
 // 4. 定义应用的根组件，它包含了所有路由和布局
 function App() {
   return (
+<<<<<<< HEAD
     <Router>
       <AuthProvider>
         <ModeProvider>
@@ -73,6 +78,21 @@ function App() {
         </ModeProvider>
       </AuthProvider>
     </Router>
+=======
+    <ModeProvider>
+      <Routes>
+        <Route element={<AppLayout />}>
+          <Route path="/" element={<ModelList />} />
+          <Route path="/chat/:id" element={<Chat />} />
+          <Route path="/compare" element={<Compare />} />
+          <Route path="/leaderboard" element={<Leaderboard />} />
+          <Route path="/forum" element={<Forum />} />
+          <Route path="/forum/post/:id" element={<ForumPost />} /> {/* 新增路由 */}
+        </Route>
+        <Route path="/login" element={<Login />} />
+      </Routes>
+    </ModeProvider>
+>>>>>>> 40688ba (优化论坛功能，实现页面跳转)
   );
 }
 
