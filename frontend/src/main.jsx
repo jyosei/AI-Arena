@@ -64,7 +64,6 @@ function App() {
                 <Route element={<AppLayout />}>
                   <Route path="/" element={<ModelList />} />
                   <Route path="/chat/:id" element={<Chat />} />
-                  <Route path="/compare" element={<Compare />} />
                   <Route path="/leaderboard" element={<Leaderboard />} />
                   <Route path="/forum" element={<Forum />} />
                   <Route path="/forum/post/:id" element={<ForumPost />} /> {/* 新增路由 */}
