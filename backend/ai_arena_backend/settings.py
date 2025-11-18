@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     'users', 
     'datasets',
     'models_manager',
+    'forum',
 ]
 
 MIDDLEWARE = [
@@ -102,4 +103,11 @@ if not CORS_ALLOW_ALL_ORIGINS:
     cors_origins = os.getenv('CORS_ALLOWED_ORIGINS', '')
     if cors_origins:
         CORS_ALLOWED_ORIGINS = [o.strip() for o in cors_origins.split(',') if o.strip()]
+
+
+STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Card,
@@ -12,9 +12,12 @@ import {
   Tag,
   Row,
   Col,
+  Upload,
+  Image,
   message,
   Spin,
-  Form
+  Form,
+  Tooltip,
 } from 'antd';
 import {
   UserOutlined,
@@ -23,168 +26,406 @@ import {
   ArrowLeftOutlined,
   ClockCircleOutlined,
   EyeOutlined,
-  ShareAltOutlined
+  ShareAltOutlined,
+  StarOutlined,
 } from '@ant-design/icons';
+
+import {
+  fetchForumPostDetail,
+  fetchForumComments,
+  createForumComment,
+  reactToForumPost,
+  reactToForumComment,
+  shareForumPost,
+  incrementForumPostView,
+  uploadForumAttachment,
+  deleteForumAttachment,
+} from '../api/forum';
+import { AuthContext } from '../contexts/AuthContext.jsx';
 
 const { Text, Title, Paragraph } = Typography;
 const { TextArea } = Input;
 
-// 模拟数据（实际应该从API获取）
-const fakePostDetail = {
-  id: 1,
-  title: '大家觉得哪个模型在写代码方面表现最好？',
-  author: 'AI爱好者',
-  content: `最近在尝试不同的AI模型来辅助编程，发现有些模型在代码生成方面表现特别出色。
-
-## 尝试过的模型：
-
-### GPT-4
-- **优点**：代码理解能力强，逻辑清晰
-- **缺点**：有时会过度复杂化简单问题
-- **适用场景**：复杂算法、系统设计
-
-### Claude
-- **优点**：代码安全性好，遵循最佳实践
-- **缺点**：对中文支持相对较弱
-- **适用场景**：企业级项目、安全敏感代码
-
-### 文心一言
-- **优点**：中文注释写得不错，本土化好
-- **缺点**：复杂逻辑处理能力有限
-- **适用场景**：日常脚本、中文项目
-
-## 我的使用经验
-
-在实际项目中，我通常会根据具体需求选择模型：
-- 需要高质量算法实现时用 GPT-4
-- 需要安全可靠的代码时用 Claude  
-- 需要快速原型开发时用文心一言
-
-大家有什么推荐的吗？欢迎分享使用经验！`,
-  replies: 12,
-  views: 152,
-  lastActivity: '5 分钟前',
-  createdAt: '2025-01-15 10:30:00',
-  avatar: 'https://joeschmoe.io/api/v1/random',
-  tags: ['技术讨论', '代码', 'AI模型'],
-  category: '技术交流',
-  likes: 8,
-  isSticky: false
+const formatDateTime = (value) => {
+  if (!value) return '-';
+  try {
+    return new Date(value).toLocaleString('zh-CN');
+  } catch (error) {
+    return value;
+  }
 };
 
-const fakeReplies = [
-  {
-    id: 1,
-    author: '程序员小王',
-    content: '我觉得GPT-4在代码理解方面表现最好，特别是对于复杂算法。最近用它重构了一个旧项目，效率提升很明显。另外它在理解业务逻辑方面也很出色。',
-    createdAt: '2025-01-15 10:35:00',
-    avatar: 'https://joeschmoe.io/api/v1/male',
-    likes: 3,
-    isAuthor: false
-  },
-  {
-    id: 2,
-    author: '开发者小李',
-    content: '推荐Claude，它在代码安全性和最佳实践方面做得很好。特别是企业级项目，安全性很重要。我们团队现在主要用Claude来做代码审查。',
-    createdAt: '2025-01-15 10:40:00',
-    avatar: 'https://joeschmoe.io/api/v1/female',
-    likes: 5,
-    isAuthor: false
-  },
-  {
-    id: 3,
-    author: '全栈工程师',
-    content: '其实可以结合使用，不同场景用不同模型。我平时写业务代码用GPT-4，写工具函数用Claude，写文档用文心一言。',
-    createdAt: '2025-01-15 11:20:00',
-    avatar: 'https://joeschmoe.io/api/v1/joe',
-    likes: 8,
-    isAuthor: false
+const flattenComments = (items, depth = 0) =>
+  items.flatMap((comment) => {
+    const children = comment.children || [];
+    const current = {
+      ...comment,
+      indent: depth,
+      user_reactions: {
+        like: false,
+        favorite: false,
+        ...(comment.user_reactions || {}),
+      },
+      attachments: comment.attachments || [],
+    };
+    return [current, ...flattenComments(children, depth + 1)];
+  });
+
+const updateCommentTree = (items, targetId, updater) =>
+  items.map((comment) => {
+    if (comment.id === targetId) {
+      const updated = { ...comment, ...updater(comment) };
+      if (comment.children) {
+        updated.children = comment.children.map((child) => child);
+      }
+      return updated;
+    }
+    if (comment.children?.length) {
+      return {
+        ...comment,
+        children: updateCommentTree(comment.children, targetId, updater),
+      };
+    }
+    return comment;
+  });
+
+const appendComment = (items, parentId, newComment) => {
+  if (!parentId) {
+    return [...items, newComment];
   }
-];
+  return items.map((comment) => {
+    if (comment.id === parentId) {
+      const children = comment.children ? [...comment.children, newComment] : [newComment];
+      return { ...comment, children };
+    }
+    if (comment.children?.length) {
+      return {
+        ...comment,
+        children: appendComment(comment.children, parentId, newComment),
+      };
+    }
+    return comment;
+  });
+};
+
+const normalizeComment = (comment) => ({
+  ...comment,
+  user_reactions: {
+    like: false,
+    favorite: false,
+    ...(comment.user_reactions || {}),
+  },
+  attachments: comment.attachments || [],
+  children: (comment.children || []).map(normalizeComment),
+});
 
 export default function ForumPost() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useContext(AuthContext);
+
   const [post, setPost] = useState(null);
-  const [replies, setReplies] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [replyContent, setReplyContent] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [comments, setComments] = useState([]);
+  const [replyTarget, setReplyTarget] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm();
+  const [replyAttachments, setReplyAttachments] = useState([]);
+  const replyAttachmentsRef = useRef([]);
+  const maxReplyAttachments = 3;
 
   useEffect(() => {
-    fetchPostDetail();
-  }, [id]);
+    replyAttachmentsRef.current = replyAttachments;
+  }, [replyAttachments]);
 
-  const fetchPostDetail = async () => {
+  useEffect(() => {
+    return () => {
+      replyAttachmentsRef.current
+        .filter((item) => item.status === 'done' && item.response?.id)
+        .forEach((item) => {
+          deleteForumAttachment(item.response.id).catch(() => null);
+        });
+    };
+  }, []);
+
+  const beforeReplyUpload = useCallback((file) => {
+    const isImage = (file.type || '').startsWith('image/');
+    if (!isImage) {
+      message.error('仅支持上传图片文件');
+      return Upload.LIST_IGNORE;
+    }
+    const isLt5M = file.size / 1024 / 1024 < 5;
+    if (!isLt5M) {
+      message.error('单张图片大小不能超过 5MB');
+      return Upload.LIST_IGNORE;
+    }
+    return true;
+  }, []);
+
+  const handleReplyUpload = useCallback(
+    async ({ file, onError, onSuccess }) => {
+      setReplyAttachments((prev) => [
+        ...prev,
+        { uid: file.uid, name: file.name, status: 'uploading' },
+      ]);
+
+      try {
+        const { data } = await uploadForumAttachment(file);
+        setReplyAttachments((prev) =>
+          prev.map((item) =>
+            item.uid === file.uid
+              ? { ...item, status: 'done', url: data.url, response: data }
+              : item
+          )
+        );
+        onSuccess(data, file);
+      } catch (error) {
+        setReplyAttachments((prev) => prev.filter((item) => item.uid !== file.uid));
+        onError(error);
+        message.error('图片上传失败，请稍后再试');
+      }
+    },
+    []
+  );
+
+  const handleReplyRemove = useCallback(async (file) => {
+    if (file.status === 'done') {
+      const attachmentId = file.response?.id || Number(file.uid);
+      if (attachmentId) {
+        try {
+          await deleteForumAttachment(attachmentId);
+        } catch (error) {
+          console.warn('删除附件失败', error);
+        }
+      }
+    }
+    setReplyAttachments((prev) => prev.filter((item) => item.uid !== file.uid));
+    return true;
+  }, []);
+
+  const cleanupReplyUploads = useCallback(async () => {
+    const toDelete = replyAttachments.filter((item) => item.status === 'done' && item.response?.id);
+    if (toDelete.length) {
+      await Promise.all(
+        toDelete.map((item) => deleteForumAttachment(item.response.id).catch(() => null))
+      );
+    }
+    setReplyAttachments([]);
+  }, [replyAttachments]);
+
+  const loadPost = useCallback(async () => {
+    if (!id) return;
     setLoading(true);
     try {
-      // 模拟API调用
-      setTimeout(() => {
-        setPost(fakePostDetail);
-        setReplies(fakeReplies);
-        setLoading(false);
-      }, 500);
+      const res = await fetchForumPostDetail(id);
+      const postData = res.data;
+      const normalizedPost = {
+        ...postData,
+        user_reactions: {
+          like: false,
+          favorite: false,
+          ...(postData.user_reactions || {}),
+        },
+        tags: postData.tags || [],
+        attachments: postData.attachments || [],
+      };
+      setPost(normalizedPost);
+      try {
+        const viewRes = await incrementForumPostView(id);
+        const viewCount = viewRes?.data?.view_count;
+        setPost((prev) =>
+          prev
+            ? {
+                ...prev,
+                view_count:
+                  typeof viewCount === 'number'
+                    ? viewCount
+                    : (prev.view_count || 0) + 1,
+              }
+            : prev
+        );
+      } catch (viewError) {
+        console.warn('增加浏览量失败:', viewError);
+      }
     } catch (error) {
-      message.error('加载帖子失败');
+      if (error.response?.status === 404) {
+        message.error('帖子不存在或已被删除');
+        navigate('/forum');
+      } else {
+        message.error(error.response?.data?.detail || '加载帖子失败');
+      }
+    } finally {
       setLoading(false);
+    }
+  }, [id, navigate]);
+
+  const loadComments = useCallback(async () => {
+    if (!id) return;
+    setCommentsLoading(true);
+    try {
+      const res = await fetchForumComments(id);
+      const payload = Array.isArray(res.data) ? res.data : res.data?.results || [];
+      setComments(payload.map(normalizeComment));
+    } catch (error) {
+      message.error(error.response?.data?.detail || '加载评论失败');
+    } finally {
+      setCommentsLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    loadPost();
+    loadComments();
+  }, [loadPost, loadComments]);
+
+  const flattenedComments = useMemo(() => flattenComments(comments), [comments]);
+
+  const requireAuth = useCallback(
+    () => {
+      if (user) {
+        return true;
+      }
+      message.info('请先登录后再操作');
+      navigate('/login', { state: { from: `/forum/post/${id}` } });
+      return false;
+    },
+    [user, navigate, id]
+  );
+
+  const handleReactToPost = async (type) => {
+    if (!requireAuth()) return;
+    try {
+      const res = await reactToForumPost(id, { type, action: 'toggle' });
+      setPost((prev) =>
+        prev
+          ? {
+              ...prev,
+              like_count: res.data?.like_count ?? prev.like_count,
+              favorite_count: res.data?.favorite_count ?? prev.favorite_count,
+              user_reactions: {
+                like: prev.user_reactions?.like ?? false,
+                favorite: prev.user_reactions?.favorite ?? false,
+                [type]: res.data?.active ?? false,
+              },
+            }
+          : prev
+      );
+    } catch (error) {
+      message.error(error.response?.data?.detail || '操作失败，请稍后再试');
     }
   };
 
-  const handleReply = async () => {
-    if (!replyContent.trim()) {
+  const handleShare = async () => {
+    try {
+      const res = await shareForumPost(id, { channel: 'web' });
+      try {
+        if (navigator?.clipboard?.writeText) {
+          await navigator.clipboard.writeText(window.location.href);
+        } else {
+          const textarea = document.createElement('textarea');
+          textarea.value = window.location.href;
+          textarea.style.position = 'fixed';
+          textarea.style.opacity = '0';
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textarea);
+        }
+        message.success('链接已复制到剪贴板');
+      } catch (copyError) {
+        console.warn('复制链接失败:', copyError);
+        message.success('已记录分享');
+      }
+      setPost((prev) =>
+        prev
+          ? {
+              ...prev,
+              share_count: res.data?.share_count ?? (prev.share_count || 0) + 1,
+            }
+          : prev
+      );
+    } catch (error) {
+      message.error(error.response?.data?.detail || '分享失败，请稍后再试');
+    }
+  };
+
+  const handleCommentReaction = async (commentId, type) => {
+    if (!requireAuth()) return;
+    try {
+      const res = await reactToForumComment(commentId, { type, action: 'toggle' });
+      setComments((prev) =>
+        updateCommentTree(prev, commentId, (comment) => ({
+          like_count: res.data?.like_count ?? comment.like_count,
+          favorite_count: res.data?.favorite_count ?? comment.favorite_count,
+          user_reactions: {
+            like: comment.user_reactions?.like ?? false,
+            favorite: comment.user_reactions?.favorite ?? false,
+            [type]: res.data?.active ?? false,
+          },
+        }))
+      );
+    } catch (error) {
+      message.error(error.response?.data?.detail || '操作失败，请稍后再试');
+    }
+  };
+
+  const handleReplySubmit = async (values) => {
+    const content = values.content?.trim();
+    if (!content) {
       message.warning('请输入回复内容');
       return;
     }
-
+    if (!requireAuth()) {
+      return;
+    }
+    if (replyAttachments.some((item) => item.status === 'uploading')) {
+      message.warning('请等待图片上传完成后再提交回复');
+      return;
+    }
     setSubmitting(true);
     try {
-      // 模拟提交回复
-      setTimeout(() => {
-        const newReply = {
-          id: replies.length + 1,
-          author: '当前用户',
-          content: replyContent,
-          createdAt: '刚刚',
-          avatar: 'https://joeschmoe.io/api/v1/random',
-          likes: 0,
-          isAuthor: false
-        };
-        setReplies([...replies, newReply]);
-        setReplyContent('');
-        form.resetFields();
-        setSubmitting(false);
-        message.success('回复成功');
-        
-        // 更新帖子回复数
-        setPost(prev => prev ? { ...prev, replies: prev.replies + 1 } : null);
-      }, 500);
+      const attachmentIds = replyAttachments
+        .map((item) => item.response?.id)
+        .filter(Boolean);
+      const payload = { content };
+      if (replyTarget) {
+        payload.parent_id = replyTarget.id;
+      }
+      if (attachmentIds.length) {
+        payload.attachment_ids = attachmentIds;
+      }
+      const res = await createForumComment(id, payload);
+      const created = normalizeComment(res.data);
+      setComments((prev) => appendComment(prev, replyTarget?.id, created));
+      setPost((prev) =>
+        prev
+          ? {
+              ...prev,
+              comment_count: (prev.comment_count || 0) + 1,
+              last_activity_at: created.created_at || prev.last_activity_at,
+            }
+          : prev
+      );
+      form.resetFields();
+      setReplyTarget(null);
+      setReplyAttachments([]);
+      message.success('回复成功');
     } catch (error) {
-      message.error('回复失败');
+      message.error(error.response?.data?.detail || '回复失败，请稍后再试');
+    } finally {
       setSubmitting(false);
     }
   };
 
-  const handleLike = (replyId) => {
-    // 模拟点赞功能
-    setReplies(replies.map(reply => 
-      reply.id === replyId 
-        ? { ...reply, likes: reply.likes + 1 }
-        : reply
-    ));
+  const handleReplyClick = (comment) => {
+    if (!requireAuth()) return;
+    setReplyTarget(comment);
   };
 
-  const handleLikePost = () => {
-    if (post) {
-      setPost({ ...post, likes: post.likes + 1 });
-      message.success('点赞成功');
-    }
-  };
-
-  const handleShare = () => {
-    // 模拟分享功能
-    navigator.clipboard.writeText(window.location.href);
-    message.success('链接已复制到剪贴板');
+  const handleCancelReply = async () => {
+    await cleanupReplyUploads();
+    setReplyTarget(null);
   };
 
   if (loading) {
@@ -208,150 +449,183 @@ export default function ForumPost() {
 
   return (
     <div>
-      {/* 头部导航 */}
       <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
         <Col>
-          <Button 
-            type="text" 
-            icon={<ArrowLeftOutlined />} 
-            onClick={() => navigate('/forum')}
-          >
+          <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/forum')}>
             返回论坛
           </Button>
         </Col>
         <Col>
           <Space>
-            <Button 
-              icon={<LikeOutlined />}
-              onClick={handleLikePost}
-            >
-              点赞 ({post.likes})
-            </Button>
-            <Button 
-              icon={<ShareAltOutlined />}
-              onClick={handleShare}
-            >
-              分享
-            </Button>
+            <Tooltip title={post.user_reactions?.like ? '取消点赞' : '点赞'}>
+              <Button
+                type={post.user_reactions?.like ? 'primary' : 'default'}
+                icon={<LikeOutlined />}
+                onClick={() => handleReactToPost('like')}
+              >
+                点赞 ({post.like_count ?? 0})
+              </Button>
+            </Tooltip>
+            <Tooltip title={post.user_reactions?.favorite ? '取消收藏' : '收藏'}>
+              <Button
+                type={post.user_reactions?.favorite ? 'primary' : 'default'}
+                icon={<StarOutlined />}
+                onClick={() => handleReactToPost('favorite')}
+              >
+                收藏 ({post.favorite_count ?? 0})
+              </Button>
+            </Tooltip>
+            <Tooltip title="复制帖子链接">
+              <Button icon={<ShareAltOutlined />} onClick={handleShare}>
+                分享 ({post.share_count ?? 0})
+              </Button>
+            </Tooltip>
           </Space>
         </Col>
       </Row>
 
-      {/* 帖子内容 */}
       <Card>
-        {/* 标签和分类 */}
         <div style={{ marginBottom: 16 }}>
           <Space wrap>
-            <Tag color="blue">{post.category}</Tag>
-            {post.tags.map(tag => (
+            {post.category?.name && <Tag color="blue">{post.category.name}</Tag>}
+            {(post.tags || []).map((tag) => (
               <Tag key={tag}>{tag}</Tag>
             ))}
-            {post.isSticky && <Tag color="red">置顶</Tag>}
+            {post.is_sticky && <Tag color="red">置顶</Tag>}
           </Space>
         </div>
 
-        {/* 标题 */}
         <Title level={2} style={{ marginBottom: 16 }}>
           {post.title}
         </Title>
-        
-        {/* 作者信息 */}
+
         <div style={{ marginBottom: 24 }}>
-          <Space size="middle">
-            <Avatar src={post.avatar} size="large" />
+          <Space size="middle" align="start">
+            <Avatar src={post.author?.avatar} size="large" icon={<UserOutlined />} />
             <div>
               <div>
-                <Text strong>{post.author}</Text>
+                <Text strong>{post.author?.username || '匿名用户'}</Text>
               </div>
               <div>
                 <Text type="secondary">
-                  <ClockCircleOutlined /> {post.createdAt} · 
-                  <EyeOutlined style={{ marginLeft: 8 }} /> {post.views} 浏览 · 
-                  <MessageOutlined style={{ marginLeft: 8 }} /> {post.replies} 回复
+                  <ClockCircleOutlined /> {formatDateTime(post.created_at)} ·{' '}
+                  <EyeOutlined style={{ marginLeft: 8 }} /> {post.view_count ?? 0} 浏览 ·{' '}
+                  <MessageOutlined style={{ marginLeft: 8 }} /> {post.comment_count ?? 0} 回复
                 </Text>
               </div>
+              {post.author?.description && (
+                <Text type="secondary" style={{ display: 'block', marginTop: 4 }}>
+                  {post.author.description}
+                </Text>
+              )}
             </div>
           </Space>
         </div>
 
-        {/* 帖子内容 */}
-        <Paragraph style={{ 
-          fontSize: '16px', 
-          lineHeight: '1.8',
-          whiteSpace: 'pre-line'
-        }}>
+        <Paragraph
+          style={{
+            fontSize: '16px',
+            lineHeight: '1.8',
+            whiteSpace: 'pre-line',
+          }}
+        >
           {post.content}
         </Paragraph>
 
         <Divider />
-        
-        {/* 回复统计 */}
+
         <div style={{ marginBottom: 16 }}>
-          <Title level={4}>{replies.length} 条回复</Title>
+          <Title level={4}>{post.comment_count ?? flattenedComments.length} 条回复</Title>
         </div>
 
-        {/* 回复列表 */}
-        <List
-          itemLayout="horizontal"
-          dataSource={replies}
-          renderItem={reply => (
-            <List.Item
-              actions={[
-                <Button 
-                  type="text" 
-                  icon={<LikeOutlined />}
-                  onClick={() => handleLike(reply.id)}
-                >
-                  {reply.likes}
-                </Button>
-              ]}
-            >
-              <List.Item.Meta
-                avatar={<Avatar src={reply.avatar} size="large" />}
-                title={
-                  <Space>
-                    <Text strong>{reply.author}</Text>
-                    {reply.isAuthor && <Tag color="blue">楼主</Tag>}
-                    <Text type="secondary">{reply.createdAt}</Text>
-                  </Space>
+        {commentsLoading ? (
+          <div style={{ textAlign: 'center', padding: '40px 0' }}>
+            <Spin />
+          </div>
+        ) : (
+          <List
+            itemLayout="horizontal"
+            dataSource={flattenedComments}
+            locale={{ emptyText: '还没有人回复，快来抢沙发吧~' }}
+            renderItem={(comment) => (
+              <List.Item
+                key={comment.id}
+                style={{ paddingLeft: comment.indent * 24 }}
+                actions={
+                  comment.is_deleted
+                    ? []
+                    : [
+                        <Button
+                          key="like"
+                          type={comment.user_reactions?.like ? 'link' : 'text'}
+                          icon={<LikeOutlined />}
+                          onClick={() => handleCommentReaction(comment.id, 'like')}
+                        >
+                          {comment.like_count ?? 0}
+                        </Button>,
+                        <Button
+                          key="reply"
+                          type="link"
+                          onClick={() => handleReplyClick(comment)}
+                        >
+                          回复
+                        </Button>,
+                      ]
                 }
-                description={
-                  <Paragraph style={{ margin: 0, fontSize: '15px', lineHeight: '1.6' }}>
-                    {reply.content}
-                  </Paragraph>
-                }
-              />
-            </List.Item>
-          )}
-        />
+              >
+                <List.Item.Meta
+                  avatar={<Avatar src={comment.author?.avatar} size="large" icon={<UserOutlined />} />}
+                  title={
+                    <Space size="small">
+                      <Text strong>{comment.author?.username || '匿名用户'}</Text>
+                      {comment.is_author && <Tag color="blue">楼主</Tag>}
+                      <Text type="secondary">{formatDateTime(comment.created_at)}</Text>
+                    </Space>
+                  }
+                  description={
+                    <Paragraph style={{ margin: 0, fontSize: '15px', lineHeight: '1.6' }}>
+                      {comment.is_deleted ? '该评论已被删除' : comment.content}
+                    </Paragraph>
+                  }
+                />
+              </List.Item>
+            )}
+          />
+        )}
 
-        {/* 回复表单 */}
         <Divider />
         <div style={{ marginTop: 32 }}>
           <Title level={5}>发表回复</Title>
-          <Form form={form} onFinish={handleReply}>
+          {replyTarget && (
+            <Tag
+              color="blue"
+              closable
+              onClose={(e) => {
+                e.preventDefault();
+                handleCancelReply();
+              }}
+              style={{ marginBottom: 12 }}
+            >
+              回复 @{replyTarget.author?.username || '匿名用户'}
+            </Tag>
+          )}
+          <Form form={form} onFinish={handleReplySubmit} layout="vertical">
             <Form.Item
               name="content"
               rules={[{ required: true, message: '请输入回复内容' }]}
             >
-              <TextArea
-                rows={6}
-                value={replyContent}
-                onChange={(e) => setReplyContent(e.target.value)}
-                placeholder="请输入你的回复..."
-                style={{ marginBottom: 16 }}
-                showCount
-                maxLength={2000}
-              />
+              <TextArea rows={6} placeholder="请输入你的回复..." showCount maxLength={2000} />
             </Form.Item>
-            <Button 
-              type="primary" 
-              htmlType="submit"
-              loading={submitting}
-              size="large"
-            >
-              发表回复
-            </Button>
+            <Space>
+              <Button type="primary" htmlType="submit" loading={submitting} size="large">
+                发表回复
+              </Button>
+              {replyTarget && (
+                <Button type="link" onClick={handleCancelReply}>
+                  取消回复
+                </Button>
+              )}
+            </Space>
           </Form>
         </div>
       </Card>
