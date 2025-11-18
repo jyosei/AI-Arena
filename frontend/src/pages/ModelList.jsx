@@ -26,7 +26,6 @@ export default function ArenaPage() {
       const modelName = mode === 'direct-chat' ? leftModel : 
                        mode === 'side-by-side' ? `${leftModel} vs ${rightModel}` :
                        'Battle';
-      console.log('Creating chat with:', { mode, leftModel, rightModel, modelName });
       const title = currentPrompt.length > 30 ? currentPrompt.substring(0, 30) + '...' : currentPrompt;
       const newChatId = await addChat(title, modelName, mode);
       

@@ -323,7 +323,7 @@ class DeleteAllConversationsView(APIView):
 
 
 class DeleteConversationView(APIView):
-    """删除单个会话。"""
+    """删除或更新单个会话。"""
     permission_classes = [IsAuthenticated]
 
     def delete(self, request, conversation_id, *args, **kwargs):
@@ -331,6 +331,23 @@ class DeleteConversationView(APIView):
             conv = ChatConversation.objects.get(id=conversation_id, user=request.user)
             conv.delete()
             return Response({'message': 'deleted'}, status=status.HTTP_200_OK)
+        except ChatConversation.DoesNotExist:
+            return Response({'error': 'Conversation not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    def patch(self, request, conversation_id, *args, **kwargs):
+        """更新会话的部分字段（如 model_name）"""
+        try:
+            conv = ChatConversation.objects.get(id=conversation_id, user=request.user)
+            
+            # 允许更新的字段
+            if 'model_name' in request.data:
+                conv.model_name = request.data['model_name']
+            if 'title' in request.data:
+                conv.title = request.data['title']
+            
+            conv.save()
+            serializer = ChatConversationSerializer(conv)
+            return Response(serializer.data, status=status.HTTP_200_OK)
         except ChatConversation.DoesNotExist:
             return Response({'error': 'Conversation not found'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -358,6 +375,7 @@ class CreateMessageView(APIView):
         conversation_id = request.data.get('conversation_id')
         content = request.data.get('content')
         is_user = request.data.get('is_user', True)
+        model_name = request.data.get('model_name', None)  # 可选的 model_name 字段
 
         if not conversation_id or not content:
             return Response({'error': 'conversation_id and content are required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -367,7 +385,12 @@ class CreateMessageView(APIView):
         except ChatConversation.DoesNotExist:
             return Response({'error': 'Conversation not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        message = ChatMessage.objects.create(conversation=conv, content=content, is_user=is_user)
+        message = ChatMessage.objects.create(
+            conversation=conv, 
+            content=content, 
+            is_user=is_user,
+            model_name=model_name  # 保存 model_name
+        )
         serializer = ChatMessageSerializer(message)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
