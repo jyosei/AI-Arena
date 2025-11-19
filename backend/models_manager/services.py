@@ -1,6 +1,7 @@
 import os
 from abc import ABC, abstractmethod
 from openai import OpenAI
+import base64 # 导入 base64 库
 
 # 1. 定义一个抽象基类作为统一接口
 class BaseLanguageModel(ABC):
@@ -10,32 +11,45 @@ class BaseLanguageModel(ABC):
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
 
     @abstractmethod
-    def evaluate(self, prompt: str, model_name: str, messages=None) -> str:
+    def evaluate(self, prompt: str, model_name: str, messages=None, image_base64=None,mime_type=None) -> str: # 修改 image 参数为 image_base64
         """生成模型回复。
         prompt: 当前用户输入（兼容旧接口）。
         messages: 可选的完整对话历史（[{role, content}]），若提供则以其为准。
+        image: 可选的用户上传的图片文件对象。
         """
         pass
 
 # 2. 为 OpenAI 创建一个具体的实现类
 class OpenAIModel(BaseLanguageModel):
-    def evaluate(self, prompt: str, model_name: str, messages=None) -> str:
+    def evaluate(self, prompt: str, model_name: str, messages=None, image_base64=None, mime_type=None) -> str: # 实现新的 image 参数
         try:
             client = OpenAI(
-                # 使用从构造函数传入的 API Key
                 api_key=self.api_key,
-                # 这里是您指定的国内代理地址
                 base_url="https://jeniya.cn/v1" 
             )
+            
             # 组装消息
             openai_messages = [
                 {"role": "system", "content": "You are a helpful assistant."}
             ]
             if messages and isinstance(messages, list) and len(messages) > 0:
-                # 假设 messages 已是 [{role, content}] 形式
                 openai_messages.extend(messages)
             else:
                 openai_messages.append({"role": "user", "content": prompt})
+
+            # --- 关键修改：处理图片输入 ---
+            if image_base64 and mime_type:
+                image_url = f"data:{mime_type};base64,{image_base64}"
+
+                last_user_message = next((msg for msg in reversed(openai_messages) if msg['role'] == 'user'), None)
+                if last_user_message:
+                    if isinstance(last_user_message['content'], str):
+                        last_user_message['content'] = [{"type": "text", "text": last_user_message['content']}]
+                    
+                    last_user_message['content'].append({
+                        "type": "image_url",
+                        "image_url": {"url": image_url}
+                    })
 
             response = client.chat.completions.create(
                 model=model_name,
@@ -43,11 +57,10 @@ class OpenAIModel(BaseLanguageModel):
                 max_tokens=4096,
                 temperature=0.7
             )
-            # 返回模型的响应内容，而不是打印它
             return response.choices[0].message.content
         except Exception as e:
-            # 做好异常处理
-            return f"调用 API 时出错: {e}"
+            # 向上抛出异常，让视图层统一处理
+            raise e
 
 class ZhipuAIModel(OpenAIModel):
     """

@@ -25,43 +25,55 @@ apiClient.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // 关键修改：如果请求本身就是去刷新 token，或者状态码不是 401，就直接失败，不要进入刷新逻辑
-    if (originalRequest.url === '/token/refresh/' || error.response.status !== 401 || originalRequest._retry) {
-      return Promise.reject(error);
-    }
-
-    originalRequest._retry = true;
-
-    try {
-      const refreshToken = localStorage.getItem('refresh_token');
-      if (!refreshToken) {
-        console.error("No refresh token available for refresh attempt.");
-        // 如果没有刷新令牌，直接拒绝，不要再尝试了
+    // --- 关键修改：确保 error.response 存在，并且状态码是 401 ---
+    if (error.response && error.response.status === 401 && !originalRequest._retry) {
+      
+      // 避免对刷新请求本身进行重试
+      if (originalRequest.url === '/token/refresh/') {
+        console.error("Refresh token is invalid or expired. Redirecting to login.");
+        // 在这里处理登出逻辑，例如清除 token 并跳转页面
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        // window.location.href = '/login'; 
         return Promise.reject(error);
       }
 
-      // 调用刷新 token 的接口
-      const { data } = await apiClient.post('/token/refresh/', {
-        refresh: refreshToken,
-      });
+      originalRequest._retry = true; // 标记为已重试
 
-      // 刷新成功，更新 localStorage 中的 access token
-      localStorage.setItem('access_token', data.access);
+      try {
+        const refreshToken = localStorage.getItem('refresh_token');
+        if (!refreshToken) {
+          console.error("No refresh token available.");
+          return Promise.reject(error);
+        }
 
-      // 更新原始请求的 Authorization 头并重新发送
-      apiClient.defaults.headers.common['Authorization'] = `Bearer ${data.access}`;
-      originalRequest.headers['Authorization'] = `Bearer ${data.access}`;
-      return apiClient(originalRequest);
+        // 使用 refresh token 请求新的 access token
+        const response = await apiClient.post('/token/refresh/', {
+          refresh: refreshToken,
+        });
+        
+        const newAccessToken = response.data.access;
 
-    } catch (refreshError) {
-      console.error("Token refresh failed:", refreshError);
-      // 如果刷新也失败了，清除所有令牌
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
-      // 可以选择在这里跳转到登录页面
-      // window.location.href = '/login';
-      return Promise.reject(refreshError);
+        // 更新 localStorage 和 apiClient 的默认头
+        localStorage.setItem('access_token', newAccessToken);
+        apiClient.defaults.headers.common['Authorization'] = `Bearer ${newAccessToken}`;
+        originalRequest.headers['Authorization'] = `Bearer ${newAccessToken}`;
+
+        // 重新发起原始请求
+        return apiClient(originalRequest);
+
+      } catch (refreshError) {
+        console.error("Token refresh failed:", refreshError);
+        // 清除本地存储的 token
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        // window.location.href = '/login';
+        return Promise.reject(refreshError);
+      }
     }
+
+    // 对于其他错误（包括网络错误、非401错误等），直接拒绝
+    return Promise.reject(error);
   }
 );
 
