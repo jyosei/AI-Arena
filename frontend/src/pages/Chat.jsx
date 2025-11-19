@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { List, Avatar, Input, Button, Spin, message as antdMessage, Typography, Row, Col, Space, Alert } from 'antd';
-import { SendOutlined, UserOutlined, RobotOutlined } from '@ant-design/icons';
-import { ArrowUp } from 'lucide-react';
+import { List, Avatar, Input, Button, Spin, message as antdMessage, Typography, Row, Col, Space, Alert ,Tooltip} from 'antd';
+import { SendOutlined, UserOutlined, RobotOutlined, PaperClipOutlined, CloseCircleFilled,PictureOutlined  } from '@ant-design/icons';
 import apiClient from '../api/apiClient';
 import request from '../api/request';
 import { useChat } from '../contexts/ChatContext';
@@ -14,7 +13,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import remarkBreaks from 'remark-breaks';
-
+import { Plus, Globe, Image as ImageIcon, Code } from 'lucide-react';
 // 与 ChatDialog 一致：将 \(...\)/\[...\] 转为 $...$/$$..$$ ，保持代码块原样
 function normalizeTexDelimiters(text) {
   if (!text) return '';
@@ -48,7 +47,14 @@ export default function ChatPage() {
 
   // 从 location.state 获取初始消息
   const initialPrompt = location.state?.initialPrompt;
-
+  const iconButtonStyle = {
+    width: '40px',
+    height: '40px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderColor: '#e0e0e0',
+  };
   // 当进入聊天页面时，恢复保存的模式和模型选择
   React.useEffect(() => {
     if (savedMode && savedMode !== mode) {
@@ -81,11 +87,26 @@ export default function ChatPage() {
   const [voted, setVoted] = useState(false);
   const [directChatVoted, setDirectChatVoted] = useState(false);
   const [battleError, setBattleError] = useState(null);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const imageModels = useMemo(() => models.filter(m => m.task === 'image'), [models]);
+  const textModels = useMemo(() => models.filter(m => m.task !== 'image'), [models]);
+
+  // --- 关键修改 1: 添加图片状态和 Ref ---
+  const [uploadedImage, setUploadedImage] = useState(null); // 存储 File 对象
+  const imageInputRef = useRef(null); // 用于触发隐藏的 input
 
   // 选择模型：优先使用对话保存的模型，然后使用 ModeContext 的 leftModel，最后回退到第一个 models
   const savedModelName = conv?.model_name;
-  const modelName = savedModelName || leftModel || (models && models.length > 0 ? models[0].name : null);
-  const model = models.find(m => m.name === modelName) || (models[0] || null);
+  const modelName = useMemo(() => {
+    if (isGeneratingImage) {
+      // 如果是生成图片模式，从图片模型中选择
+      return leftModel && imageModels.some(m => m.name === leftModel) ? leftModel : imageModels[0]?.name;
+    }
+    // 否则，使用现有逻辑
+    return conv?.model_name || leftModel || textModels[0]?.name;
+  }, [isGeneratingImage, leftModel, conv?.model_name, textModels, imageModels]);
+
+  const model = models.find(m => m.name === modelName) || null;
 
   // 注意：不要在模式切换时清空消息，因为用户可能想保留当前会话的历史
 
@@ -107,7 +128,9 @@ export default function ChatPage() {
           content: msg.content,
           isUser: msg.is_user,
           model_name: msg.model_name,
-          created_at: msg.created_at
+          created_at: msg.created_at,
+          // --- 关键修改: 加载历史图片 ---
+          image: msg.image || null,
         }));
         
         // 根据模式分配消息
@@ -228,16 +251,88 @@ export default function ChatPage() {
       // 清除 location.state 避免重复发送
       navigate(location.pathname, { replace: true, state: {} });
     }
-  }, [initialPrompt, loadingHistory]);
+  }, [initialPrompt, loadingHistory, loading, navigate]);
 
+  // --- 关键修改 2: 添加图片选择和移除的处理函数 ---
+  const handleImageUpload = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      setUploadedImage(file);
+    }
+    event.target.value = null; // 允许重复选择同一文件
+  };
+
+  const removeImage = () => {
+    setUploadedImage(null);
+  };
+  const toggleImageGeneration = () => {
+    setIsGeneratingImage(prev => {
+      const nextState = !prev;
+      if (nextState) {
+        // 进入生成图片模式
+        setUploadedImage(null); // 清除已上传的图片
+        if (imageModels.length > 0) {
+          setLeftModel(imageModels[0].name); // 自动选择第一个图片模型
+        } else {
+          antdMessage.warning('没有可用的图片生成模型。');
+          return false; // 阻止切换
+        }
+      } else {
+        // 退出生成图片模式，恢复到默认文本模型
+        if (textModels.length > 0) {
+          setLeftModel(textModels[0].name);
+        }
+      }
+      return nextState;
+    });
+  };
   const handleSend = async () => {
-    if (!inputValue.trim()) return;
+    // --- 关键修改 3: 更新发送条件 ---
+    if (!inputValue.trim() && !uploadedImage) return;
 
     const currentPrompt = inputValue;
+    const currentImage = uploadedImage; // 获取当前图片 File 对象
     setCurrentInput(currentPrompt);
     setInputValue('');
+    setUploadedImage(null); // 发送后清空
     setLoading(true);
 
+    // --- 关键修改 4: 创建包含图片预览 URL 的用户消息 ---
+    const userMessage = { 
+      id: Date.now(), 
+      content: currentPrompt, 
+      isUser: true,
+      image: currentImage ? URL.createObjectURL(currentImage) : null
+    };
+    if (isGeneratingImage) {
+      if (!model || model.task !== 'image') {
+        antdMessage.error('请先在顶部选择一个图片生成模型');
+        setLoading(false);
+        return;
+      }
+      setMessages(prev => [...prev, userMessage]);
+      try {
+        // 调用 evaluateModel，后端应能处理图片生成任务
+        const res = await evaluateModel(model.name, currentPrompt, id, null); // 图片生成不上传图片
+        // 假设后端返回的 response 是图片 URL
+        const aiMessage = { 
+          id: Date.now() + 1, 
+          content: `为您生成的图片，提示词: "${currentPrompt}"`, 
+          isUser: false,
+          image: res.data.response // 将返回的 URL 作为图片源
+        };
+        setMessages(prev => [...prev, aiMessage]);
+        // (可选) 保存AI消息到后端，需要后端支持保存图片URL
+      } catch (err) {
+        console.error('Image generation failed:', err);
+        const errMsg = { id: Date.now() + 1, content: `图片生成失败: ${err.response?.data?.error || err.message}`, isUser: false, isError: true };
+        setMessages(prev => [...prev, errMsg]);
+      } finally {
+        setLoading(false);
+        setIsGeneratingImage(false); // 生成后自动退出图片生成模式
+      }
+      return;
+    }
     // Direct Chat 模式
     if (mode === 'direct-chat') {
       if (!model) {
@@ -247,7 +342,6 @@ export default function ChatPage() {
       }
 
       setDirectChatVoted(false);
-      const userMessage = { id: Date.now(), content: currentPrompt, isUser: true };
       setMessages(prev => [...prev, userMessage]);
 
       // 如果用户已登录，保存用户消息到后端
@@ -264,8 +358,8 @@ export default function ChatPage() {
       }
 
       try {
-        // 使用 URL 中的 id 作为 conversation_id，这样可以保持连续对话
-        const res = await evaluateModel(model.name, currentPrompt, id);
+        // --- 关键修改 5: 将图片文件传递给 API ---
+        const res = await evaluateModel(model.name, currentPrompt, id, currentImage);
         const aiMessage = { id: Date.now() + 1, content: res.data.response, isUser: false };
         setMessages(prev => [...prev, aiMessage]);
 
@@ -301,7 +395,6 @@ export default function ChatPage() {
       }
 
       setVoted(false);
-      const userMessage = { content: currentPrompt, isUser: true };
       setLeftMessages(prev => [...prev, userMessage]);
       setRightMessages(prev => [...prev, userMessage]);
 
@@ -321,61 +414,28 @@ export default function ChatPage() {
       try {
         // 使用 URL 中的 id 作为 conversation_id，保持连续对话
         const [leftResponse, rightResponse] = await Promise.all([
-          evaluateModel(leftModel, currentPrompt, id).catch(err => ({ error: err })),
-          evaluateModel(rightModel, currentPrompt, id).catch(err => ({ error: err }))
+          evaluateModel(leftModel, currentPrompt, id, currentImage).catch(err => ({ error: err })),
+          evaluateModel(rightModel, currentPrompt, id, currentImage).catch(err => ({ error: err }))
         ]);
 
-        if (leftResponse.error) {
-          const errorMessage = { 
-            content: `调用模型出错: ${leftResponse.error.response?.data?.detail || leftResponse.error.message}`, 
-            isUser: false,
-            isError: true
-          };
-          setLeftMessages(prev => [...prev, errorMessage]);
-        } else {
-          const aiMessage = { content: leftResponse.data.response, isUser: false };
-          setLeftMessages(prev => [...prev, aiMessage]);
-          
-          // 保存左侧模型的 AI 回复
-          if (user && id) {
-            try {
-              await request.post('models/chat/message/', {
-                conversation_id: id,
-                content: leftResponse.data.response,
-                is_user: false,
-                model_name: leftModel
-              });
-            } catch (err) {
-              console.error('Failed to save left AI message:', err);
+        const processResponse = async (response, modelName, setMessagesCallback) => {
+          if (response.error) {
+            const errorMessage = { content: `调用模型出错: ${response.error.response?.data?.detail || response.error.message}`, isUser: false, isError: true };
+            setMessagesCallback(prev => [...prev, errorMessage]);
+          } else {
+            const aiMessage = { content: response.data.response, isUser: false };
+            setMessagesCallback(prev => [...prev, aiMessage]);
+            if (user && id) {
+              try {
+                await request.post('models/chat/message/', { conversation_id: id, content: response.data.response, is_user: false, model_name: modelName });
+              } catch (err) { console.error(`Failed to save ${modelName} AI message:`, err); }
             }
           }
-        }
+        };
 
-        if (rightResponse.error) {
-          const errorMessage = { 
-            content: `调用模型出错: ${rightResponse.error.response?.data?.detail || rightResponse.error.message}`, 
-            isUser: false,
-            isError: true
-          };
-          setRightMessages(prev => [...prev, errorMessage]);
-        } else {
-          const aiMessage = { content: rightResponse.data.response, isUser: false };
-          setRightMessages(prev => [...prev, aiMessage]);
-          
-          // 保存右侧模型的 AI 回复
-          if (user && id) {
-            try {
-              await request.post('models/chat/message/', {
-                conversation_id: id,
-                content: rightResponse.data.response,
-                is_user: false,
-                model_name: rightModel
-              });
-            } catch (err) {
-              console.error('Failed to save right AI message:', err);
-            }
-          }
-        }
+        await processResponse(leftResponse, leftModel, setLeftMessages);
+        await processResponse(rightResponse, rightModel, setRightMessages);
+
       } catch (error) {
         setBattleError(`发生错误: ${error.message}`);
       } finally {
@@ -429,8 +489,6 @@ export default function ChatPage() {
       setVoted(false);
       setBattleError(null);
 
-      const userMessage = { content: currentPrompt, isUser: true };
-      // 不要清空历史，而是追加消息
       setLeftMessages(prev => [...prev, userMessage]);
       setRightMessages(prev => [...prev, userMessage]);
 
@@ -448,55 +506,30 @@ export default function ChatPage() {
       }
 
       try {
-        // 使用已选择的模型和 conversation_id 进行连续对话
+        // --- 关键修改 6: 将图片文件传递给 API ---
         const [leftResponse, rightResponse] = await Promise.all([
-          evaluateModel(modelA, currentPrompt, id).catch(err => ({ error: err })),
-          evaluateModel(modelB, currentPrompt, id).catch(err => ({ error: err }))
+          evaluateModel(modelA, currentPrompt, id, currentImage).catch(err => ({ error: err })),
+          evaluateModel(modelB, currentPrompt, id, currentImage).catch(err => ({ error: err }))
         ]);
 
-        if (leftResponse.error) {
-          const errorMessage = { content: `调用模型出错: ${leftResponse.error.message}`, isUser: false, isError: true };
-          setLeftMessages(prev => [...prev, errorMessage]);
-        } else {
-          const aiMessage = { content: leftResponse.data.response, isUser: false };
-          setLeftMessages(prev => [...prev, aiMessage]);
-          
-          // 保存左侧模型的 AI 回复
-          if (user && id) {
-            try {
-              await request.post('models/chat/message/', {
-                conversation_id: id,
-                content: leftResponse.data.response,
-                is_user: false,
-                model_name: modelA
-              });
-            } catch (err) {
-              console.error('Failed to save left AI message:', err);
+        const processResponse = async (response, modelName, setMessagesCallback) => {
+          if (response.error) {
+            const errorMessage = { content: `调用模型出错: ${response.error.response?.data?.detail || response.error.message}`, isUser: false, isError: true };
+            setMessagesCallback(prev => [...prev, errorMessage]);
+          } else {
+            const aiMessage = { content: response.data.response, isUser: false };
+            setMessagesCallback(prev => [...prev, aiMessage]);
+            if (user && id) {
+              try {
+                await request.post('models/chat/message/', { conversation_id: id, content: response.data.response, is_user: false, model_name: modelName });
+              } catch (err) { console.error(`Failed to save ${modelName} AI message:`, err); }
             }
           }
-        }
+        };
 
-        if (rightResponse.error) {
-          const errorMessage = { content: `调用模型出错: ${rightResponse.error.message}`, isUser: false, isError: true };
-          setRightMessages(prev => [...prev, errorMessage]);
-        } else {
-          const aiMessage = { content: rightResponse.data.response, isUser: false };
-          setRightMessages(prev => [...prev, aiMessage]);
-          
-          // 保存右侧模型的 AI 回复
-          if (user && id) {
-            try {
-              await request.post('models/chat/message/', {
-                conversation_id: id,
-                content: rightResponse.data.response,
-                is_user: false,
-                model_name: modelB
-              });
-            } catch (err) {
-              console.error('Failed to save right AI message:', err);
-            }
-          }
-        }
+        await processResponse(leftResponse, modelA, setLeftMessages);
+        await processResponse(rightResponse, modelB, setRightMessages);
+
       } catch (error) {
         setBattleError(`发生错误: ${error.message}`);
       } finally {
@@ -556,25 +589,58 @@ export default function ChatPage() {
     }
   };
 
+  // --- 关键修改 7: 封装消息渲染逻辑以便复用 ---
+  const renderMessageContent = (message) => (
+    <>
+      {message.image && (
+        <img 
+          src={message.image} 
+          alt="用户上传" 
+          style={{ 
+            maxWidth: '100%', 
+            maxHeight: '250px', 
+            borderRadius: '4px', 
+            marginBottom: message.content ? '8px' : '0',
+            display: 'block'
+          }} 
+        />
+      )}
+      {message.isUser ? (
+        message.content
+      ) : (
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm, remarkBreaks, remarkMath]}
+          rehypePlugins={[rehypeKatex]}
+          linkTarget="_blank"
+          components={{
+            a: ({node, ...props}) => <a {...props} rel="noopener noreferrer" />,
+            code: ({inline, className, children, ...props}) => (<code className={className} {...props}>{children}</code>)
+          }}
+        >
+          {normalizeTexDelimiters(String(message.content || ''))}
+        </ReactMarkdown>
+      )}
+    </>
+  );
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '70vh' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)' }}>
+      {/* 页面标题部分 (保持不变) */}
       <div style={{ marginBottom: 12 }}>
         <h2 style={{ margin: 0 }}>{title}</h2>
         <div style={{ color: '#8c8c8c', marginTop: 4 }}>
-          {mode === 'battle' && '模式: Battle (盲测对战)'}
-          {mode === 'side-by-side' && `模式: Side by Side - ${leftModel || 'Model A'} vs ${rightModel || 'Model B'}`}
-          {mode === 'direct-chat' && `模式: Direct Chat - ${model ? model.name : '未选择'}`}
+          {isGeneratingImage && `模式: 生成图片 - ${model ? model.name : '未选择'}`}
+          {!isGeneratingImage && mode === 'battle' && '模式: Battle (盲测对战)'}
+          {!isGeneratingImage && mode === 'side-by-side' && `模式: Side by Side - ${leftModel || 'Model A'} vs ${rightModel || 'Model B'}`}
+          {!isGeneratingImage && mode === 'direct-chat' && `模式: Direct Chat - ${model ? model.name : '未选择'}`}
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: mode === 'direct-chat' ? 'auto' : 'hidden', border: '1px solid #f0f0f0', borderRadius: 8, padding: 16 }}>
+      <div style={{ flex: 1, overflowY: 'hidden', border: '1px solid #f0f0f0', borderRadius: 8, padding: 16 }}>
         {loadingHistory ? (
-          <div style={{ textAlign: 'center', marginTop: 40 }}>
-            <Spin /> 加载历史消息...
-          </div>
+          <div style={{ textAlign: 'center', marginTop: 40 }}><Spin /> 加载历史消息...</div>
         ) : mode === 'direct-chat' ? (
-          // Direct Chat 模式渲染
-          <>
+          <div style={{ height: '100%', overflowY: 'auto' }}>
             {messages.length === 0 ? (
               <div style={{ textAlign: 'center', color: '#999', marginTop: 40 }}>
                 <RobotOutlined style={{ fontSize: 36, marginBottom: 12 }} />
@@ -588,41 +654,21 @@ export default function ChatPage() {
                     <div style={{ display: 'flex', alignItems: 'flex-start', width: '100%', flexDirection: message.isUser ? 'row-reverse' : 'row' }}>
                       <Avatar icon={message.isUser ? <UserOutlined /> : <RobotOutlined />} style={{ backgroundColor: message.isUser ? '#000' : '#595959', margin: message.isUser ? '0 0 0 12px' : '0 12px 0 0' }} />
                       <div style={{ background: message.isUser ? '#000' : '#f5f5f5', color: message.isUser ? '#fff' : '#000', padding: '8px 12px', borderRadius: 12, maxWidth: '70%', overflowX: 'auto' }}>
-                        {message.isUser ? (
-                          message.content
-                        ) : (
-                          <ReactMarkdown
-                            remarkPlugins={[remarkGfm, remarkBreaks, remarkMath]}
-                            rehypePlugins={[rehypeKatex]}
-                            linkTarget="_blank"
-                            components={{
-                              a: ({node, ...props}) => <a {...props} rel="noopener noreferrer" />,
-                              code: ({inline, className, children, ...props}) => (
-                                <code className={className} {...props}>{children}</code>
-                              )
-                            }}
-                          >
-                            {normalizeTexDelimiters(String(message.content || ''))}
-                          </ReactMarkdown>
-                        )}
+                        {renderMessageContent(message)}
                       </div>
                     </div>
                   </List.Item>
                 )}
               />
             )}
-
             {loading && (
               <div style={{ display: 'flex', alignItems: 'flex-start', marginTop: 8 }}>
                 <Avatar icon={<RobotOutlined />} style={{ backgroundColor: '#595959', marginRight: 12 }} />
-                <div style={{ background: '#f5f5f5', padding: 8, borderRadius: 12 }}>
-                  <Spin size="small" /> AI 正在思考...
-                </div>
+                <div style={{ background: '#f5f5f5', padding: 8, borderRadius: 12 }}><Spin size="small" /> AI 正在思考...</div>
               </div>
             )}
-          </>
+          </div>
         ) : (
-          // Battle 和 Side-by-side 模式渲染
           <>
             {leftMessages.length === 0 && !loading ? (
               <div style={{ textAlign: 'center', paddingTop: '15vh' }}>
@@ -639,44 +685,21 @@ export default function ChatPage() {
                   <div style={{ flex: 1, overflowY: 'auto', paddingRight: '8px' }}>
                     {leftMessages.map((msg, index) => (
                       <div key={index} style={{ display: 'flex', justifyContent: msg.isUser ? 'flex-end' : 'flex-start', marginBottom: 12 }}>
-                        {!msg.isUser && (
-                          <Avatar icon={<RobotOutlined />} style={{ backgroundColor: '#595959', marginRight: 8 }} />
-                        )}
+                        {!msg.isUser && <Avatar icon={<RobotOutlined />} style={{ backgroundColor: '#595959', marginRight: 8 }} />}
                         <div style={{ background: msg.isUser ? '#000' : (msg.isError ? '#ffebee' : '#f5f5f5'), color: msg.isUser ? 'white' : (msg.isError ? '#c62828' : 'black'), padding: '8px 12px', borderRadius: '8px', maxWidth: '80%', wordBreak: 'break-word', overflowX: 'auto' }}>
-                          {msg.isUser || msg.isError ? (
-                            msg.content
-                          ) : (
-                            <ReactMarkdown
-                              remarkPlugins={[remarkGfm, remarkBreaks, remarkMath]}
-                              rehypePlugins={[rehypeKatex]}
-                              linkTarget="_blank"
-                              components={{
-                                a: ({node, ...props}) => <a {...props} rel="noopener noreferrer" />,
-                                code: ({inline, className, children, ...props}) => (
-                                  <code className={className} {...props}>{children}</code>
-                                )
-                              }}
-                            >
-                              {normalizeTexDelimiters(String(msg.content || ''))}
-                            </ReactMarkdown>
-                          )}
+                          {renderMessageContent(msg)}
                         </div>
-                        {msg.isUser && (
-                          <Avatar icon={<UserOutlined />} style={{ backgroundColor: '#000', marginLeft: 8 }} />
-                        )}
+                        {msg.isUser && <Avatar icon={<UserOutlined />} style={{ backgroundColor: '#000', marginLeft: 8 }} />}
                       </div>
                     ))}
                     {loading && (
                       <div style={{ display: 'flex', alignItems: 'center', marginTop: 12 }}>
                         <Avatar icon={<RobotOutlined />} style={{ backgroundColor: '#595959', marginRight: 8 }} />
-                        <div style={{ background: '#f5f5f5', padding: '8px 12px', borderRadius: '8px' }}>
-                          <Spin size="small" /> 思考中...
-                        </div>
+                        <div style={{ background: '#f5f5f5', padding: '8px 12px', borderRadius: '8px' }}><Spin size="small" /> 思考中...</div>
                       </div>
                     )}
                   </div>
                 </Col>
-
                 <Col span={12} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                   <div style={{ marginBottom: '16px', paddingBottom: '12px', borderBottom: '2px solid #f0f0f0', fontWeight: 'bold', fontSize: '16px', flexShrink: 0 }}>
                     {mode === 'side-by-side' ? (rightModel || 'Model B') : '模型 B'}
@@ -684,39 +707,17 @@ export default function ChatPage() {
                   <div style={{ flex: 1, overflowY: 'auto', paddingRight: '8px' }}>
                     {rightMessages.map((msg, index) => (
                       <div key={index} style={{ display: 'flex', justifyContent: msg.isUser ? 'flex-end' : 'flex-start', marginBottom: 12 }}>
-                        {!msg.isUser && (
-                          <Avatar icon={<RobotOutlined />} style={{ backgroundColor: '#595959', marginRight: 8 }} />
-                        )}
+                        {!msg.isUser && <Avatar icon={<RobotOutlined />} style={{ backgroundColor: '#595959', marginRight: 8 }} />}
                         <div style={{ background: msg.isUser ? '#000' : (msg.isError ? '#ffebee' : '#f5f5f5'), color: msg.isUser ? 'white' : (msg.isError ? '#c62828' : 'black'), padding: '8px 12px', borderRadius: '8px', maxWidth: '80%', wordBreak: 'break-word', overflowX: 'auto' }}>
-                          {msg.isUser || msg.isError ? (
-                            msg.content
-                          ) : (
-                            <ReactMarkdown
-                              remarkPlugins={[remarkGfm, remarkBreaks, remarkMath]}
-                              rehypePlugins={[rehypeKatex]}
-                              linkTarget="_blank"
-                              components={{
-                                a: ({node, ...props}) => <a {...props} rel="noopener noreferrer" />,
-                                code: ({inline, className, children, ...props}) => (
-                                  <code className={className} {...props}>{children}</code>
-                                )
-                              }}
-                            >
-                              {normalizeTexDelimiters(String(msg.content || ''))}
-                            </ReactMarkdown>
-                          )}
+                          {renderMessageContent(msg)}
                         </div>
-                        {msg.isUser && (
-                          <Avatar icon={<UserOutlined />} style={{ backgroundColor: '#000', marginLeft: 8 }} />
-                        )}
+                        {msg.isUser && <Avatar icon={<UserOutlined />} style={{ backgroundColor: '#000', marginLeft: 8 }} />}
                       </div>
                     ))}
                     {loading && (
                       <div style={{ display: 'flex', alignItems: 'center', marginTop: 12 }}>
                         <Avatar icon={<RobotOutlined />} style={{ backgroundColor: '#595959', marginRight: 8 }} />
-                        <div style={{ background: '#f5f5f5', padding: '8px 12px', borderRadius: '8px' }}>
-                          <Spin size="small" /> 思考中...
-                        </div>
+                        <div style={{ background: '#f5f5f5', padding: '8px 12px', borderRadius: '8px' }}><Spin size="small" /> 思考中...</div>
                       </div>
                     )}
                   </div>
@@ -727,25 +728,18 @@ export default function ChatPage() {
         )}
       </div>
 
-      {/* 投票按钮 - Battle 和 Side-by-side 模式 */}
       {(mode === 'side-by-side' || mode === 'battle') && leftMessages.length > 0 && !loading && (
         <div style={{ marginTop: 12, textAlign: 'center' }}>
           {battleError && <Alert message={battleError} type="error" closable onClose={() => setBattleError(null)} style={{ marginBottom: 8 }} />}
           <Title level={5}>哪个模型的回答更好？</Title>
           <Space>
-            <Button onClick={() => handleVote(mode === 'battle' ? 'model_a' : leftModel)} disabled={voted}>
-              ← 左边更好
-            </Button>
+            <Button onClick={() => handleVote(mode === 'battle' ? 'model_a' : leftModel)} disabled={voted}>← 左边更好</Button>
             <Button onClick={() => handleVote('tie')} disabled={voted}>不分上下</Button>
             <Button onClick={() => handleVote('bad')} disabled={voted}>都很差</Button>
-            <Button onClick={() => handleVote(mode === 'battle' ? 'model_b' : rightModel)} disabled={voted}>
-              → 右边更好
-            </Button>
+            <Button onClick={() => handleVote(mode === 'battle' ? 'model_b' : rightModel)} disabled={voted}>→ 右边更好</Button>
           </Space>
         </div>
       )}
-
-      {/* 投票按钮 - Direct Chat 模式 */}
       {mode === 'direct-chat' && messages.some(m => !m.isUser && !m.isError) && (
         <div style={{ marginTop: 12, textAlign: 'center' }}>
           <Space>
@@ -755,29 +749,71 @@ export default function ChatPage() {
         </div>
       )}
 
-      {/* 输入框 */}
-      <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
-        <TextArea 
-          value={inputValue} 
-          onChange={e => setInputValue(e.target.value)} 
-          placeholder="输入您的问题..." 
-          autoSize={{ minRows: 1, maxRows: 4 }} 
-          onPressEnter={(e) => { 
-            if (!e.shiftKey) { 
-              e.preventDefault(); 
-              handleSend(); 
-            } 
-          }} 
-        />
-        <Button 
-          type="primary" 
-          icon={<SendOutlined />} 
-          onClick={handleSend} 
-          disabled={!inputValue.trim() || loading}
-          loading={loading}
-        >
-          发送
-        </Button>
+        <div style={{ flexShrink: 0, padding: '0 20px 20px 20px' }}>
+        {uploadedImage && (
+          <div style={{ maxWidth: '800px', margin: '0 auto 12px auto', position: 'relative', display: 'inline-block' }}>
+            <img src={URL.createObjectURL(uploadedImage)} alt="preview" style={{ height: 60, borderRadius: 4, border: '1px solid #d9d9d9' }} />
+            <Button icon={<CloseCircleFilled />} size="small" shape="circle" danger onClick={removeImage} style={{ position: 'absolute', top: -8, right: -8 }} />
+          </div>
+        )}
+        <div style={{ 
+          border: '1px solid #e0e0e0',
+          borderRadius: '18px',
+          padding: '12px',
+          background: '#fff',
+          maxWidth: '800px',
+          margin: '0 auto',
+          display: 'flex',
+          flexDirection: 'column', // 垂直布局
+          gap: '12px' // 文本框和按钮行的间距
+        }}>
+          {/* 文本输入框 */}
+          <TextArea
+            autoSize={{ minRows: 1, maxRows: 6 }}
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            placeholder={isGeneratingImage ? "输入详细的图片描述..." : "输入您的问题..."}
+            style={{ 
+              background: 'transparent',
+              border: 'none',
+              boxShadow: 'none',
+              resize: 'none',
+              width: '100%',
+              fontSize: '16px',
+              padding: '8px'
+            }}
+            onPressEnter={e => !e.shiftKey && (e.preventDefault(), handleSend())}
+          />
+
+          {/* 隐藏的文件输入 */}
+          <input type="file" accept="image/*" ref={imageInputRef} onChange={handleImageUpload} style={{ display: 'none' }} />
+
+          {/* 功能按钮行 */}
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <Tooltip title="上传文件 (占位)">
+              <Button style={iconButtonStyle} icon={<Plus size={20} />} />
+            </Tooltip>
+            <Tooltip title="搜索网络 (占位)">
+              <Button style={iconButtonStyle} icon={<Globe size={20} />} />
+            </Tooltip>
+            <Tooltip title="上传图片">
+              <Button 
+                style={iconButtonStyle} 
+                icon={<ImageIcon size={20} />} 
+                onClick={() => imageInputRef.current.click()}
+                disabled={isGeneratingImage}
+              />
+            </Tooltip>
+            <Tooltip title="生成图片">
+              <Button 
+                style={iconButtonStyle} 
+                icon={<Code size={20} />} // 使用 Code 图标代表生成
+                onClick={toggleImageGeneration}
+                type={isGeneratingImage ? 'primary' : 'default'}
+              />
+            </Tooltip>
+          </div>
+        </div>
       </div>
     </div>
   );

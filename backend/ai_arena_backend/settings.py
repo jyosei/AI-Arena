@@ -65,12 +65,15 @@ WSGI_APPLICATION = 'ai_arena_backend.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': os.getenv('DB_ENGINE', 'django.db.backends.sqlite3'),
-        'NAME': os.path.join(BASE_DIR, os.getenv('DB_NAME', 'db.sqlite3')),
-        'USER': os.getenv('DB_USER'),
-        'PASSWORD': os.getenv('DB_PASSWORD'),
-        'HOST': os.getenv('DB_HOST'),
-        'PORT': os.getenv('DB_PORT'),
+        'ENGINE': 'django.db.backends.mysql', # <-- 使用 MySQL 引擎
+        'NAME': os.environ.get('DB_NAME'),         # <-- 从环境变量读取数据库名
+        'USER': os.environ.get('DB_USER'),         # <-- 从环境变量读取用户名
+        'PASSWORD': os.environ.get('DB_PASSWORD'), # <-- 从环境变量读取密码
+        'HOST': os.environ.get('DB_HOST'),         # <-- 从环境变量读取主机 (即 'db')
+        'PORT': os.environ.get('DB_PORT'),         # <-- 从环境变量读取端口
+        'OPTIONS': {
+            'charset': 'utf8mb4',
+        }
     }
 }
 
