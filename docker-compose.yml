@@ -29,7 +29,9 @@ services:
       DB_PORT: '3306'
       # 在这里添加您的 API Key
       OPENAI_API_KEY: 'sk-ser2cEa4NSlALdseJwob4oube3Trg0NOLwvXEH7yUAeYy9k9' 
-    command: sh -c "chmod +x ./wait-for-db.sh && ./wait-for-db.sh db 'python manage.py migrate && python manage.py runserver 0.0.0.0:8000'"
+    # 使用 "sh wait-for-db.sh" 而非直接 ./wait-for-db.sh，规避 Windows CRLF 行尾可能导致的 shebang 解析失败 (/bin/sh\r not found) 问题。
+    # 传递的后续命令不再用单引号包裹，确保脚本中 exec 能正确分词并执行 migrate 与 runserver。
+    command: sh -c "sh wait-for-db.sh db python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
 
   frontend: # <-- 🌟 确保这里有正确的缩进，使其成为 services 的子项
     build:
