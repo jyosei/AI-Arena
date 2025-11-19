@@ -8,8 +8,10 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
 
+    # 调整依赖：移除对 forum 0002 的依赖，改为依赖 forum 初始迁移，避免在开发环境缺失 0002 时阻塞。
+    # Notification 仅使用 ForumPost/ForumComment，不需要 ForumCommentImage。
     dependencies = [
-        ('forum', '0002_forumcommentimage'),
+        ('forum', '0001_initial'),
         ('users', '0002_alter_user_groups_alter_user_user_permissions'),
     ]
 

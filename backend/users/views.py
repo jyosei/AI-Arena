@@ -1,27 +1,89 @@
-from rest_framework import generics
+from rest_framework import generics, permissions, status
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from .models import User  # 从 users 应用自己的 models 导入 User
-from .serializers import UserSerializer
+from rest_framework.views import APIView
+from .models import User, Notification
+from .serializers import (
+    UserSerializer,
+    ChangePasswordSerializer,
+    NotificationSerializer,
+)
+
 
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    permission_classes = [AllowAny]
-    authentication_classes = [] # 👈 添加这一行，告诉DRF不要对这个视图进行认证
-    
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []  # 禁用认证，允许匿名注册
+
     def create(self, request, *args, **kwargs):
         try:
-            response = super().create(request, *args, **kwargs)
-            return response
+            return super().create(request, *args, **kwargs)
         except Exception as e:
-            if hasattr(e, 'detail'):
-                return Response({'error': e.detail}, status=400)
-            return Response({'error': str(e)}, status=400)
+            detail = getattr(e, 'detail', str(e))
+            return Response({'error': detail}, status=status.HTTP_400_BAD_REQUEST)
+
 
 class ProfileView(generics.RetrieveUpdateAPIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
     serializer_class = UserSerializer
 
-    def get_object(self):
-        return self.request.user
+    def get_object(self):  # type: ignore[override]
+        return self.request.user  # type: ignore[return-value]
+
+
+class ChangePasswordView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = ChangePasswordSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        validated = getattr(serializer, 'validated_data', {}) or {}
+        new_password = validated.get('new_password')
+        if not new_password:
+            return Response({'detail': '新密码缺失'}, status=status.HTTP_400_BAD_REQUEST)
+        user: User = request.user  # type: ignore[assignment]
+        user.set_password(new_password)
+        user.save(update_fields=['password'])
+        return Response({'detail': '密码修改成功'}, status=status.HTTP_200_OK)
+
+
+class NotificationListView(generics.ListAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = NotificationSerializer
+
+    def get_queryset(self):  # type: ignore[override]
+        qs = Notification.objects.filter(recipient=self.request.user).select_related('actor')
+        request = getattr(self, 'request', None)
+        query_params = getattr(request, 'query_params', getattr(request, 'GET', {})) if request else {}
+        unread = query_params.get('unread') if isinstance(query_params, dict) else None
+        if unread == 'true':
+            qs = qs.filter(is_read=False)
+        return qs.order_by('-created_at')[:200]
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        unread_count = queryset.filter(is_read=False).count()
+        return Response({'results': serializer.data, 'unread_count': unread_count})
+
+
+class NotificationMarkReadView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        try:
+            notification = Notification.objects.get(pk=pk, recipient=request.user)
+        except Notification.DoesNotExist:
+            return Response({'detail': '通知不存在'}, status=status.HTTP_404_NOT_FOUND)
+        if not notification.is_read:
+            notification.is_read = True
+            notification.save(update_fields=['is_read'])
+        return Response({'detail': '已标记为已读'})
+
+
+class NotificationMarkAllReadView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        Notification.objects.filter(recipient=request.user, is_read=False).update(is_read=True)
+        return Response({'detail': '全部已标记为已读'})

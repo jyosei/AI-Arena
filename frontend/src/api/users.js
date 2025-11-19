@@ -14,9 +14,7 @@ export function updateProfile(payload) {
       formData.append(key, value);
     }
   });
-  return request.put('users/profile/', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  });
+  return request.put('users/profile/', formData);
 }
 
 export function changePassword(current_password, new_password) {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layout, Menu, Dropdown, Button, Avatar, Space, Select, Typography, Form, Input, Modal, message, Tooltip } from 'antd';
+import { Layout, Menu, Dropdown, Button, Avatar, Space, Select, Typography, Form, Input, Modal, message } from 'antd';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useMode } from '../contexts/ModeContext';
 import { useChat } from '../contexts/ChatContext';
@@ -8,12 +8,9 @@ import {
   TrophyOutlined, 
   UserOutlined, 
   LogoutOutlined, 
-  ThunderboltOutlined, 
-  TableOutlined, 
   MessageOutlined, // <-- 确保这个图标已导入
   DownOutlined,
   DeleteOutlined,
-  HistoryOutlined,
   CloseOutlined
 } from '@ant-design/icons';
 import{
@@ -22,6 +19,7 @@ import{
     SendHorizontal,
 }from 'lucide-react';
 import RegisterModal from './RegisterModal';
+import NotificationBell from './NotificationBell.jsx';
 import { useIntl } from 'react-intl';
 import AuthContext from '../contexts/AuthContext.jsx';
 const { Sider, Content, Header } = Layout;
@@ -330,8 +328,12 @@ const AppLayout = () => {
 
           {isLoggedIn ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+              <NotificationBell />
               <Avatar icon={<UserOutlined />} style={{ background: '#000' }} />
               <span style={{ fontWeight: 500, fontSize: 16 }}>{userEmail}</span>
+              <Button shape="round" style={{ borderRadius: 20, fontWeight: 500 }} onClick={() => navigate('/user-center')}>
+                个人中心
+              </Button>
               <Button icon={<LogoutOutlined />} shape="round" type="default" style={{ borderRadius: 20, fontWeight: 500 }} onClick={handleLogout}>
                 退出登录
               </Button>

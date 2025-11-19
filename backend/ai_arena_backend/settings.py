@@ -14,7 +14,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.getenv('SECRET_KEY', 'default-secret-key')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DEBUG', '0') == '1'
+DEBUG = os.getenv('DEBUG', '1') == '1'
 
 ALLOWED_HOSTS = ['*']
 
@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     'users', 
     'datasets',
     'models_manager',
+    'forum',  # 注册论坛应用，确保其迁移被加载
 ]
 
 MIDDLEWARE = [
@@ -62,6 +63,9 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'ai_arena_backend.wsgi.application'
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 
 DATABASES = {
     'default': {

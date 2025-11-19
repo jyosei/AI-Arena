@@ -13,6 +13,8 @@ import Forum from "./pages/Forum.jsx";
 import ForumPost from "./pages/ForumPost.jsx"; // 新增导入
 import Chat from "./pages/Chat.jsx";
 import AppLayout from "./components/AppLayout.jsx";
+import ProtectedRoute from "./components/ProtectedRoute.jsx";
+import UserCenter from "./pages/UserCenter.jsx";
 
 // 2. 导入所有需要的 Context Provider
 import { AuthProvider } from "./contexts/AuthContext.jsx";
@@ -67,6 +69,14 @@ function App() {
                   <Route path="/leaderboard" element={<Leaderboard />} />
                   <Route path="/forum" element={<Forum />} />
                   <Route path="/forum/post/:id" element={<ForumPost />} /> {/* 新增路由 */}
+                  <Route
+                    path="/user-center"
+                    element={(
+                      <ProtectedRoute>
+                        <UserCenter />
+                      </ProtectedRoute>
+                    )}
+                  />
                 </Route>
                 <Route path="/login" element={<Login />} />
               </Routes>

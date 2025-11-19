@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Card,
@@ -15,7 +15,8 @@ import {
   Tag,
   Modal,
   Form,
-  message
+  message,
+  Upload
 } from 'antd';
 import {
   MessageOutlined,
@@ -24,77 +25,19 @@ import {
   FireOutlined,
   PlusOutlined,
   EyeOutlined,
-  LikeOutlined
+  LikeOutlined,
+  UploadOutlined
 } from '@ant-design/icons';
+import { fetchForumPosts, createForumPost, toggleForumPostLike } from '../api/forum';
+import { resolveMediaUrl } from '../utils/media';
+import AuthContext from '../contexts/AuthContext.jsx';
 
 const { Search } = Input;
 const { Option } = Select;
-const { Text, Title, Paragraph } = Typography;
+const { Text, Title } = Typography;
 const { TextArea } = Input;
 
-// 扩展的模拟数据
-const fakePosts = [
-  {
-    id: 1,
-    title: '大家觉得哪个模型在写代码方面表现最好？',
-    author: 'AI爱好者',
-    content: '最近在尝试不同的AI模型来辅助编程，发现有些模型在代码生成方面表现特别出色。大家有什么推荐的吗？',
-    replies: 12,
-    views: 152,
-    lastActivity: '5 分钟前',
-    createdAt: '2025-01-15 10:30:00',
-    avatar: 'https://joeschmoe.io/api/v1/random',
-    tags: ['技术讨论', '代码'],
-    category: '技术交流',
-    likes: 8,
-    isSticky: false
-  },
-  {
-    id: 2,
-    title: 'Compare 页面 Battle 模式的建议：希望增加匿名投票',
-    author: '产品经理',
-    content: '目前Compare页面的Battle模式显示用户信息，建议增加匿名投票功能让结果更客观。',
-    replies: 5,
-    views: 88,
-    lastActivity: '1 小时前',
-    createdAt: '2025-01-15 09:30:00',
-    avatar: 'https://joeschmoe.io/api/v1/female',
-    tags: ['功能建议'],
-    category: '功能建议',
-    likes: 3,
-    isSticky: true
-  },
-  {
-    id: 3,
-    title: 'Leaderboard 分数是如何计算的？',
-    author: '数据科学家',
-    content: '对排行榜的评分机制很感兴趣，想知道具体的算法和权重分配。',
-    replies: 3,
-    views: 201,
-    lastActivity: '3 小时前',
-    createdAt: '2025-01-15 07:30:00',
-    avatar: 'https://joeschmoe.io/api/v1/male',
-    tags: ['问题'],
-    category: '问题反馈',
-    likes: 2,
-    isSticky: false
-  },
-  {
-    id: 4,
-    title: '我用 GLM-4 写了一首诗，大家品鉴一下',
-    author: '诗人',
-    content: '春江潮水连海平，海上明月共潮生。滟滟随波千万里，何处春江无月明！',
-    replies: 28,
-    views: 540,
-    lastActivity: '8 小时前',
-    createdAt: '2025-01-14 14:30:00',
-    avatar: 'https://joeschmoe.io/api/v1/T',
-    tags: ['作品分享', 'GLM-4'],
-    category: '作品分享',
-    likes: 15,
-    isSticky: false
-  },
-];
+const PAGE_SIZE = 10;
 
 const categories = [
   { value: 'all', label: '全部板块' },
@@ -105,37 +48,41 @@ const categories = [
 ];
 
 // 发布新帖组件
-const PostForm = ({ visible, onCancel, onSuccess }) => {
+const PostForm = ({ visible, onCancel, onSubmit, submitting }) => {
   const [form] = Form.useForm();
-  const [submitting, setSubmitting] = useState(false);
+  const [fileList, setFileList] = useState([]);
+
+  useEffect(() => {
+    if (!visible) {
+      form.resetFields();
+      setFileList([]);
+    }
+  }, [visible, form]);
 
   const handleSubmit = async (values) => {
-    setSubmitting(true);
-    try {
-      // 模拟API调用
-      setTimeout(() => {
-        console.log('发布新帖:', values);
-        message.success('帖子发布成功');
-        form.resetFields();
-        onSuccess();
-        setSubmitting(false);
-      }, 1000);
-    } catch (error) {
-      message.error('发布失败');
-      setSubmitting(false);
-    }
+    const files = fileList.map((f) => f.originFileObj).filter(Boolean);
+    await onSubmit({ ...values, images: files });
+    form.resetFields();
+    setFileList([]);
   };
 
-  const handleCancel = () => {
-    form.resetFields();
-    onCancel();
+  const uploadProps = {
+    multiple: true,
+    fileList,
+    beforeUpload: () => false,
+    onChange: ({ fileList: next }) => setFileList(next.slice(0, 6)),
+    accept: 'image/*'
   };
 
   return (
     <Modal
       title="发布新帖"
       open={visible}
-      onCancel={handleCancel}
+      onCancel={() => {
+        form.resetFields();
+        setFileList([]);
+        onCancel();
+      }}
       onOk={() => form.submit()}
       confirmLoading={submitting}
       width={700}
@@ -187,6 +134,17 @@ const PostForm = ({ visible, onCancel, onSuccess }) => {
         >
           <Select mode="tags" placeholder="添加标签（可选）" style={{ width: '100%' }} />
         </Form.Item>
+
+        <Form.Item label="附件图片（最多6张）">
+          <Upload {...uploadProps} listType="picture-card">
+            {fileList.length >= 6 ? null : (
+              <div>
+                <UploadOutlined />
+                <div style={{ marginTop: 8 }}>上传</div>
+              </div>
+            )}
+          </Upload>
+        </Form.Item>
       </Form>
     </Modal>
   );
@@ -194,61 +152,135 @@ const PostForm = ({ visible, onCancel, onSuccess }) => {
 
 export default function Forum() {
   const navigate = useNavigate();
+  const { user } = useContext(AuthContext);
   const [loading, setLoading] = useState(false);
   const [posts, setPosts] = useState([]);
+  const [creatingPost, setCreatingPost] = useState(false);
   const [showPostForm, setShowPostForm] = useState(false);
   const [searchParams, setSearchParams] = useState({
     sort: 'latest',
     category: 'all',
     search: ''
   });
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPosts, setTotalPosts] = useState(0);
 
-  // 模拟数据获取
-  const fetchPosts = () => {
+  const loadPosts = useCallback(async (page = 1) => {
     setLoading(true);
-    setTimeout(() => {
-      setPosts(fakePosts);
+    try {
+      const params = {
+        ...searchParams,
+        page,
+        page_size: PAGE_SIZE,
+      };
+      const res = await fetchForumPosts(params);
+      const data = res.data;
+      const items = Array.isArray(data) ? data : (data.results || []);
+      const total = data.count !== undefined ? data.count : items.length;
+      setPosts(items);
+      setCurrentPage(page);
+      setTotalPosts(total);
+    } catch (error) {
+      const detail = error.response?.data?.detail || '帖子加载失败，请稍后重试';
+      message.error(detail);
+    } finally {
       setLoading(false);
-    }, 800);
-  };
+    }
+  }, [searchParams]);
 
   useEffect(() => {
-    fetchPosts();
-  }, []);
+    loadPosts(currentPage);
+  }, [loadPosts, currentPage]);
 
   const handleSearch = (value) => {
-    setSearchParams({ ...searchParams, search: value });
-    // 实际应该调用搜索API
-    console.log('搜索:', value);
+    setCurrentPage(1);
+    setSearchParams((prev) => ({ ...prev, search: value }));
   };
 
   const handleSortChange = (value) => {
-    setSearchParams({ ...searchParams, sort: value });
-    // 实际应该调用排序API
-    console.log('排序:', value);
+    setCurrentPage(1);
+    setSearchParams((prev) => ({ ...prev, sort: value }));
   };
 
   const handleCategoryChange = (value) => {
-    setSearchParams({ ...searchParams, category: value });
-    // 实际应该调用分类过滤API
-    console.log('分类:', value);
+    setCurrentPage(1);
+    setSearchParams((prev) => ({ ...prev, category: value }));
   };
 
-  const handleNewPostSuccess = () => {
-    setShowPostForm(false);
-    fetchPosts(); // 刷新帖子列表
+  const handleCreatePost = async ({ title, content, category, tags = [], images = [] }) => {
+    if (!user) {
+      message.warning('请先登录后再发布新帖');
+      return;
+    }
+    setCreatingPost(true);
+    try {
+      const res = await createForumPost({ title, content, category, tags, images });
+      message.success('帖子发布成功');
+      setShowPostForm(false);
+      await loadPosts(1);
+      if (res?.data?.id) {
+        navigate(`/forum/post/${res.data.id}`);
+      }
+    } catch (error) {
+      const detail = error.response?.data?.detail || '发布失败，请稍后重试';
+      message.error(detail);
+    } finally {
+      setCreatingPost(false);
+    }
   };
 
   const handlePostClick = (postId) => {
     navigate(`/forum/post/${postId}`);
   };
 
-  const IconText = ({ icon, text }) => (
-    <Space>
-      {React.createElement(icon)}
-      {text}
-    </Space>
-  );
+  const handleToggleLike = async (post) => {
+    if (!user) {
+      message.warning('请先登录后再点赞');
+      return;
+    }
+    try {
+      const res = await toggleForumPostLike(post.id);
+      const { liked, likes_count } = res.data;
+      setPosts((prev) => prev.map((item) => (item.id === post.id ? {
+        ...item,
+        likes_count,
+        is_liked: liked,
+      } : item)));
+    } catch (error) {
+      message.error('操作失败，请稍后再试');
+    }
+  };
+
+  const renderActions = (item) => ([
+    <Space key="list-author">
+      <UserOutlined />
+      {item.author?.username || '匿名用户'}
+    </Space>,
+    <Space key="list-comments">
+      <MessageOutlined />
+      {item.comments_count || 0}
+    </Space>,
+    <Space key="list-views">
+      <EyeOutlined />
+      {item.views || 0}
+    </Space>,
+    <Button
+      key="list-likes"
+      type="text"
+      icon={<LikeOutlined style={{ color: item.is_liked ? '#1677ff' : undefined }} />}
+      onClick={(e) => {
+        e.stopPropagation();
+        handleToggleLike(item);
+      }}
+      style={{ color: item.is_liked ? '#1677ff' : undefined }}
+    >
+      {item.likes_count || 0}
+    </Button>,
+    <Space key="list-activity">
+      <ClockCircleOutlined />
+      {item.last_activity ? new Date(item.last_activity).toLocaleString() : ''}
+    </Space>,
+  ]);
 
   return (
     <Card title="社区论坛">
@@ -297,7 +329,13 @@ export default function Forum() {
             type="primary" 
             size="large" 
             icon={<PlusOutlined />}
-            onClick={() => setShowPostForm(true)}
+            onClick={() => {
+              if (!user) {
+                message.warning('请先登录后再发布新帖');
+                return;
+              }
+              setShowPostForm(true);
+            }}
           >
             发布新帖
           </Button>
@@ -314,43 +352,27 @@ export default function Forum() {
           itemLayout="vertical"
           size="large"
           dataSource={posts}
+          rowKey={(item) => item.id}
+          pagination={{
+            current: currentPage,
+            total: totalPosts,
+            pageSize: PAGE_SIZE,
+            showSizeChanger: false,
+            onChange: (page) => setCurrentPage(page),
+          }}
           renderItem={(item) => (
             <List.Item
               key={item.id}
-              actions={[
-                <IconText
-                  icon={UserOutlined}
-                  text={item.author}
-                  key="list-author"
-                />,
-                <IconText
-                  icon={MessageOutlined}
-                  text={item.replies}
-                  key="list-replies"
-                />,
-                <IconText
-                  icon={EyeOutlined}
-                  text={item.views}
-                  key="list-views"
-                />,
-                <IconText
-                  icon={LikeOutlined}
-                  text={item.likes}
-                  key="list-likes"
-                />,
-                <IconText
-                  icon={ClockCircleOutlined}
-                  text={`最后回复 ${item.lastActivity}`}
-                  key="list-activity"
-                />,
-              ]}
+              style={{ cursor: 'pointer' }}
+              actions={renderActions(item)}
+              onClick={() => handlePostClick(item.id)}
               extra={
                 <Space direction="vertical" align="end">
-                  <Tag color={item.isSticky ? "red" : "blue"}>
+                  <Tag color={item.is_sticky ? 'red' : 'blue'}>
                     {item.category}
                   </Tag>
                   <div>
-                    {item.tags.map((tag) => (
+                    {(item.tags || []).map((tag) => (
                       <Tag key={tag} color="default">{tag}</Tag>
                     ))}
                   </div>
@@ -358,22 +380,20 @@ export default function Forum() {
               }
             >
               <List.Item.Meta
-                avatar={<Avatar src={item.avatar} icon={<UserOutlined />} />}
+                avatar={<Avatar src={resolveMediaUrl(item.author?.avatar)} icon={<UserOutlined />} />}
                 title={
-                  <a onClick={() => handlePostClick(item.id)} style={{ cursor: 'pointer' }}>
-                    <Title level={5} style={{ marginBottom: 0 }}>
-                      {item.isSticky && <Tag color="red" style={{ marginRight: 8 }}>置顶</Tag>}
-                      {item.title}
-                    </Title>
-                  </a>
+                  <Title level={5} style={{ marginBottom: 4 }}>
+                    {item.is_sticky && <Tag color="red" style={{ marginRight: 8 }}>置顶</Tag>}
+                    {item.title}
+                  </Title>
                 }
                 description={
                   <div>
                     <Text type="secondary">
-                      由 {item.author} 发布于 {item.createdAt}
+                      由 {item.author?.username || '匿名用户'} 发布于 {item.created_at ? new Date(item.created_at).toLocaleString() : ''}
                     </Text>
                     <div style={{ marginTop: 8 }}>
-                      <Text type="secondary">{item.content.substring(0, 100)}...</Text>
+                      <Text type="secondary">{item.excerpt || ''}</Text>
                     </div>
                   </div>
                 }
@@ -387,7 +407,8 @@ export default function Forum() {
       <PostForm
         visible={showPostForm}
         onCancel={() => setShowPostForm(false)}
-        onSuccess={handleNewPostSuccess}
+        onSubmit={handleCreatePost}
+        submitting={creatingPost}
       />
     </Card>
   );
