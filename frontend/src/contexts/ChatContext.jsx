@@ -32,11 +32,12 @@ export const ChatProvider = ({ children }) => {
       request.get('models/chat/history/')
         .then(res => {
           console.log('Backend chat history:', res.data);
-          // 将后端数据适配为前端历史记录项格式（id/title/model_name/time）
+          // 将后端数据适配为前端历史记录项格式（id/title/model_name/mode/time）
           const adapted = res.data.map(item => ({ 
             id: item.id, 
             title: item.title, 
             model_name: item.model_name,
+            mode: item.mode || 'direct-chat', // 如果后端没有 mode 字段，默认为 direct-chat
             time: item.created_at 
           }));
           setChatHistory(adapted);
@@ -65,14 +66,24 @@ export const ChatProvider = ({ children }) => {
   };
 
   // 添加新的聊天记录
-  const addChat = async (title, modelName) => {
+  const addChat = async (title, modelName, mode = 'direct-chat') => {
     // 如果用户已登录，优先将会话创建到后端
     if (user) {
       try {
-        console.log('Creating conversation on backend:', title, modelName);
-        const res = await request.post('models/chat/conversation/', { title, model_name: modelName });
+        console.log('Creating conversation on backend:', title, modelName, mode);
+        const res = await request.post('models/chat/conversation/', { 
+          title, 
+          model_name: modelName,
+          mode: mode  // 传递 mode 参数
+        });
         console.log('Conversation created:', res.data);
-        const newChat = { id: res.data.id, title: res.data.title, model_name: res.data.model_name, time: res.data.created_at };
+        const newChat = { 
+          id: res.data.id, 
+          title: res.data.title, 
+          model_name: res.data.model_name, 
+          mode: res.data.mode || mode,  // 使用后端返回的 mode，如果没有则用传入的
+          time: res.data.created_at 
+        };
         const updatedHistory = [newChat, ...chatHistory];
         setChatHistory(updatedHistory);
         // 同步到 localStorage
@@ -89,6 +100,7 @@ export const ChatProvider = ({ children }) => {
       id: Date.now(),
       title,
       model_name: modelName,
+      mode: mode,
       time: new Date().toLocaleString(),
     };
     const updatedHistory = [newChat, ...chatHistory];

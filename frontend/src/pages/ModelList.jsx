@@ -1,140 +1,18 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { 
-  Input, Button, Spin, Typography, Row, Col, 
-  Space, Avatar, Alert, message, Radio, Tooltip, Select, Upload 
-} from 'antd'; // 移除了 Modal
-import { RobotOutlined, UserOutlined, SendOutlined, LikeOutlined, DislikeOutlined, SwapOutlined, MehOutlined, TableOutlined, ThunderboltOutlined, MessageOutlined, PictureOutlined, PaperClipOutlined, CloseCircleOutlined } from '@ant-design/icons';
-import {
-  ArrowUp
-}from 'lucide-react'
+﻿import React, { useState } from 'react';
+import { Input, Button, Typography, message } from 'antd';
+import { ArrowUp } from 'lucide-react';
 import { useMode } from '../contexts/ModeContext';
-import { recordVote, generateImage, getImageStatus } from '../api/models';
 import { useChat } from '../contexts/ChatContext';
-import {evaluateModel } from '../api/models';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-import remarkBreaks from 'remark-breaks';
+import { useNavigate } from 'react-router-dom';
 
-// 与 ChatDialog 一致:将 \(...\)/\[...\] 转为 $...$/$$.$$,保持代码块原样
-function normalizeTexDelimiters(text) {
-  if (!text) return '';
-  const segments = text.split(/(```[\s\S]*?```)/g);
-  return segments
-    .map((seg) => {
-      if (seg.startsWith('```')) return seg;
-      let out = seg
-        .replace(/\\\[([\s\S]*?)\\\]/g, (m, p1) => `$$\n${p1}\n$$`)
-        .replace(/\\\\\[([\s\S]*?)\\\\\]/g, (m, p1) => `$$\n${p1}\n$$`);
-      out = out
-        .replace(/\\\(([\s\S]*?)\\\)/g, (m, p1) => `$${p1}$`)
-        .replace(/\\\\\(([\s\S]*?)\\\\\)/g, (m, p1) => `$${p1}$`);
-      return out;
-    })
-    .join('');
-}
-
-const { TextArea } = Input;
 const { Title, Paragraph } = Typography;
 
 export default function ArenaPage() {
-  const { mode, setMode,models, leftModel, rightModel, setLeftModel, setRightModel } = useMode();
+  const { mode, leftModel, rightModel } = useMode();
+  const { addChat } = useChat();
+  const navigate = useNavigate();
 
   const [prompt, setPrompt] = useState('');
-  const [messages, setMessages] = useState([]); // 用于 Direct Chat 模式
-  const [leftMessages, setLeftMessages] = useState([]); // 用于 Side-by-side 左侧模型
-  const [rightMessages, setRightMessages] = useState([]); // 用于 Side-by-side 右侧模型
-  const [battleLoading, setBattleLoading] = useState(false);
-  const [battleError, setBattleError] = useState(null);
-  const [currentInput, setCurrentInput] = useState(''); // <-- 添加这个 state
-    // 用于维护对话的 conversation ID
-    const [directChatConvId, setDirectChatConvId] = useState(null); // Direct Chat 的 conversation ID
-    const [leftConvId, setLeftConvId] = useState(null); // Side-by-side 左侧的 conversation ID
-    const [rightConvId, setRightConvId] = useState(null); // Side-by-side 右侧的 conversation ID
-    const [voted, setVoted] = useState(false); // 用于 Side-by-side 模式
-    const [directChatVoted, setDirectChatVoted] = useState(false); // 用于 Direct Chat 模式
-
-  const [imageTaskId, setImageTaskId] = useState(null);
-  const [imageUrl, setImageUrl] = useState(null);
-  const [imageError, setImageError] = useState(null);
-
-  const [generationMode, setGenerationMode] = useState('text');
-  const [uploadedImage, setUploadedImage] = useState(null); // 确保这个 state 存在
-
-  const messagesEndRef = React.useRef(null);
-  
-  useEffect(() => {
-      // 切换模式时,清空所有结果和 conversation ID
-    setMessages([]);
-    setLeftMessages([]);
-    setRightMessages([]);
-    setPrompt('');
-      setDirectChatConvId(null);
-      setLeftConvId(null);
-      setRightConvId(null);
-  }, [mode]);
-
-  // 自动滚动到底部
-  useEffect(() => {
-    if (mode === 'direct-chat') {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [messages, mode]);
-
-  useEffect(() => {
-    if (!imageTaskId) return;
-
-    const intervalId = setInterval(async () => {
-      try {
-        const response = await getImageStatus(imageTaskId);
-        const { status, image_url } = response.data;
-
-        if (status === 'completed') {
-          setImageUrl(image_url);
-          setImageTaskId(null); // 停止轮询
-          setBattleLoading(false); // 停止加载动画
-          clearInterval(intervalId);
-        } else if (status === 'failed') {
-          setImageError('图片生成失败。');
-          setImageTaskId(null);
-          setBattleLoading(false);
-          clearInterval(intervalId);
-        }
-      } catch (error) {
-        setImageError(`查询状态时出错: ${error.message}`);
-        setImageTaskId(null);
-        setBattleLoading(false);
-        clearInterval(intervalId);
-      }
-    }, 3000); // 每 3 秒查询一次
-
-    return () => clearInterval(intervalId);
-  }, [imageTaskId]);
-
-  const filteredModels = useMemo(() => {
-    if (generationMode === 'image') {
-      return models.filter(m => m.task === 'image');
-    }
-    // 默认返回所有非图片模型
-    return models.filter(m => m.task !== 'image' && m.task !== 'video'); // 假设未来还有 video
-  }, [models, generationMode]);
-
-  useEffect(() => {
-    if (filteredModels.length > 0) {
-      // 检查当前选中的模型是否在新的列表中
-      const currentModelIsValid = filteredModels.some(m => m.name === leftModel);
-      if (!currentModelIsValid) {
-        setLeftModel(filteredModels[0].name);
-        // 如果是 side-by-side 模式，也更新 rightModel
-        if (mode === 'side-by-side' && filteredModels.length > 1) {
-          setRightModel(filteredModels[1].name);
-        } else if (mode === 'side-by-side') {
-          setRightModel(filteredModels[0].name);
-        }
-      }
-    }
-  }, [filteredModels, generationMode]);
 
   const startBattle = async () => {
     // --- 关键修改：将 prompt 和 image 的校验提前 ---
@@ -355,59 +233,34 @@ export default function ArenaPage() {
     console.log("Submitting vote data:", voteData);
 
     try {
-      await recordVote(voteData);
-      message.success('感谢您的投票！');
-      setVoted(true);
+      const modelName = mode === 'direct-chat' ? leftModel : 
+                       mode === 'side-by-side' ? `${leftModel} vs ${rightModel}` :
+                       'Battle';
+      const title = currentPrompt.length > 30 ? currentPrompt.substring(0, 30) + '...' : currentPrompt;
+      const newChatId = await addChat(title, modelName, mode);
+      
+      if (newChatId) {
+        // 跳转到聊天页面，并通过 state 传递初始消息
+        navigate(`/chat/${newChatId}`, { 
+          state: { initialPrompt: currentPrompt } 
+        });
+      }
     } catch (error) {
-      const errorMsg = error.response?.data?.error || error.message;
-      console.error("Vote failed:", error.response?.data || error);
-      message.error(`投票失败: ${errorMsg}`);
-    }
-  };
-
-  const handleDirectChatVote = async (choice) => {
-    // --- 关键修复：将变量定义移到函数顶部 ---
-    const lastUserMessage = messages.filter(m => m.isUser).pop();
-    const lastAiMessage = messages.filter(m => !m.isUser && !m.isError).pop();
-
-    // 现在，检查逻辑可以正常工作
-    if (!lastUserMessage || !lastAiMessage) {
-      message.error("无法找到用于投票的对话。");
-      return;
-    }
-
-    const voteData = {
-      model_a: leftModel,
-      model_b: null,
-      prompt: lastUserMessage.content, // <-- 现在 lastUserMessage 是有定义的
-      winner: choice,
-    };
-
-    try {
-      await recordVote(voteData);
-      message.success('感谢您的反馈！');
-      setDirectChatVoted(true);
-    } catch (error) {
-      const errorMsg = error.response?.data?.error || error.message;
-      message.error(`提交反馈失败: ${errorMsg}`);
+      console.error('Failed to create chat:', error);
+      message.error('创建会话失败');
     }
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-      {/* --- 模型选择器区域 (根据模式显示/隐藏) --- */}
-      {mode !== 'battle' && (
-        <div style={{ padding: '10px 24px', background: '#fafafa', borderBottom: '1px solid #f0f0f0' }}>
-          {/* ... (模型选择器的 JSX 不变) ... */}
-        </div>
-      )}
-
-      {/* --- 聊天/对战窗口 (主体内容) --- */}
+      {/* 欢迎界面 */}
       <div style={{ 
         flex: 1, 
-        overflowY: (mode === 'side-by-side' || mode === 'battle') ? 'hidden' : 'auto', 
-        padding: '20px',
-        minHeight: 0
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: '20px'
       }}>
         {mode === 'battle' && leftMessages.length === 0 && !battleLoading && (
           <div style={{ textAlign: 'center', paddingTop: '20vh' }}>
@@ -619,64 +472,22 @@ export default function ArenaPage() {
         {imageError && <Alert message={imageError} type="error" style={{margin: '20px'}} />}
       </div>
 
-      {/* Side-by-side 和 Battle 模式下的投票按钮 */}
-      {(mode === 'side-by-side' || mode === 'battle') && leftMessages.length > 0 && !battleLoading && (
-        <div style={{ padding: '0 20px 12px 20px', textAlign: 'center', flexShrink: 0 }}>
-          <Title level={4}>哪个模型的回答更好？</Title>
-          <Space size="large">
-            {/* --- 关键修复：根据模式传递不同的值 --- */}
-            <Button 
-              onClick={() => handleVote(mode === 'battle' ? 'model_a' : leftModel)} 
-              disabled={voted}
-            >
-              ← 左边更好
-            </Button>
-            <Button onClick={() => handleVote('tie')} disabled={voted}>不分上下</Button>
-            <Button onClick={() => handleVote('bad')} disabled={voted}>都很差</Button>
-            <Button 
-              onClick={() => handleVote(mode === 'battle' ? 'model_b' : rightModel)} 
-              disabled={voted}
-            >
-              → 右边更好
-            </Button>
-          </Space>
-        </div>
-      )}
-
-      {mode === 'direct-chat' && messages.some(m => !m.isUser && !m.isError) && (
-        <div style={{ padding: '0 20px 12px 20px', textAlign: 'center', flexShrink: 0 }}>
-          <Space size="large">
-            <Button onClick={() => handleDirectChatVote('good')} disabled={directChatVoted}>👍 Good</Button>
-            <Button onClick={() => handleDirectChatVote('bad')} disabled={directChatVoted}>👎 Bad</Button>
-          </Space>
-        </div>
-      )}
-
+      {/* 输入框 */}
       <div style={{ padding: '0 20px 20px 20px', flexShrink: 0 }}>
-        {battleError && <Alert message={battleError} type="error" closable onClose={() => setBattleError(null)} style={{ marginBottom: 16 }} />}
-        
-        {/* 新的输入框容器 */}
         <div style={{ 
           border: '1px solid #e0e0e0',
           borderRadius: '18px',
           padding: '12px',
           background: '#fff',
+          maxWidth: '800px',
+          margin: '0 auto'
         }}>
-          {/* 上传图片缩略图 */}
-          {uploadedImage && (
-            <div style={{ position: 'relative', display: 'inline-block', marginBottom: '8px' }}>
-              <img src={URL.createObjectURL(uploadedImage)} alt="preview" style={{ height: '50px', borderRadius: '4px' }} />
-              <Button icon={<CloseCircleOutlined />} size="small" shape="circle" style={{ position: 'absolute', top: '-5px', right: '-5px', background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none' }} onClick={() => setUploadedImage(null)} />
-            </div>
-          )}
-
-          {/* 输入框本身 */}
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-            <TextArea
+            <Input.TextArea
               autoSize={{ minRows: 1, maxRows: 6 }}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder={uploadedImage ? '可以附上问题...' : (generationMode === 'image' ? '输入画面描述来生成图片...' : '输入任何内容...')}
+              placeholder="输入任何内容开始对话..."
               style={{ 
                 paddingRight: '50px',
                 background: 'transparent',
@@ -694,27 +505,18 @@ export default function ArenaPage() {
               icon={<ArrowUp />}
               size="large"
               onClick={startBattle}
-              loading={battleLoading}
-              disabled={!prompt.trim() && !uploadedImage}
+              disabled={!prompt.trim()}
+              style={{
+                position: 'absolute',
+                right: '8px',
+                borderRadius: '50%',
+                width: '40px',
+                height: '40px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
             />
-          </div>
-
-          {/* 工具栏：模式切换按钮 */}
-          <div style={{ marginTop: '12px', paddingTop: '8px', borderTop: '1px solid #f0f0f0' }}>
-            <Space>
-              <Upload accept="image/*" showUploadList={false} beforeUpload={file => { setUploadedImage(file); return false; }}>
-                <Tooltip title="上传图片">
-                  <Button icon={<PaperClipOutlined />} />
-                </Tooltip>
-              </Upload>
-              <Tooltip title={generationMode === 'text' ? "切换到图片生成" : "切换到文本生成"}>
-                <Button 
-                  icon={<PictureOutlined />}
-                  type={generationMode === 'image' ? 'primary' : 'default'}
-                  onClick={() => setGenerationMode(prev => prev === 'text' ? 'image' : 'text')}
-                />
-              </Tooltip>
-            </Space>
           </div>
         </div>
       </div>

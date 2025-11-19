@@ -36,7 +36,19 @@ export const AuthProvider = ({ children }) => {
         const decodedUser = jwtDecode(access);
         setUser(decodedUser);
         
-        return true;
+        // 获取用户资料
+        console.log('Fetching user profile...');
+        try {
+          const profile = await request.get('users/profile/');
+          console.log('Profile response:', profile.data);
+          setUser(profile.data);
+          return true;
+        } catch (profileError) {
+          console.error('Profile fetch error:', profileError);
+          localStorage.removeItem('access_token');
+          localStorage.removeItem('refresh_token');
+          throw new Error('无法获取用户资料');
+        }
       }
       return false;
 
