@@ -13,23 +13,48 @@ export const compareModels = (ids = []) => {
 };
   
 /**
- * 评估单个模型
+ * 评估模型（统一接口，支持文本和多模态）
  * @param {string} modelName - 模型名称
- * @param {string} prompt - 用户输入的提示
- * @param {number|null} conversationId - 对话 ID,如果为 null 则创建新对话
- * @param {boolean} is_battle - 是否为对战模式
- * @returns Promise - 返回 { response, conversation_id }
+ * @param {string} prompt - 文本提示
+ * @param {string|null} conversationId - 对话ID
+ * @param {File|null} imageFile - 上传的图片文件
+ * @returns Promise
  */
-export const evaluateModel = async (modelName, prompt, conversationId = null, is_battle = false) => {
-  const payload = {
-    model_name: modelName, // 关键修复：将 'model' 改为 'model_name'
-    prompt: prompt,
-    conversation_id: conversationId,
-    is_battle: is_battle,
-  };
-  return apiClient.post('/models/evaluate/', payload);
-};
+export const evaluateModel = (modelName, prompt, conversationId, imageFile) => {
+  
+  // 检查是否存在图片文件。imageFile 应该是来自 antd beforeUpload 的原始 File 对象。
+  if (imageFile && imageFile instanceof File) {
+    
+    // 如果有图片，必须使用 FormData
+    const formData = new FormData();
+    
+    // 添加所有需要的字段
+    formData.append('model_name', modelName);
+    formData.append('prompt', prompt || ''); // 确保 prompt 即使为空也作为空字符串发送
+    formData.append('conversation_id', conversationId || ''); // 确保 conversationId 存在
+    
+    // 将 File 对象添加到 FormData 中
+    formData.append('image', imageFile, imageFile.name); 
 
+    // 使用 apiClient 发送 FormData 请求
+    // 关键：必须手动设置 Content-Type 为 multipart/form-data
+    // 注意：axios 会自动处理 boundary，所以我们不需要自己设置完整的 Content-Type 头
+    return apiClient.post('/models/evaluate/', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+
+  } else {
+    
+    // 如果没有图片，或者 imageFile 不是一个 File 对象，则回退到 JSON 格式
+    return apiClient.post('/models/evaluate/', {
+      model_name: modelName,
+      prompt: prompt,
+      conversation_id: conversationId,
+    });
+  }
+};
 export const recordVote = (data) => {
   const payload = {
     model_a: data.model_a,

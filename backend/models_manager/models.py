@@ -33,7 +33,8 @@ class ChatConversation(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name='chat_conversations'
+        null = True,
+        blank = True
     )
     title = models.CharField(max_length=200)
     model_name = models.CharField(max_length=100, blank=True, null=True, help_text="对话使用的模型名称")
@@ -50,13 +51,19 @@ class ChatMessage(models.Model):
         on_delete=models.CASCADE,
         related_name='messages'
     )
+    # --- 关键修改：使用 role 字段代替 is_user ---
+    ROLE_CHOICES = (
+        ('user', 'User'),
+        ('assistant', 'Assistant'),
+    )
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='user')
     content = models.TextField()
-    is_user = models.BooleanField(default=True, help_text="True表示用户消息，False表示AI回复")
     created_at = models.DateTimeField(auto_now_add=True)
-
+    image = models.ImageField(upload_to='chat/', null=True, blank=True)
+    
     class Meta:
         ordering = ['created_at']
 
     def __str__(self):
-        sender = "用户" if self.is_user else "AI"
-        return f"{sender}: {self.content[:50]}..."
+        # --- 相应地更新 __str__ 方法 ---
+        return f"{self.get_role_display()}: {self.content[:50]}..."

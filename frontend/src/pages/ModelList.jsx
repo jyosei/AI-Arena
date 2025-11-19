@@ -137,15 +137,17 @@ export default function ArenaPage() {
   }, [filteredModels, generationMode]);
 
   const startBattle = async () => {
-    if (!prompt.trim()) {
+    // --- 关键修改：将 prompt 和 image 的校验提前 ---
+    if (!prompt.trim() && !uploadedImage) {
+      // 如果文本和图片都为空，则不执行任何操作
       return;
     }
 
-    const currentPrompt = prompt; // 将当前 prompt 保存到局部变量中
-    setCurrentInput(currentPrompt); // <-- 保存当前输入
-    setPrompt(''); // 立即清空输入框
-
-    const isImageModel = leftModel === 'dall-e-3'; // 举例
+    const currentPrompt = prompt;
+    const currentImage = uploadedImage;
+    setCurrentInput(currentPrompt);
+    setPrompt('');
+    setUploadedImage(null);
 
     // --- 1. 统一处理图片生成逻辑，无论在哪种 mode 下 ---
     if (generationMode === 'image') {
@@ -173,13 +175,22 @@ export default function ArenaPage() {
 
     // Direct Chat 模式
     if (mode === 'direct-chat') {
+      // --- 关键修改：在调用 API 前，检查 leftModel 是否存在 ---
+      if (!leftModel) {
+        message.error('请先在上方选择一个模型！');
+        // 将输入框和图片恢复，以便用户可以重新发送
+        setPrompt(currentPrompt);
+        setUploadedImage(currentImage);
+        return; // 阻止后续代码执行
+      }
+
       setDirectChatVoted(false);
-      const userMessage = { content: currentPrompt, isUser: true };
+      const userMessage = { content: currentPrompt, isUser: true, image: currentImage ? URL.createObjectURL(currentImage) : null };
       setMessages(prev => [...prev, userMessage]);
       setBattleLoading(true);
-
       try {
-        const response = await evaluateModel(leftModel, currentPrompt, directChatConvId);
+        // 现在这里的 leftModel 一定是有值的
+        const response = await evaluateModel(leftModel, currentPrompt, directChatConvId, currentImage);
         const aiMessage = { content: response.data.response, isUser: false };
         setMessages(prev => [...prev, aiMessage]);
         if (response.data.conversation_id && !directChatConvId) {
@@ -187,7 +198,7 @@ export default function ArenaPage() {
         }
       } catch (error) {
         const errorMessage = { 
-          content: `调用模型出错: ${error.response?.data?.detail || error.message}`, 
+          content: `调用模型出错: ${error.response?.data?.error || error.message}`, 
           isUser: false,
           isError: true
         };
@@ -208,7 +219,8 @@ export default function ArenaPage() {
       setVoted(false); // 重置投票状态
 
       // --- 关键修复：将用户消息添加到左右两边的状态中 ---
-      const userMessage = { content: currentPrompt, isUser: true };
+      const userMessage = { content: currentPrompt, isUser: true,        image: currentImage ? URL.createObjectURL(currentImage) : null 
+      };
       setLeftMessages(prev => [...prev, userMessage]);
       setRightMessages(prev => [...prev, userMessage]);
       
@@ -218,8 +230,8 @@ export default function ArenaPage() {
       try {
         // 2. 直接使用局部变量 currentPrompt 进行 API 调用
         const [leftResponse, rightResponse] = await Promise.all([
-            evaluateModel(leftModel, currentPrompt, leftConvId).catch(err => ({ error: err })),
-            evaluateModel(rightModel, currentPrompt, rightConvId).catch(err => ({ error: err }))
+            evaluateModel(leftModel, currentPrompt, leftConvId,currentImage).catch(err => ({ error: err })),
+            evaluateModel(rightModel, currentPrompt, rightConvId,currentImage).catch(err => ({ error: err }))
         ]);
 
         // 处理左侧模型响应
@@ -281,7 +293,8 @@ export default function ArenaPage() {
       setVoted(false); // 重置投票状态
       setBattleError(null);
 
-      const userMessage = { content: currentPrompt, isUser: true };
+      const userMessage = { content: currentPrompt, isUser: true,        image: currentImage ? URL.createObjectURL(currentImage) : null 
+      };
       setLeftMessages([userMessage]); // 开始新对战时，清空并设置用户消息
       setRightMessages([userMessage]);
 
@@ -289,8 +302,8 @@ export default function ArenaPage() {
 
       try {
         const [leftResponse, rightResponse] = await Promise.all([
-            evaluateModel(modelA, currentPrompt).catch(err => ({ error: err })),
-            evaluateModel(modelB, currentPrompt).catch(err => ({ error: err }))
+            evaluateModel(modelA, currentPrompt,null,currentImage).catch(err => ({ error: err })),
+            evaluateModel(modelB, currentPrompt,null,currentImage).catch(err => ({ error: err }))
         ]);
 
         // 在请求成功后，再更新外部状态，用于投票
@@ -545,12 +558,27 @@ export default function ArenaPage() {
           </Row>
         )}
 
-        {mode === 'direct-chat' && messages.map((msg, index) => (
+          {mode === 'direct-chat' && messages.map((msg, index) => (
           <div key={index} style={{ display: 'flex', justifyContent: msg.isUser ? 'flex-end' : 'flex-start', marginBottom: 12 }}>
             <Avatar icon={msg.isUser ? <UserOutlined /> : <RobotOutlined />} style={{ order: msg.isUser ? 2 : 1, marginLeft: msg.isUser ? 8 : 0, marginRight: msg.isUser ? 0 : 8, backgroundColor: msg.isUser ? '#000' : '#595959' }} />
             <div style={{ background: msg.isUser ? '#000' : '#f5f5f5', color: msg.isUser ? 'white' : 'black', padding: '8px 12px', borderRadius: '8px', maxWidth: '70%', overflowX: 'auto' }}>
               {msg.isUser ? (
-                msg.content
+                // --- 关键修改：在这里添加图片和文本的渲染 ---
+                <div>
+                  {msg.image && (
+                    <img 
+                      src={msg.image} 
+                      alt="user upload" 
+                      style={{ 
+                        maxWidth: '100%', 
+                        maxHeight: '200px', 
+                        borderRadius: '4px', 
+                        marginBottom: msg.content ? '8px' : '0' // 如果有文本，则增加间距
+                      }} 
+                    />
+                  )}
+                  {msg.content}
+                </div>
               ) : (
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm, remarkBreaks, remarkMath]}

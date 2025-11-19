@@ -1,74 +1,69 @@
 import React, { createContext, useState, useEffect } from 'react';
-import request from '../api/request';
+import apiClient from '../api/apiClient';
+import { jwtDecode } from 'jwt-decode'; // 确保已安装 jwt-decode
 
-export const AuthContext = createContext(null);
+const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('access_token');
     if (token) {
-      // try to fetch current user profile
-      // 后端提供的 profile 接口为 users/profile/
-      request.get('users/profile/').then((res) => setUser(res.data)).catch(() => setUser(null));
+      try {
+        const decodedUser = jwtDecode(token);
+        setUser(decodedUser);
+        apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      } catch (error) {
+        console.error('Token decoding failed:', error);
+        logout();
+      }
     }
   }, []);
 
   const login = async (username, password) => {
     try {
-      console.log('Sending login request...');
-      const res = await request.post('token/', { username, password });
-      console.log('Login response:', res.data);
+      const response = await apiClient.post('/token/', { username, password });
       
-      if (res.data && res.data.access) {
-        localStorage.setItem('token', res.data.access);
-        localStorage.setItem('refresh', res.data.refresh);
+      const { access, refresh } = response.data;
+
+      if (access && refresh) {
+        localStorage.setItem('access_token', access);
+        localStorage.setItem('refresh_token', refresh);
+
+        apiClient.defaults.headers.common['Authorization'] = `Bearer ${access}`;
         
-        // 设置默认的 Authorization header
-        request.defaults.headers.common['Authorization'] = `Bearer ${res.data.access}`;
+        const decodedUser = jwtDecode(access);
+        setUser(decodedUser);
         
-        // 获取用户资料
-        console.log('Fetching user profile...');
-        try {
-          const profile = await request.get('users/profile/');
-          console.log('Profile response:', profile.data);
-          setUser(profile.data);
-          return true;
-        } catch (profileError) {
-          console.error('Profile fetch error:', profileError);
-          localStorage.removeItem('token');
-          localStorage.removeItem('refresh');
-          throw new Error('无法获取用户资料');
-        }
+        return true;
       }
       return false;
+
     } catch (error) {
-      console.error('Login error:', error.response || error);
-      // 转发错误到上层以显示具体错误信息
-      throw error;
+      console.error('Login failed:', error);
+      logout();
+      return false;
     }
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    delete apiClient.defaults.headers.common['Authorization'];
     setUser(null);
   };
 
   const register = async (payload) => {
-    // 后端用户注册接口为 users/register/
     try {
-      const res = await request.post('users/register/', payload);
-      // 如果注册成功，尝试自动登录（如果后端允许返回 token）
+      const res = await apiClient.post('users/register/', payload);
       try {
         await login(payload.username, payload.password);
         return { success: true, autoLogin: true, raw: res };
       } catch (e) {
-        // 注册成功但自动登录失败（例如后端不返回 token）
         return { success: true, autoLogin: false, raw: res, error: e };
       }
     } catch (err) {
-      // 统一返回错误结构，便于前端显示后端返回的错误信息
       const payload = {
         success: false,
         status: err.response ? err.response.status : null,
@@ -79,8 +74,15 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const authContextValue = {
+    user,
+    login,
+    logout,
+    register,
+  };
+
   return (
-    <AuthContext.Provider value={{ user, login, logout, register }}>
+    <AuthContext.Provider value={authContextValue}>
       {children}
     </AuthContext.Provider>
   );

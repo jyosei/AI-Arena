@@ -19,7 +19,8 @@ ENV VITE_API_BASE=${VITE_API_BASE}
 RUN npm run build
 
 # 部署阶段
-FROM nginx:stable-alpine
+# --- 关键修改：使用一个有效的 Nginx 镜像标签 ---
+FROM nginx:alpine
 # 拷贝构建好的前端文件
 COPY --from=build /app/dist /usr/share/nginx/html
 # 拷贝我们自定义的 Nginx 配置文件

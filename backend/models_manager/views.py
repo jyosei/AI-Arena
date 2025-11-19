@@ -1,7 +1,9 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny # 导入 AllowAny
+from rest_framework.parsers import FormParser
 from rest_framework import status
+from rest_framework.parsers import JSONParser, MultiPartParser
 from .services import get_model_service
 from .models import BattleVote
 from .models import ChatConversation
@@ -9,8 +11,8 @@ from .models import ChatMessage
 from .serializers import ChatConversationSerializer
 from .serializers import ChatMessageSerializer
 import random
-from rest_framework.permissions import IsAuthenticated
 import time
+import base64
 
 class RecordVoteView(APIView):
     """接收并记录一次对战的投票结果"""
@@ -94,49 +96,101 @@ class ModelListView(APIView):
 
 
 class EvaluateModelView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser,JSONParser, MultiPartParser] # 2. 添加解析器以支持文件上传
 
     def post(self, request, *args, **kwargs):
         model_name = request.data.get("model_name")
-        prompt = request.data.get("prompt")
+        prompt = request.data.get("prompt", "") # 允许 prompt 为空
+        image_file = request.FILES.get("image") # 3. 获取可选的图片文件
         conversation_id = request.data.get("conversation_id")
 
-        if not model_name or not prompt:
-            return Response({"error": "model_name and prompt are required."}, status=400)
+        # 4. 更新验证逻辑：prompt 和 image 不能同时为空
+        if not model_name or (not prompt and not image_file):
+            return Response({"error": "model_name 和 (prompt 或 image) 是必需的。"}, status=400)
 
         try:
             model_service = get_model_service(model_name)
-
-            # 如果携带 conversation_id，则尝试构造完整历史
-            messages_payload = None
+            
+            # --- 获取或创建对话 ---
             if conversation_id:
                 try:
-                    if request.user and request.user.is_authenticated:
-                        conv = ChatConversation.objects.get(id=conversation_id, user=request.user)
-                    else:
-                        conv = ChatConversation.objects.get(id=conversation_id)
-                    # 将历史消息转换为 OpenAI 兼容的格式
-                    msgs = conv.messages.all().order_by('created_at')
-                    messages_payload = [
-                        {"role": ("user" if m.is_user else "assistant"), "content": m.content}
-                        for m in msgs
-                    ]
-                    # 保险: 确保本次用户输入也在末尾
-                    if not messages_payload or messages_payload[-1].get("content") != prompt:
-                        messages_payload.append({"role": "user", "content": prompt})
+                    conversation = ChatConversation.objects.get(id=conversation_id)
                 except ChatConversation.DoesNotExist:
                     return Response({"error": "Conversation not found."}, status=404)
+            else:
+                title = f"图片分析对话" if image_file else f"新对话 - {model_name}"
+                conversation = ChatConversation.objects.create(
+                    user = request.user,
+                    title=title,
+                    model_name=model_name
+                )
+            
+            # --- 保存用户消息（包含可选的图片） ---
+            ChatMessage.objects.create(
+                conversation=conversation,
+                role='user',
+                content=prompt,
+                image=image_file # 如果 image_file 为 None，Django 会正确处理
+            )
+            
+            # --- 构建包含完整历史（包括历史图片）的消息体 ---
+            history_messages = []
+            for msg in conversation.messages.order_by('created_at'):
+                if msg.role == 'user':
+                    user_content = [{"type": "text", "text": msg.content}]
+                    if msg.image:
+                        msg.image.open('rb')
+                        image_data = msg.image.read()
+                        base64_image = base64.b64encode(image_data).decode('utf-8')
+                        # 动态获取 mime_type
+                        try:
+                            import magic
+                            mime_type = magic.from_buffer(image_data, mime=True)
+                        except (ImportError, NameError):
+                            mime_type = 'image/jpeg' # 回退方案
+                        
+                        image_url = f"data:{mime_type};base64,{base64_image}"
+                        user_content.append({"type": "image_url", "image_url": {"url": image_url}})
+                        msg.image.close()
+                    history_messages.append({"role": "user", "content": user_content})
+                else: # assistant
+                    history_messages.append({"role": "assistant", "content": msg.content})
 
-            response_text = model_service.evaluate(prompt, model_name, messages=messages_payload)
+            # --- 关键修改：转换当前上传的图片 ---
+            current_image_base64 = None
+            current_mime_type = None
+            if image_file:
+                # 重置文件读取指针，以防之前被读取过
+                image_file.seek(0) 
+                image_data = image_file.read()
+                current_image_base64 = base64.b64encode(image_data).decode('utf-8')
+                current_mime_type = getattr(image_file, 'content_type', 'image/jpeg')
+
+            # --- 使用正确的参数名调用模型服务 ---
+            response_text = model_service.evaluate(
+                prompt=prompt, 
+                model_name=model_name,
+                messages=history_messages,
+                image_base64=current_image_base64, # <--- 使用 image_base64
+                mime_type=current_mime_type        # <--- 使用 mime_type
+            )
+            
+            # --- 保存 AI 响应 ---
+            ChatMessage.objects.create(
+                conversation=conversation,
+                role='assistant',
+                content=response_text
+            )
+            
             return Response({
-                "prompt": prompt,
-                "model": model_name,
                 "response": response_text,
-                "used_history": len(messages_payload) if messages_payload is not None else 0
-            })
-        except ValueError as e:
-            return Response({"error": str(e)}, status=400)
+                "conversation_id": conversation.id
+            }, status=200)
+            
         except Exception as e:
+            import logging
+            logging.error(f"Error in EvaluateModelView: {e}", exc_info=True)
             return Response({"error": f"服务器内部错误: {e}"}, status=500)
 
 
@@ -380,3 +434,72 @@ class GetImageStatusView(APIView):
                  "status": "completed",
                  "image_url": dummy_image_url
              }, status=status.HTTP_200_OK)
+        
+class AnalyzeImageView(APIView):
+    parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        prompt = request.data.get("prompt", "")
+        image_file = request.FILES.get("image")
+        model_name = request.data.get("model_name", "gpt-4o")
+        conversation_id = request.data.get("conversation_id")
+
+        if not image_file:
+            return Response({"error": "必须提供图片文件。"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # --- 1. 获取模型服务 (现在是统一的方式) ---
+            model_service = get_model_service(model_name)
+
+            # --- 2. 获取或创建对话 ---
+            if conversation_id:
+                try:
+                    conversation = ChatConversation.objects.get(id=conversation_id)
+                except ChatConversation.DoesNotExist:
+                    return Response({"error": "Conversation not found."}, status=status.HTTP_404)
+            else:
+                conversation = ChatConversation.objects.create(
+                    title=f"图片分析对话",
+                    model_name=model_name
+                )
+
+            # --- 3. 保存用户消息（包含图片） ---
+            ChatMessage.objects.create(
+                conversation=conversation,
+                role='user',
+                content=prompt,
+                image=image_file
+            )
+
+            # --- 4. 构建历史消息 (纯文本部分) ---
+            history_messages = [
+                {"role": msg.role, "content": msg.content}
+                for msg in conversation.messages.order_by('created_at')
+            ]
+
+            # --- 5. 调用统一的 evaluate 方法 ---
+            #    将图片文件和历史记录一起传递给 service
+            response_text = model_service.evaluate(
+                prompt=prompt,
+                model_name=model_name,
+                messages=history_messages,
+                image=image_file
+            )
+
+            # --- 6. 保存 AI 响应 ---
+            ChatMessage.objects.create(
+                conversation=conversation,
+                role='assistant',
+                content=response_text
+            )
+
+            return Response({
+                "response": response_text,
+                "conversation_id": conversation.id
+            }, status=status.HTTP_200_OK)
+
+        except ValueError as e: # 捕获 service 层的 API Key 错误
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as e:
+            return Response({"error": f"服务器内部错误: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
