@@ -31,8 +31,9 @@ services:
       OPENAI_API_KEY: 'sk-ser2cEa4NSlALdseJwob4oube3Trg0NOLwvXEH7yUAeYy9k9' 
     # 使用 "sh wait-for-db.sh" 而非直接 ./wait-for-db.sh，规避 Windows CRLF 行尾可能导致的 shebang 解析失败 (/bin/sh\r not found) 问题。
     # 传递的后续命令不再用单引号包裹，确保脚本中 exec 能正确分词并执行 migrate 与 runserver。
-    # 运行前对脚本做 CRLF 清洗 (仅运行时，不修改源)，再执行迁移与启动。
-    command: sh -c "tr -d '\r' < wait-for-db.sh > /tmp/wdb.sh && sh /tmp/wdb.sh db python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+  # 内联等待逻辑，消除脚本 CRLF/解释器差异：
+  # 等待 db:3306 可用后执行迁移与启动。
+  command: sh -c "until nc -z db 3306; do echo '[backend] waiting for db'; sleep 1; done; echo '[backend] db ready, migrate'; python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
 
   frontend: # <-- 🌟 确保这里有正确的缩进，使其成为 services 的子项
     build:
