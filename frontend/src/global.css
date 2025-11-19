@@ -1,0 +1,4 @@
+:where(.ant-btn) {
+  -webkit-user-select: none;
+  user-select: none;
+}
