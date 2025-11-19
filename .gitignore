@@ -26,3 +26,13 @@ npm-debug.log*
 # OS generated files
 .DS_Store
 Thumbs.db
+\n+# Media uploads (user generated content, do not commit)
+backend/media/
+media/
+
+# Logs & temp
+*.log
+tmp/
+
+# Cache bust artifacts (optional future)
+*.cache
