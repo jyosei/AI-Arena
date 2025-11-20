@@ -51,7 +51,7 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (username, password) => {
     try {
-      const response = await apiClient.post('/token/', { username, password });
+  const response = await apiClient.post('token/', { username, password });
       const { access, refresh } = response.data;
       if (access && refresh) {
         localStorage.setItem('access_token', access);
@@ -89,10 +89,14 @@ export const AuthProvider = ({ children }) => {
         return { success: true, autoLogin: false, raw: res, error: e };
       }
     } catch (err) {
+      // 更详细地返回后端错误，便于前端展示
+      const status = err.response ? err.response.status : null;
+      const data = err.response && err.response.data ? err.response.data : null;
+      console.error('Register error response:', status, data || err.message);
       return {
         success: false,
-        status: err.response ? err.response.status : null,
-        errors: err.response && err.response.data ? err.response.data : err.message,
+        status,
+        errors: data || err.message,
         raw: err,
       };
     }

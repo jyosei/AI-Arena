@@ -26,6 +26,7 @@ class RegisterView(generics.CreateAPIView):
 class ProfileView(generics.RetrieveUpdateAPIView):
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = UserSerializer
+    queryset = User.objects.all()
 
     def get_object(self):  # type: ignore[override]
         return self.request.user  # type: ignore[return-value]
@@ -53,17 +54,26 @@ class NotificationListView(generics.ListAPIView):
 
     def get_queryset(self):  # type: ignore[override]
         qs = Notification.objects.filter(recipient=self.request.user).select_related('actor')
-        request = getattr(self, 'request', None)
-        query_params = getattr(request, 'query_params', getattr(request, 'GET', {})) if request else {}
-        unread = query_params.get('unread') if isinstance(query_params, dict) else None
+        query_params = getattr(self.request, 'query_params', getattr(self.request, 'GET', {}))
+        unread = query_params.get('unread') if hasattr(query_params, 'get') else None
         if unread == 'true':
             qs = qs.filter(is_read=False)
-        return qs.order_by('-created_at')[:200]
+        return qs.order_by('-created_at')
 
     def list(self, request, *args, **kwargs):
+        user = getattr(request, 'user', None)
         queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
-        unread_count = queryset.filter(is_read=False).count()
+        limited_queryset = queryset[:200]
+        serializer = self.get_serializer(limited_queryset, many=True)
+        unread_count = Notification.objects.filter(recipient=request.user, is_read=False).count()
+        try:
+            count = queryset.count()
+        except Exception:
+            count = 'unknown'
+        print(
+            f"[notifications] user={getattr(user, 'username', None)} total={count} unread={unread_count}",
+            flush=True,
+        )
         return Response({'results': serializer.data, 'unread_count': unread_count})
 
 

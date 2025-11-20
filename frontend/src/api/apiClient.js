@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const apiClient = axios.create({
-  baseURL: '/api',
+  baseURL: '/api/',
   headers: {
     Accept: 'application/json',
   },
@@ -27,9 +27,9 @@ apiClient.interceptors.response.use(
 
     // --- 关键修改：确保 error.response 存在，并且状态码是 401 ---
     if (error.response && error.response.status === 401 && !originalRequest._retry) {
-      
+
       // 避免对刷新请求本身进行重试
-      if (originalRequest.url === '/token/refresh/') {
+      if (originalRequest.url === 'token/refresh/' || originalRequest.url === '/token/refresh/') {
         console.error("Refresh token is invalid or expired. Redirecting to login.");
         // 在这里处理登出逻辑，例如清除 token 并跳转页面
         localStorage.removeItem('access_token');
@@ -48,7 +48,7 @@ apiClient.interceptors.response.use(
         }
 
         // 使用 refresh token 请求新的 access token
-        const response = await apiClient.post('/token/refresh/', {
+        const response = await apiClient.post('token/refresh/', {
           refresh: refreshToken,
         });
         

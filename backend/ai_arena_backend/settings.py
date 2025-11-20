@@ -67,6 +67,9 @@ WSGI_APPLICATION = 'ai_arena_backend.wsgi.application'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql', # <-- 使用 MySQL 引擎

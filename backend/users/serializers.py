@@ -1,6 +1,8 @@
 # filepath: /home/ubuntu/AI-Arena/backend/users/serializers.py
+from django.utils.text import Truncator
 from rest_framework import serializers
-from .models import User, Notification
+
+from .models import Notification, User
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -76,17 +78,39 @@ class ChangePasswordSerializer(serializers.Serializer):
 
 
 class NotificationSerializer(serializers.ModelSerializer):
-    actor_username = serializers.CharField(source='actor.username', read_only=True)
+    actor_username = serializers.CharField(source="actor.username", read_only=True)
     actor_avatar_url = serializers.SerializerMethodField()
     message = serializers.CharField(read_only=True)
+    post = serializers.IntegerField(source="post_id", read_only=True)
+    comment = serializers.IntegerField(source="comment_id", read_only=True)
+    post_title = serializers.CharField(source="post.title", read_only=True, default="")
+    comment_excerpt = serializers.SerializerMethodField()
 
     class Meta:
         model = Notification
         fields = [
-            'id', 'action_type', 'is_read', 'created_at', 'actor_username', 'actor_avatar_url',
-            'post_id', 'comment_id', 'message'
+            "id",
+            "action_type",
+            "is_read",
+            "created_at",
+            "actor_username",
+            "actor_avatar_url",
+            "post",
+            "comment",
+            "post_title",
+            "comment_excerpt",
+            "message",
         ]
         read_only_fields = fields
 
     def get_actor_avatar_url(self, obj: Notification) -> str:
         return getattr(obj.actor, 'avatar_url', '')
+
+    def get_comment_excerpt(self, obj: Notification) -> str:
+        comment = getattr(obj, "comment", None)
+        if not comment:
+            return ""
+        content = getattr(comment, "content", "")
+        if not content:
+            return ""
+        return Truncator(content).chars(60)

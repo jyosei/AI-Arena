@@ -1,7 +1,9 @@
-from django.db import models
+from pathlib import Path
+
 from django.contrib.auth.models import AbstractUser, Group, Permission
-from django.utils.translation import gettext_lazy as _
+from django.db import models
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 
 
 class User(AbstractUser):
@@ -43,9 +45,27 @@ class User(AbstractUser):
         """统一返回头像地址。如果填写了外链 avatar 优先；否则返回上传文件 URL。"""
         if self.avatar:
             return self.avatar
+        field = getattr(self, "avatar_file", None)
+        if not field:
+            return ""
+
         try:
-            if self.avatar_file and hasattr(self.avatar_file, "url"):
-                return self.avatar_file.url  # type: ignore[attr-defined]
+            storage = field.storage
+            name = field.name
+            if name and storage.exists(name):
+                return field.url  # type: ignore[attr-defined]
+
+            alt_name = ""
+            if name:
+                path = Path(name)
+                stem = path.stem
+                if "_" in stem:
+                    base, suffix = stem.rsplit("_", 1)
+                    # 仅当后缀看起来像随机字符串时才尝试回退
+                    if suffix.isalnum() and 4 <= len(suffix) <= 16:
+                        alt_name = str(path.with_stem(base))
+            if alt_name and storage.exists(alt_name):
+                return storage.url(alt_name)
         except Exception:
             return ""
         return ""

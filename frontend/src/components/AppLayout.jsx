@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layout, Menu, Dropdown, Button, Avatar, Space, Select, Typography, Form, Input, Modal, message } from 'antd';
+import { Layout, Menu, Dropdown, Button, Avatar, Space, Select, Typography, Form, Input, Modal, message, Tooltip } from 'antd';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useMode } from '../contexts/ModeContext';
 import { useChat } from '../contexts/ChatContext';
@@ -22,6 +22,7 @@ import RegisterModal from './RegisterModal';
 import NotificationBell from './NotificationBell.jsx';
 import { useIntl } from 'react-intl';
 import AuthContext from '../contexts/AuthContext.jsx';
+import { resolveMediaUrl } from '../utils/media';
 const { Sider, Content, Header } = Layout;
 
 // 菜单项定义
@@ -42,6 +43,16 @@ const AppLayout = () => {
   const { login, logout, user } = React.useContext(AuthContext);
   const isLoggedIn = !!user;
   const userEmail = user?.email || user?.username || '';
+  const navigateToUserCenter = React.useCallback(() => {
+    navigate('/user-center');
+  }, [navigate]);
+
+  const avatarSrc = React.useMemo(() => {
+    if (!user) return '';
+    const raw = user.avatar_url || user.avatar;
+    if (!raw) return '';
+    return resolveMediaUrl(raw);
+  }, [user?.avatar_url, user?.avatar]);
 
   // --- 2. 添加菜单高亮逻辑 ---
   // 定义路由路径和菜单项 key 的映射
@@ -329,11 +340,26 @@ const AppLayout = () => {
           {isLoggedIn ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
               <NotificationBell />
-              <Avatar icon={<UserOutlined />} style={{ background: '#000' }} />
+              <Tooltip title="个人中心">
+                <Avatar
+                  src={avatarSrc || undefined}
+                  icon={avatarSrc ? undefined : <UserOutlined />}
+                  style={{
+                    background: avatarSrc ? '#f5f5f5' : '#000',
+                    cursor: 'pointer',
+                  }}
+                  size={40}
+                  onClick={navigateToUserCenter}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      navigateToUserCenter();
+                    }
+                  }}
+                  tabIndex={0}
+                />
+              </Tooltip>
               <span style={{ fontWeight: 500, fontSize: 16 }}>{userEmail}</span>
-              <Button shape="round" style={{ borderRadius: 20, fontWeight: 500 }} onClick={() => navigate('/user-center')}>
-                个人中心
-              </Button>
               <Button icon={<LogoutOutlined />} shape="round" type="default" style={{ borderRadius: 20, fontWeight: 500 }} onClick={handleLogout}>
                 退出登录
               </Button>

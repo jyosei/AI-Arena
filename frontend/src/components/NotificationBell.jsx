@@ -39,9 +39,10 @@ export default function NotificationBell() {
   };
 
   const goToTarget = async (item) => {
-    // 优先跳转到帖子；如果有 comment，则带上 hash 定位
-    if (item.post) {
-      const url = item.comment ? `/forum/post/${item.post}#comment-${item.comment}` : `/forum/post/${item.post}`;
+    const postId = item.post ?? item.post_id;
+    const commentId = item.comment ?? item.comment_id;
+    if (postId) {
+      const url = commentId ? `/forum/post/${postId}#comment-${commentId}` : `/forum/post/${postId}`;
       navigate(url);
       setOpen(false);
       if (!item.is_read) {
@@ -90,8 +91,9 @@ export default function NotificationBell() {
                 </Paragraph>
               }
               description={
-                <Space size={4} direction="horizontal">
+                <Space size={4} direction="vertical" style={{ width: '100%' }}>
                   {item.post_title ? <Text type="secondary">帖子：{item.post_title}</Text> : null}
+                  {item.comment_excerpt ? <Text type="secondary">评论：{item.comment_excerpt}</Text> : null}
                   <Text type="secondary" style={{ fontSize: 12 }}>{new Date(item.created_at).toLocaleString()}</Text>
                 </Space>
               }
