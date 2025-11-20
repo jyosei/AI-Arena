@@ -26,8 +26,9 @@ import {
   ShareAltOutlined,
   UploadOutlined
 } from '@ant-design/icons';
+import { Image } from 'antd';
 import { fetchForumPost, createForumComment, toggleForumPostLike, toggleForumCommentLike } from '../api/forum';
-import { resolveMediaUrl, getPublicOrigin, attachImageErrorFallback } from '../utils/media';
+import { resolveMediaUrl, getPublicOrigin, FALLBACK_IMG } from '../utils/media';
 import AuthContext from '../contexts/AuthContext.jsx';
 
 const { Text, Title, Paragraph } = Typography;
@@ -152,41 +153,56 @@ export default function ForumPost() {
   };
 
   const renderPostImages = () => {
-    if (!post?.images || post.images.length === 0) return null;
+    const images = post?.images ?? [];
+    if (images.length === 0) return null;
     return (
       <div style={{ margin: '16px 0' }}>
-        <Space wrap>
-          {post.images.map(img => (
-            <div key={img.id} style={{ width: 160, position: 'relative' }}>
-              <img
-                src={resolveMediaUrl(img.image_url || img.image)}
-                alt="post-img"
-                style={{ width: '160px', height: '120px', objectFit: 'cover', borderRadius: 4, cursor: 'pointer' }}
-                onError={attachImageErrorFallback}
-                onClick={() => window.open(resolveMediaUrl(img.image_url || img.image), '_blank')}
-              />
-            </div>
-          ))}
-        </Space>
+        <Image.PreviewGroup>
+          <Space wrap>
+            {images.map((img) => {
+              const url = resolveMediaUrl(img.image_url || img.image);
+              return (
+                <Image
+                  key={img.id}
+                  src={url}
+                  alt="post-img"
+                  width={160}
+                  height={120}
+                  style={{ objectFit: 'cover', borderRadius: 4 }}
+                  fallback={FALLBACK_IMG}
+                  preview={{ src: url }}
+                />
+              );
+            })}
+          </Space>
+        </Image.PreviewGroup>
       </div>
     );
   };
 
   const renderCommentImages = (comment) => {
-    if (!comment.images || comment.images.length === 0) return null;
+    const images = comment.images ?? [];
+    if (images.length === 0) return null;
     return (
-      <Space wrap style={{ marginTop: 8 }}>
-        {comment.images.map(ci => (
-          <img
-            key={ci.id}
-            src={resolveMediaUrl(ci.image_url || ci.image)}
-            alt="comment-img"
-            style={{ width: 120, height: 90, objectFit: 'cover', borderRadius: 4, cursor: 'pointer' }}
-            onError={attachImageErrorFallback}
-            onClick={() => window.open(resolveMediaUrl(ci.image_url || ci.image), '_blank')}
-          />
-        ))}
-      </Space>
+      <Image.PreviewGroup>
+        <Space wrap style={{ marginTop: 8 }}>
+          {images.map((ci) => {
+            const url = resolveMediaUrl(ci.image_url || ci.image);
+            return (
+              <Image
+                key={ci.id}
+                src={url}
+                alt="comment-img"
+                width={120}
+                height={90}
+                style={{ objectFit: 'cover', borderRadius: 4 }}
+                fallback={FALLBACK_IMG}
+                preview={{ src: url }}
+              />
+            );
+          })}
+        </Space>
+      </Image.PreviewGroup>
     );
   };
 
@@ -291,8 +307,15 @@ export default function ForumPost() {
         <List
           itemLayout="horizontal"
           dataSource={replies}
-          renderItem={reply => (
-            <List.Item
+          renderItem={reply => {
+            const postAuthorId = post?.author?.id ?? post?.author?.pk ?? null;
+            const replyAuthorId = reply?.author?.id ?? reply?.author?.pk ?? null;
+            const isPostAuthor =
+              postAuthorId !== null && replyAuthorId !== null && String(replyAuthorId) === String(postAuthorId);
+
+            return (
+              <List.Item
+                key={reply.id}
               id={`comment-${reply.id}`}
               style={{ scrollMarginTop: 80 }}
               actions={[
@@ -304,27 +327,28 @@ export default function ForumPost() {
                   {reply.likes_count || 0}
                 </Button>
               ]}
-            >
-              <List.Item.Meta
-                avatar={<Avatar src={resolveMediaUrl(reply.author?.avatar)} size="large" />}
-                title={
-                  <Space>
-                    <Text strong>{reply.author?.username || '用户'}</Text>
-                    {reply.author?.id === post.author?.id && <Tag color="blue">楼主</Tag>}
-                    <Text type="secondary">{new Date(reply.created_at).toLocaleString()}</Text>
-                  </Space>
-                }
-                description={
-                  <div>
-                    <Paragraph style={{ margin: 0, fontSize: '15px', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
-                      {reply.content}
-                    </Paragraph>
-                    {renderCommentImages(reply)}
-                  </div>
-                }
-              />
-            </List.Item>
-          )}
+              >
+                <List.Item.Meta
+                  avatar={<Avatar src={resolveMediaUrl(reply.author?.avatar)} size="large" />}
+                  title={
+                    <Space>
+                      <Text strong>{reply.author?.username || '用户'}</Text>
+                      {isPostAuthor && <Tag color="blue">楼主</Tag>}
+                      <Text type="secondary">{new Date(reply.created_at).toLocaleString()}</Text>
+                    </Space>
+                  }
+                  description={
+                    <div>
+                      <Paragraph style={{ margin: 0, fontSize: '15px', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                        {reply.content}
+                      </Paragraph>
+                      {renderCommentImages(reply)}
+                    </div>
+                  }
+                />
+              </List.Item>
+            );
+          }}
         />
 
         {/* 回复表单 */}
