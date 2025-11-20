@@ -56,10 +56,15 @@ export const evaluateModel = (modelName, prompt, conversationId, imageFile) => {
   }
 };
 export const recordVote = (data) => {
+  // --- 关键修改：截断 prompt 以防止超出数据库限制 ---
+  const truncatedPrompt = data.prompt && data.prompt.length > 500 
+    ? data.prompt.substring(0, 500) 
+    : data.prompt;
+
   const payload = {
     model_a: data.model_a,
     model_b: data.model_b,
-    prompt: data.prompt,
+    prompt: truncatedPrompt, // 使用截断后的 prompt
     winner: data.winner,
   };
   return apiClient.post('/models/record_vote/', payload);

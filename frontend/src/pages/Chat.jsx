@@ -329,7 +329,6 @@ export default function ChatPage() {
         setMessages(prev => [...prev, errMsg]);
       } finally {
         setLoading(false);
-        setIsGeneratingImage(false); // 生成后自动退出图片生成模式
       }
       return;
     }
@@ -571,7 +570,15 @@ export default function ChatPage() {
       antdMessage.error("无法找到用于投票的对话。");
       return;
     }
-
+    let winnerValue;
+    if (choice === 'good') {
+      // 如果用户觉得好，那么获胜者就是当前模型
+      winnerValue = leftModel;
+    } else {
+      // 如果用户觉得不好，可以传递 'bad' 或者模型名称，这里我们统一为 'bad'
+      // 后端需要能处理 'bad' 这种特殊情况
+      winnerValue = 'bad';
+    }
     const voteData = {
       model_a: leftModel,
       model_b: null,

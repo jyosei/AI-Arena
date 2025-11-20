@@ -27,8 +27,35 @@ class OpenAIModel(BaseLanguageModel):
                 api_key=self.api_key,
                 base_url="https://jeniya.cn/v1" 
             )
-            
-            # 组装消息
+
+            # --- DALL-E 模型处理逻辑 ---
+            if model_name.startswith("dall"):
+                # 从 messages 中获取最新的用户输入作为 prompt
+                final_prompt = prompt
+                if messages and isinstance(messages, list) and len(messages) > 0:
+                    # 寻找最后一个用户角色的消息内容
+                    last_user_message = next((msg['content'] for msg in reversed(messages) if msg['role'] == 'user'), None)
+                    if last_user_message:
+                        # DALL-E 只接受字符串 prompt
+                        if isinstance(last_user_message, list):
+                            # 如果是复杂的 content 列表（例如包含图片），提取文本部分
+                            text_part = next((item['text'] for item in last_user_message if item['type'] == 'text'), None)
+                            if text_part:
+                                final_prompt = text_part
+                        else:
+                            final_prompt = last_user_message
+
+                response = client.images.generate(
+                    model=model_name,
+                    prompt=final_prompt,
+                    n=1,
+                    size="1024x1024" # 或其他支持的尺寸
+                )
+                image_url = response.data[0].url
+                # --- 关键修改：直接返回纯粹的 URL ---
+                return image_url
+
+            # --- 原有聊天模型逻辑 ---
             openai_messages = [
                 {"role": "system", "content": "You are a helpful assistant."}
             ]
@@ -37,7 +64,6 @@ class OpenAIModel(BaseLanguageModel):
             else:
                 openai_messages.append({"role": "user", "content": prompt})
 
-            # --- 关键修改：处理图片输入 ---
             if image_base64 and mime_type:
                 image_url = f"data:{mime_type};base64,{image_base64}"
 
@@ -59,7 +85,6 @@ class OpenAIModel(BaseLanguageModel):
             )
             return response.choices[0].message.content
         except Exception as e:
-            # 向上抛出异常，让视图层统一处理
             raise e
 
 class ZhipuAIModel(OpenAIModel):
@@ -116,6 +141,8 @@ class ERNIEBotModel(OpenAIModel):
 def get_model_service(model_name: str) -> BaseLanguageModel:
     """根据模型名称返回一个模型服务实例"""
     if model_name.startswith("gpt"):
+        return OpenAIModel()
+    elif model_name.startswith("dall"):
         return OpenAIModel()
     elif model_name.startswith("glm"):
         return ZhipuAIModel()
