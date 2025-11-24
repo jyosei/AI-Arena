@@ -2,6 +2,101 @@ import os
 from abc import ABC, abstractmethod
 from openai import OpenAI
 import base64 # 导入 base64 库
+import math
+
+
+# ELO评分系统
+class ELORatingSystem:
+    """ELO评分系统，用于计算和更新模型评分"""
+    
+    @staticmethod
+    def expected_score(rating_a, rating_b):
+        """计算模型A相对于模型B的期望得分"""
+        return 1 / (1 + math.pow(10, (rating_b - rating_a) / 400))
+    
+    @staticmethod
+    def update_ratings(rating_a, rating_b, score_a, k_factor=32):
+        """
+        更新两个模型的ELO评分
+        rating_a: 模型A的当前评分
+        rating_b: 模型B的当前评分
+        score_a: 模型A的实际得分 (1=胜, 0.5=平, 0=负)
+        k_factor: K因子，决定评分变化幅度
+        
+        返回: (new_rating_a, new_rating_b)
+        """
+        expected_a = ELORatingSystem.expected_score(rating_a, rating_b)
+        expected_b = 1 - expected_a
+        
+        score_b = 1 - score_a
+        
+        new_rating_a = rating_a + k_factor * (score_a - expected_a)
+        new_rating_b = rating_b + k_factor * (score_b - expected_b)
+        
+        return new_rating_a, new_rating_b
+    
+    @staticmethod
+    def process_battle(model_a_name, model_b_name, winner):
+        """
+        处理一次对战结果并更新两个模型的评分
+        model_a_name: 模型A的名称
+        model_b_name: 模型B的名称
+        winner: 获胜者 (模型名称, 'tie', 或 'both_bad')
+        
+        返回: (model_a, model_b) 更新后的模型实例
+        """
+        from .models import AIModel
+        
+        # 获取或创建模型
+        model_a, _ = AIModel.objects.get_or_create(
+            name=model_a_name,
+            defaults={'display_name': model_a_name}
+        )
+        model_b, _ = AIModel.objects.get_or_create(
+            name=model_b_name,
+            defaults={'display_name': model_b_name}
+        )
+        
+        # 确定得分
+        if winner == model_a_name:
+            score_a = 1.0
+        elif winner == model_b_name:
+            score_a = 0.0
+        elif winner in ['tie', 'both_bad']:
+            score_a = 0.5
+        else:
+            # 默认按平局处理
+            score_a = 0.5
+        
+        # 更新ELO评分
+        new_rating_a, new_rating_b = ELORatingSystem.update_ratings(
+            model_a.elo_rating,
+            model_b.elo_rating,
+            score_a
+        )
+        
+        model_a.elo_rating = new_rating_a
+        model_b.elo_rating = new_rating_b
+        
+        # 更新统计数据
+        model_a.total_battles += 1
+        model_b.total_battles += 1
+        
+        if score_a == 1.0:
+            model_a.wins += 1
+            model_b.losses += 1
+        elif score_a == 0.0:
+            model_a.losses += 1
+            model_b.wins += 1
+        else:
+            model_a.ties += 1
+            model_b.ties += 1
+        
+        model_a.save()
+        model_b.save()
+        
+        return model_a, model_b
+
 
 # 1. 定义一个抽象基类作为统一接口
 class BaseLanguageModel(ABC):

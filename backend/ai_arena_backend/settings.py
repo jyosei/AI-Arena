@@ -84,6 +84,23 @@ DATABASES = {
     }
 }
 
+# 如果 MySQL 关键环境变量缺失，自动回退到 SQLite 以便本地开发和迁移执行
+mysql_env_complete = all([
+    DATABASES['default']['NAME'],
+    DATABASES['default']['USER'],
+    DATABASES['default']['PASSWORD'],
+    DATABASES['default']['HOST'],
+    DATABASES['default']['PORT'],
+])
+
+if not mysql_env_complete:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
+
 # 告诉 Django 使用你的自定义用户模型
 AUTH_USER_MODEL = 'users.User'
 
