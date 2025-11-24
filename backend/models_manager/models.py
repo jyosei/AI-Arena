@@ -1,5 +1,47 @@
 from django.db import models
 from django.conf import settings
+
+
+class AIModel(models.Model):
+    """存储AI模型信息和评分数据"""
+    name = models.CharField(max_length=100, unique=True, help_text="模型名称")
+    display_name = models.CharField(max_length=200, blank=True, help_text="展示名称")
+    owner = models.CharField(max_length=100, blank=True, help_text="模型所有者/提供商")
+    description = models.TextField(blank=True, help_text="模型描述")
+    
+    # ELO评分系统
+    elo_rating = models.FloatField(default=1500.0, help_text="ELO评分，初始值1500")
+    
+    # 统计数据
+    total_battles = models.IntegerField(default=0, help_text="总对战次数")
+    wins = models.IntegerField(default=0, help_text="胜利次数")
+    losses = models.IntegerField(default=0, help_text="失败次数")
+    ties = models.IntegerField(default=0, help_text="平局次数")
+    
+    # 额外信息
+    task_type = models.CharField(max_length=50, blank=True, help_text="任务类型（如：通用、代码、翻译等）")
+    is_active = models.BooleanField(default=True, help_text="是否在排行榜中显示")
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-elo_rating']
+        indexes = [
+            models.Index(fields=['-elo_rating']),
+        ]
+    
+    def __str__(self):
+        return f"{self.display_name or self.name} (ELO: {self.elo_rating:.0f})"
+    
+    @property
+    def win_rate(self):
+        """计算胜率"""
+        if self.total_battles == 0:
+            return 0.0
+        return (self.wins / self.total_battles) * 100
+
+
 # Create your models here.
 class BattleVote(models.Model):
     """存储一次模型对战的投票结果"""
