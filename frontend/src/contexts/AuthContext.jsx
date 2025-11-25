@@ -2,7 +2,7 @@ import React, { createContext, useState, useEffect } from 'react';
 import apiClient from '../api/apiClient';
 import { jwtDecode } from 'jwt-decode'; // 确保已安装 jwt-decode
 
-const AuthContext = createContext(null);
+export const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -42,8 +42,8 @@ export const AuthProvider = ({ children }) => {
 
     } catch (error) {
       console.error('Login failed:', error);
-      logout();
-      return false;
+      const errorMsg = error.response?.data?.detail || error.response?.data?.non_field_errors || '登录失败，请检查用户名和密码';
+      throw new Error(errorMsg);
     }
   };
 
@@ -56,18 +56,18 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (payload) => {
     try {
-      const res = await apiClient.post('users/register/', payload);
+      const res = await apiClient.post('/users/register/', payload);
       try {
         await login(payload.username, payload.password);
         return { success: true, autoLogin: true, raw: res };
       } catch (e) {
-        return { success: true, autoLogin: false, raw: res, error: e };
+        return { success: true, autoLogin: false, raw: res, loginError: e.message };
       }
     } catch (err) {
       const payload = {
         success: false,
         status: err.response ? err.response.status : null,
-        errors: err.response && err.response.data ? err.response.data : err.message,
+        errors: err.response && err.response.data ? err.response.data : { message: err.message },
         raw: err,
       };
       return payload;

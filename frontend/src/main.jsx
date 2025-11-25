@@ -8,7 +8,7 @@ import { Modal, ConfigProvider } from "antd";
 // 1. 导入所有页面和组件
 import ModelList from "./pages/ModelList.jsx";
 import Leaderboard from "./pages/Leaderboard.jsx";
-import Login from "./pages/Login.jsx";
+import UserPanel from "./pages/UserPanel.jsx";
 import Forum from "./pages/Forum.jsx";
 import ForumPost from "./pages/ForumPost.jsx"; // 新增导入
 import Chat from "./pages/Chat.jsx";
@@ -67,8 +67,8 @@ function App() {
                   <Route path="/leaderboard" element={<Leaderboard />} />
                   <Route path="/forum" element={<Forum />} />
                   <Route path="/forum/post/:id" element={<ForumPost />} /> {/* 新增路由 */}
+                  <Route path="/user" element={<UserPanel />} />
                 </Route>
-                <Route path="/login" element={<Login />} />
               </Routes>
             </DialogProvider>
           </ChatProvider>
