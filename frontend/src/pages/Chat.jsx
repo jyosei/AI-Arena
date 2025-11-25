@@ -540,15 +540,18 @@ export default function ChatPage() {
   };
 
   const handleVote = async (winnerChoice) => {
-    if (!currentInput) {
-      antdMessage.error("无法找到用于投票的提示。");
+    // 从消息历史中找到最后一个用户消息作为 prompt
+    const lastUserMessage = leftMessages.filter(m => m.isUser).pop();
+
+    if (!lastUserMessage || !lastUserMessage.content) {
+      antdMessage.error("无法找到用于投票的原始问题。");
       return;
     }
 
     const voteData = {
       model_a: leftModel,
       model_b: rightModel,
-      prompt: currentInput,
+      prompt: lastUserMessage.content, // 使用从历史记录中找到的 prompt
       winner: winnerChoice,
     };
 
