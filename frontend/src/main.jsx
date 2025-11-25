@@ -15,6 +15,8 @@ import Chat from "./pages/Chat.jsx";
 import AppLayout from "./components/AppLayout.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import UserCenter from "./pages/UserCenter.jsx";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
+
 import DatasetEvaluationPage from "./pages/DatasetEvaluation.jsx";
 // 2. 导入所有需要的 Context Provider
 import { AuthProvider } from "./contexts/AuthContext.jsx";
@@ -93,19 +95,21 @@ function App() {
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(
   <React.StrictMode>
-    <ConfigProvider
-      theme={{
-        token: {
-          colorPrimary: '#000000',
-          colorInfo: '#000000',
-          colorLink: '#000000',
-          colorSuccess: '#595959',
-        },
-      }}
-    >
-      <IntlProvider locale="zh" messages={{}}>
-        <App />
-      </IntlProvider>
-    </ConfigProvider>
+    <ErrorBoundary>
+      <ConfigProvider
+        theme={{
+          token: {
+            colorPrimary: '#000000',
+            colorInfo: '#000000',
+            colorLink: '#000000',
+            colorSuccess: '#595959',
+          },
+        }}
+      >
+        <IntlProvider locale="zh" messages={{}}>
+          <App />
+        </IntlProvider>
+      </ConfigProvider>
+    </ErrorBoundary>
   </React.StrictMode>
 );

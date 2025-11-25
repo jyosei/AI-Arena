@@ -35,7 +35,8 @@ services:
     # 2. 确保 wait-for-db.sh 脚本在本地 ./backend 文件夹中存在
 
     command: >
-      bash -c "sed -i 's/\r$//' wait-for-db.sh &&
+      bash -c "dos2unix wait-for-db.sh 2>/dev/null || sed -i 's/\r$//' wait-for-db.sh &&
+               chmod +x wait-for-db.sh &&
                ./wait-for-db.sh db python manage.py migrate &&
                python manage.py runserver 0.0.0.0:8000"
 
@@ -45,7 +46,10 @@ services:
       args:
         # 使用相对路径 /api/，让浏览器中的请求走 nginx 的 /api/ 代理到后端
         VITE_API_BASE: /api/
-    ports: ["8000:80"]  # 主机 8000 映射到容器内 Nginx 监听的 80 端口
+        # 设置公共访问地址（用于生成分享链接等）- 使用 DevTunnel 公网域名
+        VITE_PUBLIC_ORIGIN: https://qt5g1b30-8000.asse.devtunnels.ms
+    ports: 
+      - "0.0.0.0:8000:80"  # 明确绑定到所有接口
     # volumes: ["./frontend:/app"]
     depends_on:
       - backend

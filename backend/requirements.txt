@@ -7,3 +7,4 @@ cryptography
 setuptools
 openai
 Pillow
+qrcode[pil]

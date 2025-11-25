@@ -30,6 +30,7 @@ import { Image } from 'antd';
 import { fetchForumPost, createForumComment, toggleForumPostLike, toggleForumCommentLike } from '../api/forum';
 import { resolveMediaUrl, getPublicOrigin, FALLBACK_IMG } from '../utils/media';
 import AuthContext from '../contexts/AuthContext.jsx';
+import ShareModal from '../components/ShareModal';
 
 const { Text, Title, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -45,6 +46,7 @@ export default function ForumPost() {
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm();
   const [replyImages, setReplyImages] = useState([]); // 上传的评论图片文件列表
+  const [shareModalVisible, setShareModalVisible] = useState(false); // 分享弹窗状态
   const topRef = useRef(null);
 
   // 根据 hash 定位评论
@@ -138,10 +140,7 @@ export default function ForumPost() {
 
   const handleShare = () => {
     if (!post) return;
-    const shareUrl = `${getPublicOrigin()}/forum/post/${post.id}`;
-    navigator.clipboard.writeText(shareUrl).then(() => {
-      message.success('链接已复制到剪贴板');
-    }).catch(() => message.error('复制失败'));
+    setShareModalVisible(true);
   };
 
   const uploadProps = {
@@ -227,6 +226,14 @@ export default function ForumPost() {
 
   return (
     <div>
+      {/* 分享弹窗 */}
+      <ShareModal
+        visible={shareModalVisible}
+        onClose={() => setShareModalVisible(false)}
+        shareUrl={`${getPublicOrigin()}/forum/post/${post?.id || id}`}
+        title={post?.title}
+      />
+
       {/* 头部导航 */}
       <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
         <Col>
