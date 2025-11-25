@@ -19,20 +19,21 @@ try:
 except Exception:
     Notification = None
 
-from .models import (
-    ForumCategory,
-    ForumTag,
-    ForumAttachment,
-    ForumPost,
-    ForumPostImage,
-    ForumPostLike,
-    ForumPostReaction,
-    ForumComment,
-    ForumCommentLike,
-    ForumCommentReaction,
-    ForumCommentImage,
-    ForumShareLog,
-)
+from . import models as forum_models
+
+# 将常用模型绑定为变量，缺失的模型使用 None 回退以兼容不同分支的模型命名
+ForumCategory = forum_models.ForumCategory
+ForumTag = forum_models.ForumTag
+ForumAttachment = getattr(forum_models, "ForumAttachment", None)
+ForumPost = forum_models.ForumPost
+ForumPostImage = getattr(forum_models, "ForumPostImage", None)
+ForumPostLike = getattr(forum_models, "ForumPostLike", None)
+ForumPostReaction = getattr(forum_models, "ForumPostReaction", None)
+ForumComment = forum_models.ForumComment
+ForumCommentLike = getattr(forum_models, "ForumCommentLike", None)
+ForumCommentReaction = getattr(forum_models, "ForumCommentReaction", None)
+ForumCommentImage = getattr(forum_models, "ForumCommentImage", None)
+ForumShareLog = getattr(forum_models, "ForumShareLog", None)
 
 try:
     from .permissions import IsAuthorOrReadOnly
@@ -58,6 +59,31 @@ class ForumPostPagination(PageNumberPagination):
     page_size = 20
     page_size_query_param = "page_size"
     max_page_size = 50
+
+
+class ForumCategoryViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = ForumCategory.objects.all()
+    serializer_class = ForumCategorySerializer
+    permission_classes = [permissions.AllowAny]
+
+
+class ForumTagViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = ForumTag.objects.all()
+    serializer_class = ForumTagSerializer
+    permission_classes = [permissions.AllowAny]
+
+
+class ForumAttachmentViewSet(viewsets.ModelViewSet):
+    queryset = ForumAttachment.objects.all() if ForumAttachment is not None else []
+    serializer_class = ForumAttachmentSerializer
+    permission_classes = [permissions.AllowAny]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+
+class ForumCommentViewSet(viewsets.ModelViewSet):
+    queryset = ForumComment.objects.all()
+    serializer_class = ForumCommentSerializer
+    permission_classes = [permissions.AllowAny]
 
 
 class ForumPostViewSet(viewsets.ModelViewSet):

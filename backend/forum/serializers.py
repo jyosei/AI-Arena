@@ -355,3 +355,18 @@ class ForumCommentCreateSerializer(serializers.ModelSerializer):
         for f in files:
             ForumCommentImage.objects.create(comment=comment, image=f)
         return comment
+
+
+# 最小化的 Reaction 序列化器，供视图层在不同分支合并时回退使用
+class PostReactionSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    post = serializers.IntegerField()
+    user = serializers.IntegerField()
+    reaction_type = serializers.CharField(max_length=32)
+
+
+class CommentReactionSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    comment = serializers.IntegerField()
+    user = serializers.IntegerField()
+    reaction_type = serializers.CharField(max_length=32)

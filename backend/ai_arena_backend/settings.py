@@ -72,34 +72,20 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql', # <-- 使用 MySQL 引擎
-        'NAME': os.environ.get('DB_NAME'),         # <-- 从环境变量读取数据库名
-        'USER': os.environ.get('DB_USER'),         # <-- 从环境变量读取用户名
-        'PASSWORD': os.environ.get('DB_PASSWORD'), # <-- 从环境变量读取密码
-        'HOST': os.environ.get('DB_HOST'),         # <-- 从环境变量读取主机 (即 'db')
-        'PORT': os.environ.get('DB_PORT'),         # <-- 从环境变量读取端口
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': os.environ.get('DB_NAME'),
+        'USER': os.environ.get('DB_USER'),
+        'PASSWORD': os.environ.get('DB_PASSWORD'),
+        'HOST': os.environ.get('DB_HOST'),
+        'PORT': os.environ.get('DB_PORT'),
         'OPTIONS': {
             'charset': 'utf8mb4',
         }
     }
 }
 
-# 如果 MySQL 关键环境变量缺失，自动回退到 SQLite 以便本地开发和迁移执行
-mysql_env_complete = all([
-    DATABASES['default']['NAME'],
-    DATABASES['default']['USER'],
-    DATABASES['default']['PASSWORD'],
-    DATABASES['default']['HOST'],
-    DATABASES['default']['PORT'],
-])
-
-if not mysql_env_complete:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
-        }
-    }
+# NOTE: SQLite fallback removed — this project uses MySQL. Ensure the following
+# environment variables are set: DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT.
 
 # 告诉 Django 使用你的自定义用户模型
 AUTH_USER_MODEL = 'users.User'
