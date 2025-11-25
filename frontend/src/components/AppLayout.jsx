@@ -11,7 +11,8 @@ import {
   MessageOutlined, // <-- 确保这个图标已导入
   DownOutlined,
   DeleteOutlined,
-  CloseOutlined
+  CloseOutlined,
+  UploadOutlined
 } from '@ant-design/icons';
 import{
     Swords,
@@ -249,18 +250,23 @@ const AppLayout = () => {
               key: '1',
               icon: <EditOutlined />,
               // 使用 onClick 处理新建会话
-              label: <span onClick={openNewChatModal}>New Chat / Models</span>,
+              label: <span onClick={openNewChatModal}>新对话</span>,
             },
             {
               key: '2',
               icon: <TrophyOutlined />,
               // 使用 Link 组件包裹，使其可以点击跳转
-              label: <Link to="/leaderboard">Leaderboard</Link>,
+              label: <Link to="/leaderboard">排行榜</Link>,
             },
             { // <-- 这是新添加的项
               key: '3',
               icon: <MessageOutlined />,
               label: <Link to="/forum">社区论坛</Link>,
+            },
+            { // <-- 这是新添加的项
+              key: '4',
+              icon: <UploadOutlined />,
+              label: <Link to="/evaluate-dataset">上传数据集</Link>,
             },
           ]}
           // ---
