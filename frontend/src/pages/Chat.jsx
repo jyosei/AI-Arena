@@ -45,6 +45,25 @@ export default function ChatPage() {
   const title = conv ? conv.title : '会话';
   const savedMode = conv?.mode || 'direct-chat';
 
+  // 从会话数据中解析模型名称（用于显示）
+  const displayLeftModel = React.useMemo(() => {
+    if (!conv?.model_name) return leftModel;
+    if ((savedMode === 'side-by-side' || savedMode === 'battle') && conv.model_name.includes(' vs ')) {
+      const [left] = conv.model_name.split(' vs ').map(s => s.trim());
+      return left || leftModel;
+    }
+    return conv.model_name || leftModel;
+  }, [conv?.model_name, savedMode, leftModel]);
+
+  const displayRightModel = React.useMemo(() => {
+    if (!conv?.model_name) return rightModel;
+    if ((savedMode === 'side-by-side' || savedMode === 'battle') && conv.model_name.includes(' vs ')) {
+      const [, right] = conv.model_name.split(' vs ').map(s => s.trim());
+      return right || rightModel;
+    }
+    return rightModel;
+  }, [conv?.model_name, savedMode, rightModel]);
+
   // 从 location.state 获取初始消息
   const initialPrompt = location.state?.initialPrompt;
   const iconButtonStyle = {
@@ -638,9 +657,9 @@ export default function ChatPage() {
         <h2 style={{ margin: 0 }}>{title}</h2>
         <div style={{ color: '#8c8c8c', marginTop: 4 }}>
           {isGeneratingImage && `模式: 生成图片 - ${model ? model.name : '未选择'}`}
-          {!isGeneratingImage && mode === 'battle' && '模式: Battle (盲测对战)'}
-          {!isGeneratingImage && mode === 'side-by-side' && `模式: Side by Side - ${leftModel || 'Model A'} vs ${rightModel || 'Model B'}`}
-          {!isGeneratingImage && mode === 'direct-chat' && `模式: Direct Chat - ${model ? model.name : '未选择'}`}
+          {!isGeneratingImage && savedMode === 'battle' && '模式: Battle (盲测对战)'}
+          {!isGeneratingImage && savedMode === 'side-by-side' && `模式: Side by Side - ${displayLeftModel || 'Model A'} vs ${displayRightModel || 'Model B'}`}
+          {!isGeneratingImage && savedMode === 'direct-chat' && `模式: Direct Chat - ${model ? model.name : '未选择'}`}
         </div>
       </div>
 
