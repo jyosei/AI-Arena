@@ -163,35 +163,44 @@ export default function ChatPage() {
           const rightModelMessages = [];
           
           // 从 conv.model_name 解析左右模型名称
-          let leftModelName = leftModel;
-          let rightModelName = rightModel;
+          let leftModelName = displayLeftModel;
+          let rightModelName = displayRightModel;
           if (conv?.model_name && conv.model_name.includes(' vs ')) {
             [leftModelName, rightModelName] = conv.model_name.split(' vs ').map(s => s.trim());
           }
           
-          let aiMessageCount = 0; // 用于旧数据的交替分配
-          adapted.forEach(msg => {
+          console.log('Loading side-by-side messages:', {
+            leftModelName,
+            rightModelName,
+            totalMessages: adapted.length
+          });
+          
+          adapted.forEach((msg, index) => {
+            console.log(`Message ${index}:`, {
+              isUser: msg.isUser,
+              model_name: msg.model_name,
+              content: msg.content.substring(0, 30)
+            });
+            
             if (msg.isUser) {
               // 用户消息同时显示在两边
-              leftModelMessages.push(msg);
-              rightModelMessages.push(msg);
+              leftModelMessages.push({ ...msg, id: `${msg.id}-left` });
+              rightModelMessages.push({ ...msg, id: `${msg.id}-right` });
             } else {
               // AI 消息根据 model_name 分配
               if (msg.model_name === leftModelName) {
                 leftModelMessages.push(msg);
               } else if (msg.model_name === rightModelName) {
                 rightModelMessages.push(msg);
-              } else if (!msg.model_name) {
-                // 兼容旧数据：model_name 为 null 时，交替分配到左右两侧
-                // 假设每轮对话是：左模型回复、右模型回复
-                if (aiMessageCount % 2 === 0) {
-                  leftModelMessages.push(msg);
-                } else {
-                  rightModelMessages.push(msg);
-                }
-                aiMessageCount++;
+              } else {
+                console.warn('Message with unknown model_name:', msg.model_name, 'Expected:', leftModelName, 'or', rightModelName);
               }
             }
+          });
+          
+          console.log('Final message counts:', {
+            left: leftModelMessages.length,
+            right: rightModelMessages.length
           });
           
           setLeftMessages(leftModelMessages);
@@ -202,46 +211,62 @@ export default function ChatPage() {
           const leftModelMessages = [];
           const rightModelMessages = [];
           
-          // 从 conv.model_name 解析左右模型名称
-          let leftModelName = leftModel;
-          let rightModelName = rightModel;
+          console.log('Battle mode initial state:', {
+            convModelName: conv?.model_name,
+            displayLeftModel,
+            displayRightModel,
+            leftModel,
+            rightModel
+          });
+          
+          // 从 conv.model_name 解析左右模型名称（使用 displayLeftModel/displayRightModel）
+          let leftModelName = displayLeftModel;
+          let rightModelName = displayRightModel;
           if (conv?.model_name && conv.model_name.includes(' vs ')) {
             [leftModelName, rightModelName] = conv.model_name.split(' vs ').map(s => s.trim());
+          } else if (!leftModelName && !rightModelName) {
+            // 如果 conv.model_name 为 null，尝试从消息中推断模型名称
+            const aiMessages = adapted.filter(msg => !msg.isUser && msg.model_name);
+            if (aiMessages.length >= 2) {
+              const uniqueModels = [...new Set(aiMessages.map(m => m.model_name))];
+              leftModelName = uniqueModels[0];
+              rightModelName = uniqueModels[1] || uniqueModels[0];
+            }
           }
           
           console.log('Battle mode loading:', { 
-            convModelName: conv?.model_name, 
             leftModelName, 
             rightModelName,
             messageCount: adapted.length 
           });
           
-          let aiMessageCount = 0;
-          adapted.forEach(msg => {
+          adapted.forEach((msg, index) => {
+            console.log(`Battle Message ${index}:`, {
+              isUser: msg.isUser,
+              model_name: msg.model_name,
+              content: msg.content.substring(0, 30),
+              leftMatch: msg.model_name === leftModelName,
+              rightMatch: msg.model_name === rightModelName
+            });
+            
             if (msg.isUser) {
-              leftModelMessages.push(msg);
-              rightModelMessages.push(msg);
+              leftModelMessages.push({ ...msg, id: `${msg.id}-left` });
+              rightModelMessages.push({ ...msg, id: `${msg.id}-right` });
             } else {
-              console.log('Battle AI message:', { 
-                model_name: msg.model_name, 
-                content: msg.content.substring(0, 50),
-                leftMatch: msg.model_name === leftModelName,
-                rightMatch: msg.model_name === rightModelName
-              });
+              // AI 消息根据 model_name 分配
               if (msg.model_name === leftModelName) {
                 leftModelMessages.push(msg);
               } else if (msg.model_name === rightModelName) {
                 rightModelMessages.push(msg);
-              } else if (!msg.model_name) {
-                // 兼容旧数据
-                if (aiMessageCount % 2 === 0) {
-                  leftModelMessages.push(msg);
-                } else {
-                  rightModelMessages.push(msg);
-                }
-                aiMessageCount++;
+              } else {
+                console.warn('Battle message with unknown model_name:', msg.model_name, 'Expected:', leftModelName, 'or', rightModelName);
               }
             }
+          });
+          
+          console.log('Battle final message counts:', {
+            left: leftModelMessages.length,
+            right: rightModelMessages.length
           });
           
           setLeftMessages(leftModelMessages);
@@ -332,7 +357,7 @@ export default function ChatPage() {
       setMessages(prev => [...prev, userMessage]);
       try {
         // 调用 evaluateModel，后端应能处理图片生成任务
-        const res = await evaluateModel(model.name, currentPrompt, id, null); // 图片生成不上传图片
+        const res = await evaluateModel(model.name, currentPrompt, id, null, true); // 图片生成不上传图片，保存用户消息
         // 假设后端返回的 response 是图片 URL
         const aiMessage = { 
           id: Date.now() + 1, 
@@ -362,38 +387,15 @@ export default function ChatPage() {
       setDirectChatVoted(false);
       setMessages(prev => [...prev, userMessage]);
 
-      // 如果用户已登录，保存用户消息到后端
-      if (user && id) {
-        try {
-          await request.post('models/chat/message/', {
-            conversation_id: id,
-            content: currentPrompt,
-            is_user: true
-          });
-        } catch (err) {
-          console.error('Failed to save user message:', err);
-        }
-      }
+      // 不需要手动保存用户消息，evaluateModel 会自动保存
 
       try {
-        // --- 关键修改 5: 将图片文件传递给 API ---
-        const res = await evaluateModel(model.name, currentPrompt, id, currentImage);
-        const aiMessage = { id: Date.now() + 1, content: res.data.response, isUser: false };
+        // evaluateModel 会自动保存用户消息和AI回复
+        const res = await evaluateModel(model.name, currentPrompt, id, currentImage, true);
+        const aiMessage = { id: Date.now() + 1, content: res.data.response, isUser: false, model_name: model.name };
         setMessages(prev => [...prev, aiMessage]);
 
-        // 如果用户已登录，保存AI回复到后端
-        if (user && id) {
-          try {
-            await request.post('models/chat/message/', {
-              conversation_id: id,
-              content: res.data.response,
-              is_user: false,
-              model_name: model.name
-            });
-          } catch (err) {
-            console.error('Failed to save AI message:', err);
-          }
-        }
+        // 不需要手动保存AI消息，后端已自动保存
       } catch (err) {
         console.error('Evaluate failed:', err);
         const errMsg = { id: Date.now() + 1, content: `请求失败: ${err.response?.data?.error || err.message}`, isUser: false, isError: true };
@@ -416,38 +418,27 @@ export default function ChatPage() {
       setLeftMessages(prev => [...prev, userMessage]);
       setRightMessages(prev => [...prev, userMessage]);
 
-      // 保存用户消息到后端
-      if (user && id) {
-        try {
-          await request.post('models/chat/message/', {
-            conversation_id: id,
-            content: currentPrompt,
-            is_user: true
-          });
-        } catch (err) {
-          console.error('Failed to save user message:', err);
-        }
-      }
+      // 注意：不在这里保存用户消息，evaluateModel 会自动保存
+      // 但为了避免重复，我们只让第一个模型调用保存用户消息
+      // 实际上后端会保存两次（左右模型各一次），这是个问题
+      // 暂时移除这里的保存，依赖 evaluateModel 自动保存
 
       try {
         // 使用 URL 中的 id 作为 conversation_id，保持连续对话
+        // 只在左侧模型调用时保存用户消息，避免重复
         const [leftResponse, rightResponse] = await Promise.all([
-          evaluateModel(leftModel, currentPrompt, id, currentImage).catch(err => ({ error: err })),
-          evaluateModel(rightModel, currentPrompt, id, currentImage).catch(err => ({ error: err }))
+          evaluateModel(leftModel, currentPrompt, id, currentImage, true).catch(err => ({ error: err })),  // 保存用户消息
+          evaluateModel(rightModel, currentPrompt, id, currentImage, false).catch(err => ({ error: err })) // 不保存用户消息
         ]);
 
         const processResponse = async (response, modelName, setMessagesCallback) => {
           if (response.error) {
-            const errorMessage = { content: `调用模型出错: ${response.error.response?.data?.detail || response.error.message}`, isUser: false, isError: true };
+            const errorMessage = { id: Date.now() + Math.random(), content: `调用模型出错: ${response.error.response?.data?.detail || response.error.message}`, isUser: false, isError: true };
             setMessagesCallback(prev => [...prev, errorMessage]);
           } else {
-            const aiMessage = { content: response.data.response, isUser: false };
+            const aiMessage = { id: Date.now() + Math.random(), content: response.data.response, isUser: false, model_name: modelName };
             setMessagesCallback(prev => [...prev, aiMessage]);
-            if (user && id) {
-              try {
-                await request.post('models/chat/message/', { conversation_id: id, content: response.data.response, is_user: false, model_name: modelName });
-              } catch (err) { console.error(`Failed to save ${modelName} AI message:`, err); }
-            }
+            // 后端已经自动保存AI消息，不需要重复保存
           }
         };
 
@@ -511,24 +502,13 @@ export default function ChatPage() {
       setLeftMessages(prev => [...prev, userMessage]);
       setRightMessages(prev => [...prev, userMessage]);
 
-      // 保存用户消息到后端
-      if (user && id) {
-        try {
-          await request.post('models/chat/message/', {
-            conversation_id: id,
-            content: currentPrompt,
-            is_user: true
-          });
-        } catch (err) {
-          console.error('Failed to save user message:', err);
-        }
-      }
+      // 不在这里保存用户消息，由第一个 evaluateModel 调用保存
 
       try {
-        // --- 关键修改 6: 将图片文件传递给 API ---
+        // 只在左侧模型调用时保存用户消息，避免重复
         const [leftResponse, rightResponse] = await Promise.all([
-          evaluateModel(modelA, currentPrompt, id, currentImage).catch(err => ({ error: err })),
-          evaluateModel(modelB, currentPrompt, id, currentImage).catch(err => ({ error: err }))
+          evaluateModel(modelA, currentPrompt, id, currentImage, true).catch(err => ({ error: err })),  // 保存用户消息
+          evaluateModel(modelB, currentPrompt, id, currentImage, false).catch(err => ({ error: err })) // 不保存用户消息
         ]);
 
         const processResponse = async (response, modelName, setMessagesCallback) => {
@@ -536,13 +516,9 @@ export default function ChatPage() {
             const errorMessage = { content: `调用模型出错: ${response.error.response?.data?.detail || response.error.message}`, isUser: false, isError: true };
             setMessagesCallback(prev => [...prev, errorMessage]);
           } else {
-            const aiMessage = { content: response.data.response, isUser: false };
+            const aiMessage = { content: response.data.response, isUser: false, model_name: modelName };
             setMessagesCallback(prev => [...prev, aiMessage]);
-            if (user && id) {
-              try {
-                await request.post('models/chat/message/', { conversation_id: id, content: response.data.response, is_user: false, model_name: modelName });
-              } catch (err) { console.error(`Failed to save ${modelName} AI message:`, err); }
-            }
+            // 后端已经自动保存AI消息，不需要重复保存
           }
         };
 

@@ -113,6 +113,11 @@ const AppLayout = () => {
       message.warning('请选择模型');
       return;
     }
+    // side-by-side 模式需要选择两个模型
+    if (tempMode === 'side-by-side' && !tempRightModel) {
+      message.warning('Side by side 模式需要选择两个模型');
+      return;
+    }
     setCreatingChat(true);
     try {
       setMode(tempMode);
@@ -120,7 +125,15 @@ const AppLayout = () => {
       if (tempMode === 'side-by-side') {
         setRightModel(tempRightModel);
       }
-      const newChatId = await addChat('新会话', tempLeftModel, tempMode);
+      // 构造 model_name：side-by-side 需要 "modelA vs modelB" 格式
+      let modelNameForChat = tempLeftModel;
+      if (tempMode === 'side-by-side') {
+        modelNameForChat = `${tempLeftModel} vs ${tempRightModel}`;
+      } else if (tempMode === 'battle') {
+        // battle 模式可以传 null 或随机选择
+        modelNameForChat = null;
+      }
+      const newChatId = await addChat('新会话', modelNameForChat, tempMode);
       if (newChatId) {
         navigate(`/chat/${newChatId}`);
         message.success('会话已创建');
