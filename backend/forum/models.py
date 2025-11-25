@@ -355,3 +355,41 @@ class ForumCommentImage(models.Model):
 
     def __str__(self) -> str:
         return f"CommentImage {self.pk} for comment {getattr(self, 'comment_id', None)}"
+
+
+# 信号：自动更新帖子统计
+from django.db.models.signals import post_save, post_delete
+from django.dispatch import receiver
+
+
+@receiver(post_save, sender=ForumComment)
+def update_post_comment_count_on_create(sender, instance, created, **kwargs):
+    """评论创建或更新时更新帖子的评论数"""
+    if instance.post:
+        instance.post.comment_count = instance.post.comments.count()
+        instance.post.last_activity_at = instance.created_at if created else instance.post.last_activity_at
+        instance.post.save(update_fields=['comment_count', 'last_activity_at'])
+
+
+@receiver(post_delete, sender=ForumComment)
+def update_post_comment_count_on_delete(sender, instance, **kwargs):
+    """评论删除时更新帖子的评论数"""
+    if instance.post:
+        instance.post.comment_count = instance.post.comments.count()
+        instance.post.save(update_fields=['comment_count'])
+
+
+@receiver(post_save, sender=ForumPostReaction)
+def update_post_like_count_on_create(sender, instance, created, **kwargs):
+    """点赞创建时更新帖子的点赞数"""
+    if created and instance.reaction_type == 'like':
+        instance.post.like_count = instance.post.reactions.filter(reaction_type='like').count()
+        instance.post.save(update_fields=['like_count'])
+
+
+@receiver(post_delete, sender=ForumPostReaction)
+def update_post_like_count_on_delete(sender, instance, **kwargs):
+    """点赞删除时更新帖子的点赞数"""
+    if instance.reaction_type == 'like':
+        instance.post.like_count = instance.post.reactions.filter(reaction_type='like').count()
+        instance.post.save(update_fields=['like_count'])
