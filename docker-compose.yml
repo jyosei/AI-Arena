@@ -22,6 +22,7 @@ services:
     depends_on: [db]
     volumes: ["./backend:/app"]
     environment:
+
       DB_NAME: 'aiarena'
       DB_USER: 'root'
       DB_PASSWORD: '123456'
@@ -32,6 +33,7 @@ services:
     # 关键修改：
     # 1. 使用 bash -c 来确保脚本由 bash 执行
     # 2. 确保 wait-for-db.sh 脚本在本地 ./backend 文件夹中存在
+
     command: >
       bash -c "sed -i 's/\r$//' wait-for-db.sh &&
                ./wait-for-db.sh db python manage.py migrate &&
@@ -47,3 +49,4 @@ services:
     # volumes: ["./frontend:/app"]
     depends_on:
       - backend
+
