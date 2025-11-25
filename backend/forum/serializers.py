@@ -1,20 +1,60 @@
 import json
-from typing import Any
+from typing import Any, Iterable, List
 from urllib.parse import urljoin
+from uuid import uuid4
 
 from django.conf import settings
+from django.db import models
+from django.db import transaction
 from django.db.models import Count, Q
-from django.utils.text import Truncator
+from django.utils.text import Truncator, slugify
+from django.utils import timezone
 from rest_framework import serializers
 
+# 尝试兼容不同分支的用户模型引用
+try:
+    from users.models import User
+except Exception:
+    User = None
+
 from .models import (
-    ForumComment,
-    ForumCommentLike,
+    ForumCategory,
+    ForumTag,
+    ForumAttachment,
     ForumPost,
     ForumPostImage,
-    ForumPostLike,
+    ForumPostReaction,
+    ForumComment,
+    ForumCommentLike,
+    ForumCommentReaction,
     ForumCommentImage,
 )
+
+
+def build_media_url(request, path) -> str:
+    if not path:
+        return ""
+    path = str(path)
+    if path.startswith(("http://", "https://")):
+        return path
+    if not path.startswith("/"):
+        path = f"/{path}"
+    media_url = getattr(settings, "MEDIA_URL", "/media/") or "/media/"
+    if not media_url.startswith("/"):
+        media_url = f"/{media_url}"
+    if not media_url.endswith("/"):
+        media_url = f"{media_url}/"
+    if not path.startswith(media_url) and "/media/" not in path.split("?")[0]:
+        path = media_url + path.lstrip("/")
+    base = getattr(settings, "MEDIA_BASE_URL", "") or ""
+    if base:
+        base = base.rstrip("/") + "/"
+        return urljoin(base, path.lstrip("/"))
+    if request:
+        scheme = "https" if request.is_secure() else "http"
+        host = request.get_host()
+        return f"{scheme}://{host}{path}"
+    return path
 
 
 class UserSummarySerializer(serializers.Serializer):
@@ -25,56 +65,62 @@ class UserSummarySerializer(serializers.Serializer):
     def to_representation(self, instance):
         rep = super().to_representation(instance)
         request = self.context.get("request")
-        # 统一使用用户的 avatar_url 属性（包含外链或上传文件），并标准化为绝对地址
         avatar_raw = getattr(instance, "avatar_url", "") or getattr(instance, "avatar", "")
         rep["avatar"] = build_media_url(request, avatar_raw)
         return rep
 
 
-def build_media_url(request, path) -> str:
-    """构造稳定的绝对媒体文件 URL。
+class ForumAuthorSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User if User is not None else serializers.Serializer
+        fields = ("id", "username", "avatar")
 
-    解决以下潜在问题：
-    1. 相对路径缺少前导斜杠导致前端拼接异常。
-    2. path 不是以 MEDIA_URL 开头，直接 build_absolute_uri 可能出现重复 host 或错误的内部服务名。
-    3. Docker 反向代理场景下，避免返回 backend:8000 这类浏览器无法直接访问的主机名。
-    4. 允许通过 MEDIA_BASE_URL 强制覆盖域名（生产场景使用 CDN 或独立域名）。
-    """
-    if not path:
-        return ""
-    # 转成字符串，避免传入的是 Path/File 等对象
-    path = str(path)
-    if path.startswith(("http://", "https://")):
-        return path
 
-    # 标准化 path 前缀
-    if not path.startswith("/"):
-        path = f"/{path}"
+class ForumCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ForumCategory
+        fields = ("id", "name", "slug", "description", "is_active", "sort_order")
 
-    media_url = getattr(settings, "MEDIA_URL", "/media/") or "/media/"
-    if not media_url.startswith("/"):
-        media_url = f"/{media_url}"
-    if not media_url.endswith("/"):
-        media_url = f"{media_url}/"
 
-    # 如果 path 不以 media_url 开头，尝试补齐（排除已经包含 /media/ 的情况）
-    if not path.startswith(media_url) and "/media/" not in path.split("?")[0]:
-        path = media_url + path.lstrip("/")
+class ForumTagSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ForumTag
+        fields = ("id", "name", "slug")
 
-    base = getattr(settings, "MEDIA_BASE_URL", "") or ""
-    if base:
-        # MEDIA_BASE_URL 可能不以 / 结尾
-        base = base.rstrip("/") + "/"
-        return urljoin(base, path.lstrip("/"))
 
-    if request:
-        # 使用 request.get_host 避免内部主机名泄漏；协议由 is_secure 判断
-        scheme = "https" if request.is_secure() else "http"
-        host = request.get_host()
-        return f"{scheme}://{host}{path}"
+class ForumAttachmentSerializer(serializers.ModelSerializer):
+    url = serializers.SerializerMethodField()
+    file = serializers.ImageField(write_only=True, required=True)
 
-    # 无 request（极少数场景）返回原始 path（前端再补）
-    return path
+    class Meta:
+        model = ForumAttachment
+        fields = (
+            "id",
+            "url",
+            "file",
+            "width",
+            "height",
+            "content_type",
+            "size",
+            "created_at",
+        )
+        read_only_fields = ("id", "url", "width", "height", "content_type", "size", "created_at")
+
+    def validate_file(self, value):
+        if not (getattr(value, "content_type", "") or "").startswith("image/"):
+            raise serializers.ValidationError("仅支持上传图片文件。")
+        if getattr(value, "size", 0) > 5 * 1024 * 1024:
+            raise serializers.ValidationError("单张图片大小不能超过 5MB。")
+        return value
+
+    def get_url(self, instance):
+        if not instance.file:
+            return ""
+        request = self.context.get("request")
+        url = getattr(instance.file, "url", "")
+        if request is not None:
+            return request.build_absolute_uri(url)
+        return url
 
 
 class ForumPostImageSerializer(serializers.ModelSerializer):
@@ -92,7 +138,6 @@ class ForumPostImageSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         rep = super().to_representation(instance)
         request = self.context.get("request")
-        # 统一保证两个字段都是绝对地址，前端仍可兼容旧字段
         rep_image_raw = rep.get("image") or ""
         rep["image"] = build_media_url(request, rep_image_raw)
         rep["image_url"] = build_media_url(request, rep.get("image_url") or rep_image_raw)
@@ -130,20 +175,25 @@ class ForumCommentSerializer(serializers.ModelSerializer):
         ]
 
     def get_likes_count(self, obj: ForumComment) -> int:
-        return getattr(obj, "likes_count", None) or obj.comment_likes.count()  # type: ignore[attr-defined]
+        return getattr(obj, "likes_count", None) or getattr(obj, "comment_likes", obj.comment_likes).count()  # type: ignore
 
     def get_is_liked(self, obj: ForumComment) -> bool:
         request = self.context.get("request")
-        if not request or not request.user.is_authenticated:
+        if not request or not getattr(request, "user", None) or not request.user.is_authenticated:
             return False
+        user = request.user
         if hasattr(obj, "is_liked"):
-            return bool(obj.is_liked)  # type: ignore[attr-defined]
-        return obj.comment_likes.filter(user=request.user).exists()  # type: ignore[attr-defined]
+            return bool(obj.is_liked)
+        if hasattr(obj, "comment_likes"):
+            return obj.comment_likes.filter(user=user).exists()  # type: ignore
+        if hasattr(obj, "reactions"):
+            return obj.reactions.filter(user=user, reaction_type="like").exists()  # type: ignore
+        return False
 
     def get_images(self, obj: ForumComment):
         request = self.context.get("request")
         output = []
-        for img in getattr(obj, "images", []).all():  # type: ignore[attr-defined]
+        for img in getattr(obj, "images", []).all():  # type: ignore
             url = build_media_url(request, getattr(img.image, "url", ""))
             output.append({
                 "id": img.pk,
@@ -301,7 +351,6 @@ class ForumCommentCreateSerializer(serializers.ModelSerializer):
             author=request.user,
             **validated_data,
         )
-        # 处理文件上传
         files = request.FILES.getlist("images") if hasattr(request, "FILES") else []
         for f in files:
             ForumCommentImage.objects.create(comment=comment, image=f)

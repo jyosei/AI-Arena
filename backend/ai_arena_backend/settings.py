@@ -30,7 +30,7 @@ INSTALLED_APPS = [
     'users', 
     'datasets',
     'models_manager',
-    'forum',  # 注册论坛应用，确保其迁移被加载
+    'forum', 
 ]
 
 MIDDLEWARE = [
@@ -129,4 +129,18 @@ if not CORS_ALLOW_ALL_ORIGINS:
     cors_origins = os.getenv('CORS_ALLOWED_ORIGINS', '')
     if cors_origins:
         CORS_ALLOWED_ORIGINS = [o.strip() for o in cors_origins.split(',') if o.strip()]
+
+# CSRF 配置：信任的来源
+CSRF_TRUSTED_ORIGINS = ['http://localhost:8000', 'http://127.0.0.1:8000']
+# 允许从 nginx 代理通过
+CSRF_COOKIE_SECURE = False  # 开发环境使用 HTTP
+CSRF_COOKIE_HTTPONLY = False  # 允许 JavaScript 读取 CSRF cookie
+CSRF_USE_SESSIONS = False  # 不使用 session 存储 CSRF token
+
+
+STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 
