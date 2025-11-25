@@ -3,6 +3,7 @@ from django.db.models.functions import Coalesce, Greatest
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import never_cache
 from django.shortcuts import get_object_or_404
+from django.http import HttpResponse
 from rest_framework import permissions, status, viewsets
 from rest_framework import serializers as drf_serializers  # typing help
 from rest_framework.request import Request
@@ -11,6 +12,8 @@ from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
+import qrcode
+from io import BytesIO
 
 from .models import ForumComment, ForumCommentLike, ForumPost, ForumPostImage, ForumPostLike, ForumCommentImage
 from users.models import Notification
@@ -153,6 +156,37 @@ class ForumPostViewSet(viewsets.ModelViewSet):
                 )
         likes_count = ForumPostLike.objects.filter(post=post).count()
         return Response({"liked": liked, "likes_count": likes_count})
+
+    @action(detail=True, methods=["get"], url_path="qrcode", permission_classes=[permissions.AllowAny])
+    def qrcode_image(self, request, pk=None):
+        """生成帖子的二维码图片"""
+        post = self.get_object()
+        # 构建分享链接
+        host = request.get_host()
+        protocol = 'https' if request.is_secure() else 'http'
+        share_url = f"{protocol}://{host}/forum/post/{post.id}"
+        
+        # 生成二维码
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_H,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(share_url)
+        qr.make(fit=True)
+        
+        img = qr.make_image(fill_color="black", back_color="white")
+        
+        # 保存到字节流
+        buffer = BytesIO()
+        img.save(buffer, format='PNG')
+        buffer.seek(0)
+        
+        # 返回图片
+        response = HttpResponse(buffer, content_type='image/png')
+        response['Content-Disposition'] = f'inline; filename="qrcode-post-{post.id}.png"'
+        return response
 
 
 class ForumCommentListCreateView(APIView):

@@ -15,6 +15,10 @@ COPY . .
 ARG VITE_API_BASE=/api/
 ENV VITE_API_BASE=${VITE_API_BASE}
 
+# 公共访问地址（用于生成分享链接、二维码等）
+ARG VITE_PUBLIC_ORIGIN=http://localhost:8000
+ENV VITE_PUBLIC_ORIGIN=${VITE_PUBLIC_ORIGIN}
+
 # 构建（Vite 会把 import.meta.env.VITE_API_BASE 嵌入到构建产物）
 RUN npm run build
 
