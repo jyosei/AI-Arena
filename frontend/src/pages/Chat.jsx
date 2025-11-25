@@ -736,19 +736,19 @@ export default function ChatPage() {
         )}
       </div>
 
-      {(mode === 'side-by-side' || mode === 'battle') && leftMessages.length > 0 && !loading && (
+      {(mode === 'side-by-side' || mode === 'battle') && leftMessages.length > 0 && !loading && !voted && (
         <div style={{ marginTop: 12, textAlign: 'center' }}>
           {battleError && <Alert message={battleError} type="error" closable onClose={() => setBattleError(null)} style={{ marginBottom: 8 }} />}
           <Title level={5}>哪个模型的回答更好？</Title>
           <Space>
-            <Button onClick={() => handleVote(mode === 'battle' ? 'model_a' : leftModel)} disabled={voted}>← 左边更好</Button>
+            <Button onClick={() => handleVote(leftModel)} disabled={voted}>← 左边更好</Button>
             <Button onClick={() => handleVote('tie')} disabled={voted}>不分上下</Button>
             <Button onClick={() => handleVote('bad')} disabled={voted}>都很差</Button>
-            <Button onClick={() => handleVote(mode === 'battle' ? 'model_b' : rightModel)} disabled={voted}>→ 右边更好</Button>
+            <Button onClick={() => handleVote(rightModel)} disabled={voted}>→ 右边更好</Button>
           </Space>
         </div>
       )}
-      {mode === 'direct-chat' && messages.some(m => !m.isUser && !m.isError) && (
+      {mode === 'direct-chat' && messages.some(m => !m.isUser && !m.isError) && !voted &&(
         <div style={{ marginTop: 12, textAlign: 'center' }}>
           <Space>
             <Button onClick={() => handleDirectChatVote('good')} disabled={directChatVoted}>👍 Good</Button>
