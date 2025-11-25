@@ -15,7 +15,7 @@ import Chat from "./pages/Chat.jsx";
 import AppLayout from "./components/AppLayout.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import UserCenter from "./pages/UserCenter.jsx";
-
+import DatasetEvaluationPage from "./pages/DatasetEvaluation.jsx";
 // 2. 导入所有需要的 Context Provider
 import { AuthProvider } from "./contexts/AuthContext.jsx";
 import { ModeProvider } from './contexts/ModeContext';
@@ -77,6 +77,7 @@ function App() {
                       </ProtectedRoute>
                     )}
                   />
+                  <Route path="/evaluate-dataset" element={<DatasetEvaluationPage />} />
                 </Route>
                 <Route path="/login" element={<Login />} />
               </Routes>
