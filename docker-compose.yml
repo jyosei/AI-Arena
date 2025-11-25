@@ -24,7 +24,7 @@ services:
       DB_PASSWORD: 123456
       DB_HOST: db
       DB_PORT: 3306
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-replace_me}
+      OPENAI_API_KEY: 'sk-ser2cEa4NSlALdseJwob4oube3Trg0NOLwvXEH7yUAeYy9k9'
     command: >
       sh -c "until nc -z db 3306; do echo '[backend] waiting for db'; sleep 1; done; 
       echo '[backend] db ready, migrate'; python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
