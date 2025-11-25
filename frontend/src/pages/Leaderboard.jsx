@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Select, Table, Spin } from 'antd';
+import { Card, Select, Table, Spin, Tag, Tooltip } from 'antd';
 import { getLeaderboard } from '../api/models';
 
 export default function Leaderboard() {
@@ -20,9 +20,13 @@ export default function Leaderboard() {
       const mapped = data.map((item, idx) => ({
         id: item.id ?? idx,
         rank: item.rank ?? idx + 1,
-        name: item.name || item.model_name || item.id || `模型-${idx + 1}`,
+        name: item.name || item.display_name || item.model_name || item.id || `模型-${idx + 1}`,
         owner_name: item.owner_name || item.owner || '-',
         value: item.value ?? item.score ?? '-',
+        elo: item.elo_rating ?? '-',
+        win_rate: item.win_rate !== undefined ? `${item.win_rate.toFixed(1)}%` : '-',
+        battles: item.total_battles ?? 0,
+        task: item.task_type || item.task || '-',
       }));
 
       setRows(mapped);
@@ -32,14 +36,21 @@ export default function Leaderboard() {
   useEffect(() => { fetch(); }, [metric]);
 
   const columns = [
-    { title: '排名', dataIndex: 'rank', key: 'rank' },
-    { title: '模型', dataIndex: 'name', key: 'name' },
-    { title: '作者', dataIndex: 'owner_name', key: 'owner' },
-    { title: metric, dataIndex: 'value', key: 'value' },
+    { title: '排名', dataIndex: 'rank', key: 'rank', width: 80, sorter: (a,b)=>a.rank-b.rank },
+    { title: '模型', dataIndex: 'name', key: 'name', render: (text,row) => <span>{text} {row.task !== '-' && <Tag color="blue" style={{marginLeft:4}}>{row.task}</Tag>}</span> },
+    { title: '作者', dataIndex: 'owner_name', key: 'owner', width: 140 },
+    { title: 'ELO', dataIndex: 'elo', key: 'elo', sorter: (a,b)=> (a.elo=== '-'?0:a.elo) - (b.elo==='-'?0:b.elo) },
+    { title: '胜率', dataIndex: 'win_rate', key: 'win_rate', sorter: (a,b)=> parseFloat(a.win_rate)-parseFloat(b.win_rate) },
+    { title: '对战数', dataIndex: 'battles', key: 'battles', sorter: (a,b)=> a.battles - b.battles },
+    { title: metric, dataIndex: 'value', key: 'value', render: (val)=> <Tooltip title={`当前指标：${metric}`}>{val}</Tooltip>, sorter: (a,b)=> {
+        const av = isNaN(a.value)?0:Number(a.value);
+        const bv = isNaN(b.value)?0:Number(b.value);
+        return av - bv;
+      } },
   ];
 
   return (
-    <Card title="排行榜">
+    <Card title="排行榜" extra={<span style={{fontSize:12,color:'#888'}}>数据来源：实时 ELO + 胜率统计</span>}>
       <div style={{ marginBottom: 12 }}>
         <Select value={metric} onChange={(v) => setMetric(v)} style={{ width: 200 }}>
           <Select.Option value="score">综合得分</Select.Option>

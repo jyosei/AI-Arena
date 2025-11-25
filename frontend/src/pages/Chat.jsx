@@ -88,8 +88,8 @@ export default function ChatPage() {
   const [directChatVoted, setDirectChatVoted] = useState(false);
   const [battleError, setBattleError] = useState(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
-  const imageModels = useMemo(() => models.filter(m => m.task === 'image'), [models]);
-  const textModels = useMemo(() => models.filter(m => m.task !== 'image'), [models]);
+  const imageModels = useMemo(() => models.filter(m => m.capabilities.includes('image_generation')), [models]);
+  const textModels = useMemo(() => models.filter(m => m.capabilities.includes('chat')), [models]);
 
   // --- 关键修改 1: 添加图片状态和 Ref ---
   const [uploadedImage, setUploadedImage] = useState(null); // 存储 File 对象
@@ -305,7 +305,7 @@ export default function ChatPage() {
       image: currentImage ? URL.createObjectURL(currentImage) : null
     };
     if (isGeneratingImage) {
-      if (!model || model.task !== 'image') {
+      if (!model || !model.capabilities.includes('image_generation')) {
         antdMessage.error('请先在顶部选择一个图片生成模型');
         setLoading(false);
         return;
@@ -329,7 +329,6 @@ export default function ChatPage() {
         setMessages(prev => [...prev, errMsg]);
       } finally {
         setLoading(false);
-        setIsGeneratingImage(false); // 生成后自动退出图片生成模式
       }
       return;
     }
@@ -452,8 +451,9 @@ export default function ChatPage() {
       // 如果还没有选择模型，随机选择
       if (!leftModel || !rightModel) {
         // 过滤掉图片和视频模型
-        const filteredModels = models.filter(m => m.task !== 'image' && m.task !== 'video');
-        
+        const requiredCapability = currentImage ? 'vision' : 'chat';
+        const filteredModels = models.filter(m => m.capabilities.includes(requiredCapability));
+
         if (filteredModels.length < 2) {
           antdMessage.error('当前模式下可用模型不足 (<2)，无法开始对战');
           setLoading(false);
@@ -571,7 +571,15 @@ export default function ChatPage() {
       antdMessage.error("无法找到用于投票的对话。");
       return;
     }
-
+    let winnerValue;
+    if (choice === 'good') {
+      // 如果用户觉得好，那么获胜者就是当前模型
+      winnerValue = leftModel;
+    } else {
+      // 如果用户觉得不好，可以传递 'bad' 或者模型名称，这里我们统一为 'bad'
+      // 后端需要能处理 'bad' 这种特殊情况
+      winnerValue = 'bad';
+    }
     const voteData = {
       model_a: leftModel,
       model_b: null,
@@ -728,19 +736,19 @@ export default function ChatPage() {
         )}
       </div>
 
-      {(mode === 'side-by-side' || mode === 'battle') && leftMessages.length > 0 && !loading && (
+      {(mode === 'side-by-side' || mode === 'battle') && leftMessages.length > 0 && !loading && !voted && (
         <div style={{ marginTop: 12, textAlign: 'center' }}>
           {battleError && <Alert message={battleError} type="error" closable onClose={() => setBattleError(null)} style={{ marginBottom: 8 }} />}
           <Title level={5}>哪个模型的回答更好？</Title>
           <Space>
-            <Button onClick={() => handleVote(mode === 'battle' ? 'model_a' : leftModel)} disabled={voted}>← 左边更好</Button>
+            <Button onClick={() => handleVote(leftModel)} disabled={voted}>← 左边更好</Button>
             <Button onClick={() => handleVote('tie')} disabled={voted}>不分上下</Button>
             <Button onClick={() => handleVote('bad')} disabled={voted}>都很差</Button>
-            <Button onClick={() => handleVote(mode === 'battle' ? 'model_b' : rightModel)} disabled={voted}>→ 右边更好</Button>
+            <Button onClick={() => handleVote(rightModel)} disabled={voted}>→ 右边更好</Button>
           </Space>
         </div>
       )}
-      {mode === 'direct-chat' && messages.some(m => !m.isUser && !m.isError) && (
+      {mode === 'direct-chat' && messages.some(m => !m.isUser && !m.isError) && !voted &&(
         <div style={{ marginTop: 12, textAlign: 'center' }}>
           <Space>
             <Button onClick={() => handleDirectChatVote('good')} disabled={directChatVoted}>👍 Good</Button>

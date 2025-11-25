@@ -1,8 +1,9 @@
 FROM python:3.12
 
 # 关键：在 apt-get update 之前，先用 sed 命令替换软件源为国内镜像
+# 将 bash 的安装合并到这一行
 RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources \
-    && apt-get update && apt-get install -y netcat-openbsd libmagic1
+    && apt-get update && apt-get install -y netcat-openbsd libmagic1 bash
 
 WORKDIR /app
 COPY requirements.txt .

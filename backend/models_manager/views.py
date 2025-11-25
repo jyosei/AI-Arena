@@ -4,12 +4,11 @@ from rest_framework.permissions import IsAuthenticated, AllowAny # 导入 AllowA
 from rest_framework.parsers import FormParser
 from rest_framework import status
 from rest_framework.parsers import JSONParser, MultiPartParser
-from .services import get_model_service
-from .models import BattleVote
+from .services import get_model_service, ELORatingSystem
+from .models import BattleVote, AIModel
 from .models import ChatConversation
 from .models import ChatMessage
-from .serializers import ChatConversationSerializer
-from .serializers import ChatMessageSerializer
+from .serializers import ChatConversationSerializer, ChatMessageSerializer, AIModelSerializer
 import random
 import time
 import base64
@@ -35,7 +34,7 @@ class RecordVoteView(APIView):
             valid_winners.append(model_b)
         
         # 添加所有可能的投票选项
-        valid_winners.extend(['tie', 'bad', 'good'])
+        valid_winners.extend(['tie', 'both_bad'])
 
         if winner not in valid_winners:
             return Response({'error': f'Invalid winner. Must be one of {valid_winners}'}, status=status.HTTP_400_BAD_REQUEST)
@@ -43,11 +42,19 @@ class RecordVoteView(APIView):
         # 创建并保存投票记录
         BattleVote.objects.create(
             model_a=model_a,
-            model_b=model_b, # 可以为 null
+            model_b=model_b,  # 可以为 null
             prompt=prompt,
             winner=winner,
-            # voter=request.user if request.user.is_authenticated else None
+            voter=request.user if request.user.is_authenticated else None
         )
+
+        # 如果是 battle 模式（model_b 存在），更新 ELO 评分
+        if model_b and winner in [model_a, model_b, 'tie', 'both_bad']:
+            try:
+                ELORatingSystem.process_battle(model_a, model_b, winner)
+            except Exception as e:
+                # 记录错误但不影响投票记录的保存
+                print(f"Error updating ELO ratings: {e}")
 
         return Response(status=status.HTTP_200_OK)
 # 新增：模型列表视图
@@ -56,41 +63,37 @@ class ModelListView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, *args, **kwargs):
-        # 以后这里会是从数据库查询的真实数据
-        # models = Model.objects.all()
-        # serializer = ModelSerializer(models, many=True)
-        # return Response(serializer.data)
-
-        # 现在，为了快速测试，我们返回一些硬编码的假数据
+        # 建议：将 'task' 字段改为 'capabilities' 列表，以支持多功能表示
+        # 'chat': 对话, 'vision': 识图, 'image_generation': 文生图, 'code': 代码
         dummy_models = [
-            {"id": 1, "name": "gpt-3.5-turbo", "owner_name": "OpenAI", "task": "通用"},
-            {"id": 2, "name": "gpt-5", "owner_name": "OpenAI", "task": "通用"},
-            {"id": 3, "name": "gpt-5.1", "owner_name": "OpenAI", "task": "通用"},
-            {"id": 4, "name": "gpt-5-codex", "owner_name": "OpenAI", "task": "通用"},
-            {"id": 5, "name": "gpt-5-mini", "owner_name": "OpenAI", "task": "通用"},
-            {"id": 6, "name": "gpt-5-search-api", "owner_name": "OpenAI", "task": "通用"},
-            {"id": 7, "name": "dall-e-3", "owner_name": "OpenAI", "task": "image"},
-            {"id": 8, "name": "gpt-4", "owner_name": "OpenAI", "task": "通用"},
-            {"id": 9, "name": "gpt-4-turbo", "owner_name": "OpenAI", "task": "通用"},
-            {"id": 10, "name": "gpt-4.1", "owner_name": "OpenAI", "task": "通用"},
-            {"id": 11, "name": "gpt-4o-mini", "owner_name": "OpenAI", "task": "通用"},
-            {"id": 12, "name": "claude-haiku-4-5-20251001", "owner_name": "Anthropic", "task": "通用"},
-            {"id": 13, "name": "claude-opus-4-20245014-thinking", "owner_name": "Anthropic", "task": "通用"},
-            {"id": 14, "name": "claude-3-sonnet-20240229", "owner_name": "Anthropic", "task": "通用"},
-            {"id": 15, "name": "veo_3_1-fast", "owner_name": "google", "task": "通用"},
-            {"id": 16, "name": "gemini-2.0-flash", "owner_name": "Google", "task": "通用"},
-            {"id": 17, "name": "gemini-2.5-flash", "owner_name": "Google", "task": "image"},
-            {"id": 18, "name": "gemini-2.5-flash-image", "owner_name": "Google", "task": "通用"},
-            {"id": 19, "name": "gemini-2.5-pro", "owner_name": "Google", "task": "通用"},
-            {"id": 20, "name": "glm-4", "owner_name": "ZhipuAI", "task": "通用"},
-            {"id": 21, "name": "glm-4.5", "owner_name": "ZhipuAI", "task": "通用"},
-            {"id": 22, "name": "deepseek-chat", "owner_name": "深度求索", "task": "代码"},
-            {"id": 23, "name": "deepseek-ocr", "owner_name": "深度求索", "task": "代码"},
-            {"id": 24, "name": "deepseek-r1", "owner_name": "深度求索", "task": "代码"},
-            {"id": 25, "name": "kimi-k2", "owner_name": "Moonshot", "task": "代码"},
-            {"id": 26, "name": "doubao-1-5-pro-32k-character-250228", "owner_name": "Doubao", "task": "代码"},
-            {"id": 27, "name": "llama-2-13b", "owner_name": "Ollama", "task": "代码"},
-            {"id": 28, "name": "qwen-max", "owner_name": "阿里巴巴", "task": "通用"},
+            {"id": 1, "name": "gpt-3.5-turbo", "owner_name": "OpenAI", "capabilities": ["chat", "code"]},
+            {"id": 2, "name": "gpt-5", "owner_name": "OpenAI", "capabilities": ["chat", "vision", "code"]},
+            {"id": 3, "name": "gpt-5.1", "owner_name": "OpenAI", "capabilities": ["chat", "vision", "code"]},
+            {"id": 4, "name": "gpt-5-codex", "owner_name": "OpenAI", "capabilities": ["chat", "vision", "code"]},
+            {"id": 5, "name": "gpt-5-mini", "owner_name": "OpenAI", "capabilities": ["chat", "vision", "code"]},
+            {"id": 6, "name": "gpt-5-search-api", "owner_name": "OpenAI", "capabilities": ["chat", "vision", "code"]},
+            {"id": 7, "name": "dall-e-3", "owner_name": "OpenAI", "capabilities": ["image_generation"]},
+            {"id": 8, "name": "gpt-4", "owner_name": "OpenAI", "capabilities": ["chat", "vision", "code"]},
+            {"id": 9, "name": "gpt-4-turbo", "owner_name": "OpenAI", "capabilities": ["chat", "vision", "code"]},
+            {"id": 10, "name": "gpt-4.1", "owner_name": "OpenAI", "capabilities": ["chat", "vision", "code"]},
+            {"id": 11, "name": "gpt-4o-mini", "owner_name": "OpenAI", "capabilities": ["chat", "vision", "code"]},
+            {"id": 12, "name": "claude-haiku-4-5-20251001", "owner_name": "Anthropic", "capabilities": ["chat", "vision"]},
+            {"id": 13, "name": "claude-opus-4-20245014-thinking", "owner_name": "Anthropic", "capabilities": ["chat", "vision"]},
+            {"id": 14, "name": "claude-3-sonnet-20240229", "owner_name": "Anthropic", "capabilities": ["chat", "vision"]},
+            {"id": 15, "name": "veo_3_1-fast", "owner_name": "google", "capabilities": ["chat"]},
+            {"id": 16, "name": "gemini-2.0-flash", "owner_name": "Google", "capabilities": ["chat", "vision"]},
+            {"id": 17, "name": "gemini-2.5-flash", "owner_name": "Google", "capabilities": ["chat", "vision"]},
+            {"id": 18, "name": "gemini-2.5-flash-image", "owner_name": "Google", "capabilities": ["chat", "vision"]},
+            {"id": 19, "name": "gemini-2.5-pro", "owner_name": "Google", "capabilities": ["chat", "vision", "code"]},
+            {"id": 20, "name": "glm-4", "owner_name": "ZhipuAI", "capabilities": ["chat", "vision", "code"]},
+            {"id": 21, "name": "glm-4.5", "owner_name": "ZhipuAI", "capabilities": ["chat", "vision", "code"]},
+            {"id": 22, "name": "deepseek-chat", "owner_name": "深度求索", "capabilities": ["chat", "code"]},
+            {"id": 23, "name": "deepseek-ocr", "owner_name": "深度求索", "capabilities": ["vision"]},
+            {"id": 24, "name": "deepseek-r1", "owner_name": "深度求索", "capabilities": ["chat", "code"]},
+            {"id": 25, "name": "kimi-k2", "owner_name": "Moonshot", "capabilities": ["chat"]},
+            {"id": 26, "name": "doubao-1-5-pro-32k-character-250228", "owner_name": "Doubao", "capabilities": ["chat"]},
+            {"id": 27, "name": "llama-2-13b", "owner_name": "Ollama", "capabilities": ["chat", "code"]},
+            {"id": 28, "name": "qwen-max", "owner_name": "阿里巴巴", "capabilities": ["chat", "vision", "code"]},
         ]
         return Response(dummy_models, status=status.HTTP_200_OK)
 
@@ -280,38 +283,45 @@ class BattleModelView(APIView):
 
 
 class LeaderboardView(APIView):
-    """简陋的排行榜接口（用于前端在后端未完成真实 leaderboard 时的回退）。
-    返回包含 id/name/owner_name/value/rank 的列表，按 value 降序。
-    """
+    """排行榜接口，返回基于 ELO 评分的模型排名"""
     permission_classes = [AllowAny]
 
     def get(self, request, *args, **kwargs):
-        # 支持一个可选的 metric 查询参数（当前不影响返回，仅保留以便未来扩展）
         metric = request.query_params.get('metric', 'score')
-
-        # 使用与 ModelListView 相同的假数据源，但带上示例的 value（分数）
-        dummy_models = [
-            {"id": 1, "name": "gpt-3.5-turbo", "owner_name": "OpenAI", "task": "通用"},
-            {"id": 2, "name": "glm-4", "owner_name": "智谱AI", "task": "通用"},
-            {"id": 3, "name": "deepseek-chat", "owner_name": "深度求索", "task": "代码"},
-            {"id": 4, "name": "qwen-max", "owner_name": "阿里巴巴", "task": "通用"},
-        ]
-
-        # 简单固定分数；真实场景应由数据库或评估结果提供
-        sample_scores = [95, 88, 76, 70]
-
-        scored = []
-        for i, m in enumerate(dummy_models):
-            item = m.copy()
-            item['value'] = sample_scores[i] if i < len(sample_scores) else 0
-            scored.append(item)
-
-        # 按 value 降序排序并添加 rank
-        scored.sort(key=lambda x: x['value'], reverse=True)
-        for idx, item in enumerate(scored):
-            item['rank'] = idx + 1
-
-        return Response(scored, status=status.HTTP_200_OK)
+        task_type = request.query_params.get('task_type', None)
+        
+        # 查询活跃的模型，按 ELO 评分降序排列
+        queryset = AIModel.objects.filter(is_active=True)
+        
+        # 可选：按任务类型过滤
+        if task_type:
+            queryset = queryset.filter(task_type=task_type)
+        
+        # 按 ELO 评分排序
+        queryset = queryset.order_by('-elo_rating')
+        
+        # 序列化数据
+        serializer = AIModelSerializer(queryset, many=True)
+        
+        # 添加排名信息
+        ranked_data = []
+        for idx, model_data in enumerate(serializer.data):
+            model_data['rank'] = idx + 1
+            # 根据 metric 选择展示的值
+            if metric == 'score':
+                model_data['value'] = round(model_data['elo_rating'], 0)
+            elif metric == 'accuracy':
+                model_data['value'] = round(model_data['win_rate'], 1)
+            else:
+                model_data['value'] = round(model_data['elo_rating'], 0)
+            
+            # 前端期望的字段名映射
+            model_data['owner_name'] = model_data.get('owner', '-')
+            model_data['name'] = model_data.get('display_name') or model_data.get('name')
+            
+            ranked_data.append(model_data)
+        
+        return Response(ranked_data, status=status.HTTP_200_OK)
 
 
 class ChatHistoryView(APIView):
