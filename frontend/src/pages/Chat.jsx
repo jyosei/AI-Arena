@@ -88,8 +88,8 @@ export default function ChatPage() {
   const [directChatVoted, setDirectChatVoted] = useState(false);
   const [battleError, setBattleError] = useState(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
-  const imageModels = useMemo(() => models.filter(m => m.task === 'image'), [models]);
-  const textModels = useMemo(() => models.filter(m => m.task !== 'image'), [models]);
+  const imageModels = useMemo(() => models.filter(m => m.capabilities.includes('image_generation')), [models]);
+  const textModels = useMemo(() => models.filter(m => m.capabilities.includes('chat')), [models]);
 
   // --- 关键修改 1: 添加图片状态和 Ref ---
   const [uploadedImage, setUploadedImage] = useState(null); // 存储 File 对象
@@ -305,7 +305,7 @@ export default function ChatPage() {
       image: currentImage ? URL.createObjectURL(currentImage) : null
     };
     if (isGeneratingImage) {
-      if (!model || model.task !== 'image') {
+      if (!model || !model.capabilities.includes('image_generation')) {
         antdMessage.error('请先在顶部选择一个图片生成模型');
         setLoading(false);
         return;
@@ -451,8 +451,9 @@ export default function ChatPage() {
       // 如果还没有选择模型，随机选择
       if (!leftModel || !rightModel) {
         // 过滤掉图片和视频模型
-        const filteredModels = models.filter(m => m.task !== 'image' && m.task !== 'video');
-        
+        const requiredCapability = currentImage ? 'vision' : 'chat';
+        const filteredModels = models.filter(m => m.capabilities.includes(requiredCapability));
+
         if (filteredModels.length < 2) {
           antdMessage.error('当前模式下可用模型不足 (<2)，无法开始对战');
           setLoading(false);
