@@ -107,6 +107,14 @@ class EvaluateModelView(APIView):
         prompt = request.data.get("prompt", "") # 允许 prompt 为空
         image_file = request.FILES.get("image") # 3. 获取可选的图片文件
         conversation_id = request.data.get("conversation_id")
+        # 获取 save_user_message 参数，支持布尔值和字符串
+        save_user_message_raw = request.data.get("save_user_message", True)
+        if isinstance(save_user_message_raw, bool):
+            save_user_message = save_user_message_raw
+        elif isinstance(save_user_message_raw, str):
+            save_user_message = save_user_message_raw.lower() in ['true', '1', 'yes']
+        else:
+            save_user_message = True  # 默认保存
 
         # 4. 更新验证逻辑：prompt 和 image 不能同时为空
         if not model_name or (not prompt and not image_file):
@@ -131,12 +139,15 @@ class EvaluateModelView(APIView):
                 )
             
             # --- 保存用户消息（包含可选的图片） ---
-            ChatMessage.objects.create(
-                conversation=conversation,
-                role='user',
-                content=prompt,
-                image=image_file # 如果 image_file 为 None，Django 会正确处理
-            )
+            # 根据参数决定是否保存用户消息
+            if save_user_message:
+                ChatMessage.objects.create(
+                    conversation=conversation,
+                    role='user',
+                    is_user=True,
+                    content=prompt,
+                    image=image_file
+                )
             
             # --- 构建包含完整历史（包括历史图片）的消息体 ---
             history_messages = []
@@ -184,7 +195,9 @@ class EvaluateModelView(APIView):
             ChatMessage.objects.create(
                 conversation=conversation,
                 role='assistant',
-                content=response_text
+                is_user=False,
+                content=response_text,
+                model_name=model_name
             )
             
             return Response({

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layout, Menu, Dropdown, Button, Avatar, Space, Select, Typography, Form, Input, Modal, message, Tooltip } from 'antd';
+import { Layout, Menu, Dropdown, Button, Avatar, Space, Select, Typography, Form, Input, Modal, message, Tooltip, Radio } from 'antd';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useMode } from '../contexts/ModeContext';
 import { useChat } from '../contexts/ChatContext';
@@ -42,6 +42,12 @@ const AppLayout = () => {
   const intl = useIntl();
   const { login, logout, user } = React.useContext(AuthContext);
   const isLoggedIn = !!user;
+  // 新建会话弹窗状态与临时选择
+  const [showNewChatModal, setShowNewChatModal] = React.useState(false);
+  const [creatingChat, setCreatingChat] = React.useState(false);
+  const [tempMode, setTempMode] = React.useState(mode);
+  const [tempLeftModel, setTempLeftModel] = React.useState(leftModel);
+  const [tempRightModel, setTempRightModel] = React.useState(rightModel);
   const userEmail = user?.email || user?.username || '';
   const navigateToUserCenter = React.useCallback(() => {
     navigate('/user-center');
@@ -94,16 +100,50 @@ const AppLayout = () => {
     }
   };
 
-  const handleNewChat = async () => {
+  const openNewChatModal = () => {
+    setTempMode(mode);
+    setTempLeftModel(leftModel || (models[0]?.name ?? null));
+    setTempRightModel(rightModel || (models[1]?.name ?? null));
+    setShowNewChatModal(true);
+  };
+
+  const handleConfirmNewChat = async () => {
+    // battle 模式不需要选择模型
+    if (tempMode !== 'battle' && !tempLeftModel) {
+      message.warning('请选择模型');
+      return;
+    }
+    // side-by-side 模式需要选择两个模型
+    if (tempMode === 'side-by-side' && !tempRightModel) {
+      message.warning('Side by side 模式需要选择两个模型');
+      return;
+    }
+    setCreatingChat(true);
     try {
-      const modelName = leftModel || (models && models.length > 0 ? models[0].name : null);
-      const newChatId = await addChat('新会话', modelName, mode);
+      setMode(tempMode);
+      setLeftModel(tempLeftModel);
+      if (tempMode === 'side-by-side') {
+        setRightModel(tempRightModel);
+      }
+      // 构造 model_name：side-by-side 需要 "modelA vs modelB" 格式
+      let modelNameForChat = tempLeftModel;
+      if (tempMode === 'side-by-side') {
+        modelNameForChat = `${tempLeftModel} vs ${tempRightModel}`;
+      } else if (tempMode === 'battle') {
+        // battle 模式可以传 null 或随机选择
+        modelNameForChat = null;
+      }
+      const newChatId = await addChat('新会话', modelNameForChat, tempMode);
       if (newChatId) {
         navigate(`/chat/${newChatId}`);
+        message.success('会话已创建');
       }
+      setShowNewChatModal(false);
     } catch (error) {
       console.error('Failed to create new chat:', error);
       message.error('创建新会话失败');
+    } finally {
+      setCreatingChat(false);
     }
   };
 
@@ -209,7 +249,7 @@ const AppLayout = () => {
               key: '1',
               icon: <EditOutlined />,
               // 使用 onClick 处理新建会话
-              label: <span onClick={handleNewChat}>New Chat / Models</span>,
+              label: <span onClick={openNewChatModal}>New Chat / Models</span>,
             },
             {
               key: '2',
@@ -396,6 +436,73 @@ const AppLayout = () => {
             <div style={{ maxWidth: 360, margin: '0 auto' }}>
               <LoginForm />
             </div>
+          </Modal>
+          <Modal
+            title={<div style={{ fontWeight: 600 }}>新建会话</div>}
+            open={showNewChatModal}
+            onCancel={() => setShowNewChatModal(false)}
+            onOk={handleConfirmNewChat}
+            okText={creatingChat ? '创建中...' : '开始会话'}
+            confirmLoading={creatingChat}
+            destroyOnClose
+          >
+            {models.length === 0 ? (
+              <div style={{ padding: '12px 0' }}>暂无可用模型，请稍后再试。</div>
+            ) : (
+              <Space direction="vertical" size="large" style={{ width: '100%' }}>
+                <div>
+                  <Typography.Text>选择模式：</Typography.Text>
+                  <Radio.Group
+                    value={tempMode}
+                    onChange={(e) => setTempMode(e.target.value)}
+                    style={{ marginTop: 8 }}
+                  >
+                    <Radio.Button value="battle">Battle</Radio.Button>
+                    <Radio.Button value="side-by-side">Side by side</Radio.Button>
+                    <Radio.Button value="direct-chat">Direct chat</Radio.Button>
+                  </Radio.Group>
+                </div>
+                {tempMode === 'battle' ? (
+                  <Typography.Text type="secondary">
+                    Battle 模式将随机匹配模型进行对战，无需手动选择。
+                  </Typography.Text>
+                ) : tempMode === 'side-by-side' ? (
+                  <Space size="middle" wrap>
+                    <Select
+                      showSearch
+                      placeholder="左侧模型"
+                      value={tempLeftModel}
+                      onChange={setTempLeftModel}
+                      style={{ width: 180 }}
+                      options={models.map(m => ({ label: m.name, value: m.name }))}
+                    />
+                    <Typography.Text strong>VS</Typography.Text>
+                    <Select
+                      showSearch
+                      placeholder="右侧模型"
+                      value={tempRightModel}
+                      onChange={setTempRightModel}
+                      style={{ width: 180 }}
+                      options={models.map(m => ({ label: m.name, value: m.name }))}
+                    />
+                  </Space>
+                ) : (
+                  <Select
+                    showSearch
+                    placeholder="选择模型"
+                    value={tempLeftModel}
+                    onChange={setTempLeftModel}
+                    style={{ width: 240 }}
+                    options={models.map(m => ({ label: m.name, value: m.name }))}
+                  />
+                )}
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  {tempMode === 'battle' 
+                    ? '点击"开始会话"进入 Battle 模式。' 
+                    : '根据模式选择一个或两个模型，确认后进入聊天界面。'}
+                </Typography.Text>
+              </Space>
+            )}
           </Modal>
         </Header>
         <Content style={{ 
