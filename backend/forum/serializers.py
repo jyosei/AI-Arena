@@ -207,7 +207,9 @@ class ForumCommentSerializer(serializers.ModelSerializer):
 class ForumPostListSerializer(serializers.ModelSerializer):
     author = UserSummarySerializer(read_only=True)
     comments_count = serializers.IntegerField(read_only=True)
+    comment_count = serializers.SerializerMethodField()  # 兼容前端单数命名
     likes_count = serializers.IntegerField(read_only=True)
+    like_count = serializers.SerializerMethodField()  # 兼容前端单数命名
     last_activity = serializers.DateTimeField(read_only=True)
     excerpt = serializers.SerializerMethodField()
 
@@ -224,11 +226,21 @@ class ForumPostListSerializer(serializers.ModelSerializer):
             "updated_at",
             "last_activity",
             "comments_count",
+            "comment_count",  # 兼容
             "likes_count",
+            "like_count",  # 兼容
             "author",
             "excerpt",
         ]
         read_only_fields = fields
+
+    def get_comment_count(self, obj):
+        """返回模型的 comment_count 字段值"""
+        return obj.comment_count
+
+    def get_like_count(self, obj):
+        """返回模型的 like_count 字段值"""
+        return obj.like_count
 
     def get_excerpt(self, obj: ForumPost) -> str:
         return Truncator(obj.content).words(50, truncate="...")
@@ -239,7 +251,9 @@ class ForumPostDetailSerializer(serializers.ModelSerializer):
     images = ForumPostImageSerializer(many=True, read_only=True)
     comments = serializers.SerializerMethodField()
     likes_count = serializers.IntegerField(read_only=True)
+    like_count = serializers.SerializerMethodField()  # 兼容前端
     comments_count = serializers.IntegerField(read_only=True)
+    comment_count = serializers.SerializerMethodField()  # 兼容前端
     is_liked = serializers.SerializerMethodField()
 
     class Meta:
@@ -258,10 +272,20 @@ class ForumPostDetailSerializer(serializers.ModelSerializer):
             "images",
             "comments",
             "likes_count",
+            "like_count",  # 兼容
             "comments_count",
+            "comment_count",  # 兼容
             "is_liked",
         ]
         read_only_fields = fields
+
+    def get_comment_count(self, obj):
+        """返回模型的 comment_count 字段值"""
+        return obj.comment_count
+
+    def get_like_count(self, obj):
+        """返回模型的 like_count 字段值"""
+        return obj.like_count
 
     def get_comments(self, obj: ForumPost) -> Any:
         queryset = obj.comments.select_related("author").annotate(  # type: ignore[attr-defined]
