@@ -111,10 +111,10 @@ class ForumPostViewSet(viewsets.ModelViewSet):
         return ForumPostDetailSerializer
 
     def _annotate_activity(self, qs):
-        # 尝试为不同实现做注解（comments/post_likes 或 comment_count/post_reactions）
+        # 尝试为不同实现做注解（comments/reactions）
         qs = qs.annotate(
             comments_count=Count("comments", distinct=True),
-            likes_count=Count("post_likes", distinct=True),
+            likes_count=Count("reactions", filter=Q(reactions__reaction_type="like"), distinct=True),
             last_comment_at=Max("comments__created_at"),
         )
         qs = qs.annotate(
@@ -123,7 +123,7 @@ class ForumPostViewSet(viewsets.ModelViewSet):
         return qs
 
     def get_queryset(self):
-        qs = ForumPost.objects.all().select_related("author", "category").prefetch_related(
+        qs = ForumPost.objects.all().select_related("author", "category_obj").prefetch_related(
             "images", "attachments", "tags"
         )
 
@@ -142,8 +142,8 @@ class ForumPostViewSet(viewsets.ModelViewSet):
         if request and getattr(request, "user", None) and request.user.is_authenticated:
             qs = qs.annotate(
                 is_liked=Count(
-                    "post_likes",
-                    filter=Q(post_likes__user=request.user),
+                    "reactions",
+                    filter=Q(reactions__user=request.user, reactions__reaction_type="like"),
                     distinct=True,
                 )
             )

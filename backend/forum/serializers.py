@@ -216,10 +216,10 @@ class ForumPostListSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "title",
-            "category",
+            "category_obj",
             "tags",
             "is_sticky",
-            "views",
+            "view_count",
             "created_at",
             "updated_at",
             "last_activity",
@@ -247,11 +247,11 @@ class ForumPostDetailSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "title",
-            "category",
+            "category_obj",
             "tags",
             "content",
             "is_sticky",
-            "views",
+            "view_count",
             "created_at",
             "updated_at",
             "author",
@@ -289,7 +289,7 @@ class ForumPostDetailSerializer(serializers.ModelSerializer):
             return False
         if hasattr(obj, "is_liked"):
             return bool(obj.is_liked)  # type: ignore[attr-defined]
-        return obj.post_likes.filter(user=request.user).exists()  # type: ignore[attr-defined]
+        return obj.reactions.filter(user=request.user, reaction_type="like").exists()  # type: ignore[attr-defined]
 
 
 class ForumPostCreateSerializer(serializers.ModelSerializer):
