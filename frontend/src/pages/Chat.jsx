@@ -438,27 +438,6 @@ export default function ChatPage() {
             setLeftMessages(prev => [...prev, aiMessage]);
           } else if (result.model === rightModel) {
             setRightMessages(prev => [...prev, aiMessage]);
-      // 注意：不在这里保存用户消息，evaluateModel 会自动保存
-      // 但为了避免重复，我们只让第一个模型调用保存用户消息
-      // 实际上后端会保存两次（左右模型各一次），这是个问题
-      // 暂时移除这里的保存，依赖 evaluateModel 自动保存
-
-      try {
-        // 使用 URL 中的 id 作为 conversation_id，保持连续对话
-        // 只在左侧模型调用时保存用户消息，避免重复
-        const [leftResponse, rightResponse] = await Promise.all([
-          evaluateModel(leftModel, currentPrompt, id, currentImage, true).catch(err => ({ error: err })),  // 保存用户消息
-          evaluateModel(rightModel, currentPrompt, id, currentImage, false).catch(err => ({ error: err })) // 不保存用户消息
-        ]);
-
-        const processResponse = async (response, modelName, setMessagesCallback) => {
-          if (response.error) {
-            const errorMessage = { id: Date.now() + Math.random(), content: `调用模型出错: ${response.error.response?.data?.detail || response.error.message}`, isUser: false, isError: true };
-            setMessagesCallback(prev => [...prev, errorMessage]);
-          } else {
-            const aiMessage = { id: Date.now() + Math.random(), content: response.data.response, isUser: false, model_name: modelName };
-            setMessagesCallback(prev => [...prev, aiMessage]);
-            // 后端已经自动保存AI消息，不需要重复保存
           }
         });
 

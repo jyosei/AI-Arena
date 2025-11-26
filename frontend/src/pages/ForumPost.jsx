@@ -120,6 +120,9 @@ export default function ForumPost() {
   const [replyAttachments, setReplyAttachments] = useState([]);
   const replyAttachmentsRef = useRef([]);
   const maxReplyAttachments = 3;
+  const [replyImages, setReplyImages] = useState([]); // 上传的评论图片文件列表
+  const [shareModalVisible, setShareModalVisible] = useState(false); // 分享弹窗状态
+  const topRef = useRef(null);
 
   useEffect(() => {
     replyAttachmentsRef.current = replyAttachments;
@@ -164,10 +167,11 @@ export default function ForumPost() {
       } catch (error) {
         setReplyAttachments((prev) => prev.filter((item) => item.uid !== file.uid));
         onError(error);
-        message.error('图片上传失败，请稍后再试');
-  const [replyImages, setReplyImages] = useState([]); // 上传的评论图片文件列表
-  const [shareModalVisible, setShareModalVisible] = useState(false); // 分享弹窗状态
-  const topRef = useRef(null);
+        message.error('图片上传失败,请稍后再试');
+      }
+    },
+    []
+  );
 
   // 根据 hash 定位评论
   const scrollToHash = useCallback(() => {
@@ -177,9 +181,8 @@ export default function ForumPost() {
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
-    },
-    []
-  );
+    }
+  }, []);
 
   // 删除附件
   const handleReplyRemove = useCallback(async (file) => {
@@ -313,9 +316,6 @@ export default function ForumPost() {
     } catch {
       message.error('操作失败，请稍后再试');
     }
-  const handleShare = () => {
-    if (!post) return;
-    setShareModalVisible(true);
   };
 
   const handleReplyClick = (comment) => {
