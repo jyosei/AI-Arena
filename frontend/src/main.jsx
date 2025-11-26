@@ -1,5 +1,6 @@
 import React, { useState, useContext, createContext } from "react";
 import 'katex/dist/katex.min.css';
+import './global.css';
 import ReactDOM from "react-dom/client";
 import { IntlProvider } from "react-intl";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
