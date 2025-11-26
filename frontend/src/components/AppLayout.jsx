@@ -12,7 +12,7 @@ import {
   DownOutlined,
   DeleteOutlined,
   CloseOutlined,
-  MenuOutlined
+  MenuOutlined,
   UploadOutlined
 } from '@ant-design/icons';
 import{
