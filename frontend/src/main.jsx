@@ -65,6 +65,9 @@ function App() {
           <ChatProvider>
             <DialogProvider>
               <Routes>
+                {/* GitHub 登录回调路由 - 不需要 AppLayout */}
+                <Route path="/login/github/callback" element={<GitHubCallback />} />
+                
                 <Route element={<AppLayout />}>
                   <Route path="/" element={<ModelList />} />
                   <Route path="/chat/:id" element={<Chat />} />

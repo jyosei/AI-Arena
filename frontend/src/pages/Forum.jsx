@@ -40,18 +40,10 @@ import {
   toggleForumPostLike,
 } from '../api/forum';
 import AuthContext from '../contexts/AuthContext.jsx';
+import { formatDateTime } from '../utils/time.js';
 
 const { Search } = Input;
 const { Text, Title } = Typography;
-
-const formatDateTime = (value) => {
-  if (!value) return '-';
-  try {
-    return new Date(value).toLocaleString('zh-CN');
-  } catch {
-    return value;
-  }
-};
 
 const IconText = ({ icon, text }) => (
   <Space>
@@ -59,6 +51,35 @@ const IconText = ({ icon, text }) => (
     {text}
   </Space>
 );
+
+const getTagMeta = (tag) => {
+  if (tag == null) return { key: '', label: '' };
+  if (typeof tag === 'string') return { key: tag, label: tag };
+  if (typeof tag === 'number') return { key: tag, label: String(tag) };
+  if (typeof tag === 'object') {
+    const key = tag.id ?? tag.slug ?? tag.name ?? JSON.stringify(tag);
+    const label = tag.name ?? tag.slug ?? (tag.id != null ? `标签 ${tag.id}` : '') ?? '';
+    return { key, label };
+  }
+  return { key: String(tag), label: String(tag) };
+};
+
+const getCategoryMeta = (category, labelMap = {}) => {
+  if (category == null) return { key: '', label: '' };
+  if (typeof category === 'object') {
+    const key = category.id ?? category.slug ?? category.name ?? JSON.stringify(category);
+    const fallback =
+      category.name ??
+      category.title ??
+      category.slug ??
+      (category.id != null ? labelMap[String(category.id)] : '');
+    const label = fallback || (category.id != null ? `板块 ${category.id}` : '');
+    return { key, label };
+  }
+  const key = String(category);
+  const label = labelMap[key] ?? key;
+  return { key, label };
+};
 
 // 发布新帖组件
 const PostForm = ({ visible, onCancel, onSuccess, categories, tagSuggestions }) => {
@@ -217,6 +238,16 @@ export default function Forum() {
   const [categoryOptions, setCategoryOptions] = useState([{ value: 'all', label: '全部板块' }]);
   const [tagSuggestions, setTagSuggestions] = useState([]);
 
+  const categoryLabelMap = useMemo(() => {
+    const map = {};
+    categoryOptions.forEach((cat) => {
+      if (!cat || !cat.value || cat.value === 'all') return;
+      const valueKey = String(cat.value);
+      map[valueKey] = cat.label;
+    });
+    return map;
+  }, [categoryOptions]);
+
   const fetchCategories = useCallback(async () => {
     try {
       const res = await fetchForumCategories();
@@ -248,7 +279,15 @@ export default function Forum() {
       const payload = res.data;
       const items = Array.isArray(payload) ? payload : payload.results || [];
       const total = payload.count ?? items.length;
-      setPosts(items);
+      const normalizedItems = items.map((item) => {
+        const categoryValue = item.category_obj || item.category || null;
+        return {
+          ...item,
+          category: categoryValue,
+          category_obj: categoryValue,
+        };
+      });
+      setPosts(normalizedItems);
       setPagination((prev) => ({ ...prev, current: currentPage, total }));
       if (paramsOverride) setSearchParams(paramsOverride);
     } catch {
@@ -347,10 +386,12 @@ export default function Forum() {
           dataSource={posts}
           rowKey={(item) => item.id}
           pagination={paginationConfig}
-          renderItem={(item) => (
-            <List.Item
-              key={item.id}
-              actions={[
+          renderItem={(item) => {
+            const categoryMeta = getCategoryMeta(item.category, categoryLabelMap);
+            return (
+              <List.Item
+                key={item.id}
+                actions={[
                 <IconText icon={UserOutlined} text={item.author?.username || '匿名用户'} key="author" />,
                 <IconText icon={MessageOutlined} text={item.comment_count ?? 0} key="comments" />,
                 <IconText icon={EyeOutlined} text={item.view_count ?? 0} key="views" />,
@@ -364,21 +405,46 @@ export default function Forum() {
                   {item.likes_count ?? 0}
                 </Button>,
                 <IconText icon={ClockCircleOutlined} text={`最后活跃 ${formatDateTime(item.last_activity_at)}`} key="activity" />,
-              ]}
-              extra={
+                ]}
+                extra={
                 <Space direction="vertical" align="end">
-                  {item.category?.name && <Tag color="blue">{item.category.name}</Tag>}
-                  <div>{(item.tags || []).map((tag) => <Tag key={tag}>{tag}</Tag>)}</div>
+                  {item.thumbnail ? (
+                    <img
+                      src={item.thumbnail}
+                      alt="帖子预览图"
+                      style={{ width: 140, height: 100, objectFit: 'cover', borderRadius: 6, border: '1px solid #f0f0f0' }}
+                      onClick={(e) => { e.stopPropagation(); handlePostClick(item.id); }}
+                    />
+                  ) : null}
+                  {categoryMeta.label ? (
+                    <Space size={4}>
+                      <Text type="secondary">板块</Text>
+                      <Tag color="blue">{categoryMeta.label}</Tag>
+                    </Space>
+                  ) : null}
+                  {(item.tags || []).length > 0 && (
+                    <Space size={4} wrap>
+                      <Text type="secondary">标签</Text>
+                      {(item.tags || []).map((tag) => {
+                        const { key, label } = getTagMeta(tag);
+                        if (!label) return null;
+                        return <Tag key={key}>#{label}</Tag>;
+                      })}
+                    </Space>
+                  )}
                 </Space>
               }
-              onClick={() => handlePostClick(item.id)}
-              style={{ cursor: 'pointer' }}
-            >
+                onClick={() => handlePostClick(item.id)}
+                style={{ cursor: 'pointer' }}
+              >
               <List.Item.Meta
                 avatar={<Avatar src={item.author?.avatar} icon={<UserOutlined />} />}
                 title={
                   <Title level={5} style={{ marginBottom: 4 }}>
                     {item.is_sticky && <Tag color="red" style={{ marginRight: 8 }}>置顶</Tag>}
+                    {categoryMeta.label ? (
+                      <Tag color="geekblue" style={{ marginRight: 8 }}>{categoryMeta.label}</Tag>
+                    ) : null}
                     {item.title}
                   </Title>
                 }
@@ -390,20 +456,13 @@ export default function Forum() {
                     <div style={{ marginTop: 8 }}>
                       <Text type="secondary">{(item.excerpt || item.content || '').slice(0, 160)}...</Text>
                     </div>
-                    {item.attachments?.length ? (
-                      <Space wrap size="small" style={{ marginTop: 12 }}>
-                        {item.attachments.slice(0, 3).map((attachment) => (
-                          <img key={attachment.id} src={attachment.url} alt="附件预览"
-                               style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 4, border: '1px solid #f0f0f0' }} />
-                        ))}
-                        {item.attachments.length > 3 && <Tag color="default">+{item.attachments.length - 3}</Tag>}
-                      </Space>
-                    ) : null}
+                    {/* 列表中统一用缩略图，不再铺展示多个附件 */}
                   </div>
                 }
               />
-            </List.Item>
-          )}
+              </List.Item>
+            );
+          }}
         />
       )}
 

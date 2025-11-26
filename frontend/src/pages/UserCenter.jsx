@@ -6,6 +6,7 @@ import AuthContext from '../contexts/AuthContext.jsx';
 import { updateProfile, changePassword } from '../api/users.js';
 import { getMyFavoritePosts, getMyHistoryPosts, getMyLikedPosts, getMyComments } from '../api/forum.js';
 import { resolveMediaUrl } from '../utils/media.js';
+import { formatDateTime } from '../utils/time.js';
 
 const { Dragger } = Upload;
 
@@ -155,6 +156,16 @@ export default function UserCenter() {
                 <Space key="likes"><LikeOutlined /> {item.likes_count || 0}</Space>,
                 <Space key="favorites"><StarOutlined /> {item.favorites_count || 0}</Space>,
               ]}
+              extra={
+                item.thumbnail ? (
+                  <img
+                    src={item.thumbnail}
+                    alt="帖子预览图"
+                    style={{ width: 120, height: 86, objectFit: 'cover', borderRadius: 6, border: '1px solid #f0f0f0' }}
+                    onClick={(e) => { e.stopPropagation(); navigate(`/forum/post/${item.id}`); }}
+                  />
+                ) : null
+              }
             >
               <List.Item.Meta
                 avatar={<Avatar src={resolveMediaUrl(item.author?.avatar)} icon={<UserOutlined />} />}
@@ -162,9 +173,14 @@ export default function UserCenter() {
                 description={
                   <Space direction="vertical" size={4}>
                     <Typography.Text type="secondary">
-                      由 {item.author?.username || '匿名'} 发布于 {item.created_at ? new Date(item.created_at).toLocaleString() : ''}
+                      由 {item.author?.username || '匿名'} 发布于 {formatDateTime(item.created_at)}
                     </Typography.Text>
-                    {item.category && <Tag color="blue">{item.category}</Tag>}
+                    {/* 兼容不同后端字段：category 或 category_obj */}
+                    {item.category_obj?.name ? (
+                      <Tag color="blue">{item.category_obj.name}</Tag>
+                    ) : item.category ? (
+                      <Tag color="blue">{item.category}</Tag>
+                    ) : null}
                   </Space>
                 }
               />
@@ -191,7 +207,7 @@ export default function UserCenter() {
               onClick={() => navigate(`/forum/post/${item.post}#comment-${item.id}`)}
               actions={[
                 <Space key="likes"><LikeOutlined /> {item.likes_count || 0}</Space>,
-                <Space key="time"><ClockCircleOutlined /> {item.created_at ? new Date(item.created_at).toLocaleString() : ''}</Space>,
+                <Space key="time"><ClockCircleOutlined /> {formatDateTime(item.created_at)}</Space>,
               ]}
             >
               <List.Item.Meta

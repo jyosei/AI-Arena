@@ -84,11 +84,66 @@ class ForumAttachmentViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.AllowAny]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
+    def perform_create(self, serializer):
+        serializer.save(uploader=self.request.user if self.request.user.is_authenticated else None)
+
 
 class ForumCommentViewSet(viewsets.ModelViewSet):
     queryset = ForumComment.objects.all()
     serializer_class = ForumCommentSerializer
-    permission_classes = [permissions.AllowAny]
+
+    def get_permissions(self):
+        if self.action in {"list", "retrieve"}:
+            return [permissions.AllowAny()]
+        if self.action in {"create", "update", "partial_update", "destroy"}:
+            if IsAuthorOrReadOnly is not None:
+                return [IsAuthorOrReadOnly()]
+            return [permissions.IsAuthenticated()]
+        if self.action in {"reactions"}:
+            return [permissions.IsAuthenticated()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=["post"], url_path="reactions", permission_classes=[permissions.IsAuthenticated])
+    def reactions(self, request, pk=None):
+        """评论统一互动接口，当前支持 like。"""
+        comment = self.get_object()
+        reaction_type = request.data.get("type", "like")
+        action = request.data.get("action", "toggle")
+
+        if reaction_type != "like":
+            return Response({"detail": "不支持的反应类型"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 优先旧的 Like 模型；回退到 Reaction
+        if ForumCommentLike is not None:
+            like, created = ForumCommentLike.objects.get_or_create(comment=comment, user=request.user)
+            active = created
+            if action == "toggle" and not created:
+                like.delete()
+                active = False
+            like_count = ForumCommentLike.objects.filter(comment=comment).count()
+            # 同步统计字段（若存在）
+            try:
+                ForumComment.objects.filter(pk=comment.pk).update(like_count=like_count)
+            except Exception:
+                pass
+            return Response({"active": active, "like_count": like_count})
+
+        if ForumCommentReaction is not None:
+            reaction, created = ForumCommentReaction.objects.get_or_create(
+                comment=comment, user=request.user, reaction_type="like"
+            )
+            active = created
+            if action == "toggle" and not created:
+                reaction.delete()
+                active = False
+            like_count = ForumCommentReaction.objects.filter(comment=comment, reaction_type="like").count()
+            try:
+                ForumComment.objects.filter(pk=comment.pk).update(like_count=like_count)
+            except Exception:
+                pass
+            return Response({"active": active, "like_count": like_count})
+
+        return Response({"detail": "Like 模型不可用"}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class ForumPostViewSet(viewsets.ModelViewSet):
@@ -173,10 +228,15 @@ class ForumPostViewSet(viewsets.ModelViewSet):
         sort = qp.get("sort") or qp.get("ordering") or qp.get("ordering")
 
         if category and category != "all":
-            # 支持 id/slug/name
-            category_filter = Q(category__slug__iexact=category) | Q(category__name__iexact=category)
-            if category.isdigit():
-                category_filter |= Q(category_id=int(category))
+            # 支持 id/slug/name/legacy 文本
+            category_str = str(category)
+            category_filter = (
+                Q(category_obj__slug__iexact=category_str)
+                | Q(category_obj__name__iexact=category_str)
+                | Q(legacy_category__iexact=category_str)
+            )
+            if category_str.isdigit():
+                category_filter |= Q(category_obj_id=int(category_str))
             qs = qs.filter(category_filter)
 
         if tag:
@@ -271,11 +331,12 @@ class ForumPostViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=clean_data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
-        headers = self.get_success_headers(serializer.data)
+        # 使用 detail_serializer 获取完整数据,避免 ManyToMany 序列化问题
         detail_serializer = ForumPostDetailSerializer(
             serializer.instance,
             context={"request": request},
         )
+        headers = self.get_success_headers(detail_serializer.data)
         return Response(detail_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     @action(detail=True, methods=["post"], url_path="like")
@@ -319,16 +380,27 @@ class ForumPostViewSet(viewsets.ModelViewSet):
     def comments(self, request, pk=None):
         post = self.get_object()
         if request.method.lower() == "get":
+            from django.db.models import Prefetch
+            
+            # 递归预取所有层级的子评论
+            def get_children_prefetch(depth=5):
+                """递归构建预取查询，最多5层深度"""
+                if depth == 0:
+                    return ForumComment.objects.select_related("author").prefetch_related("attachments", "reactions")
+                
+                return ForumComment.objects.select_related("author").prefetch_related(
+                    "attachments",
+                    "reactions",
+                    Prefetch("children", queryset=get_children_prefetch(depth - 1))
+                )
+            
             queryset = (
                 post.comments.filter(parent__isnull=True)
                 .select_related("author")
                 .prefetch_related(
                     "attachments",
-                    "children",
-                    "children__author",
-                    "children__attachments",
                     "reactions",
-                    "children__reactions",
+                    Prefetch("children", queryset=get_children_prefetch(4))
                 )
                 .order_by("created_at")
             )
@@ -336,12 +408,15 @@ class ForumPostViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
 
         # POST -> 创建评论
-        serializer = ForumCommentSerializer(data=request.data, context={"request": request})
-        serializer.is_valid(raise_exception=True)
-        parent = serializer.validated_data.get("parent")
+        create_serializer = ForumCommentCreateSerializer(
+            data=request.data,
+            context={"request": request, "post": post},
+        )
+        create_serializer.is_valid(raise_exception=True)
+        parent = create_serializer.validated_data.get("parent")
         if parent and parent.post_id != post.id:
             return Response({"detail": "父级评论不属于当前帖子。"}, status=status.HTTP_400_BAD_REQUEST)
-        comment = serializer.save(post=post, author=request.user)
+        comment = create_serializer.save()
         # 更新统计/活跃度兼容字段
         try:
             if hasattr(post, "comment_count"):
@@ -354,6 +429,9 @@ class ForumPostViewSet(viewsets.ModelViewSet):
                 post.save()
         except Exception:
             pass
+        
+        # 重新查询评论以获取完整的预取数据
+        comment = ForumComment.objects.filter(pk=comment.pk).select_related("author").prefetch_related("attachments", "reactions").first()
         out_serializer = ForumCommentSerializer(comment, context={"request": request})
         return Response(out_serializer.data, status=status.HTTP_201_CREATED)
 
@@ -380,6 +458,52 @@ class ForumPostViewSet(viewsets.ModelViewSet):
                     pass
         favorites_count = ForumPostFavorite.objects.filter(post=post).count()
         return Response({"favorited": favorited, "favorites_count": favorites_count})
+
+    @action(detail=True, methods=["post"], url_path="reactions", permission_classes=[permissions.IsAuthenticated])
+    def reactions(self, request, pk=None):
+        """统一的反应接口,支持like和favorite"""
+        post = self.get_object()
+        reaction_type = request.data.get('type', 'like')
+        action = request.data.get('action', 'toggle')
+        
+        if reaction_type == 'like':
+            if ForumPostLike is not None:
+                like, created = ForumPostLike.objects.get_or_create(post=post, user=request.user)
+                if action == 'toggle':
+                    if not created:
+                        like.delete()
+                        active = False
+                    else:
+                        active = True
+                else:
+                    active = created
+                like_count = ForumPostLike.objects.filter(post=post).count()
+                return Response({"active": active, "like_count": like_count})
+            elif ForumPostReaction is not None:
+                reaction, created = ForumPostReaction.objects.get_or_create(
+                    post=post, user=request.user, reaction_type="like"
+                )
+                if action == 'toggle' and not created:
+                    reaction.delete()
+                    active = False
+                else:
+                    active = created
+                like_count = ForumPostReaction.objects.filter(post=post, reaction_type="like").count()
+                return Response({"active": active, "like_count": like_count})
+                
+        elif reaction_type == 'favorite':
+            if ForumPostFavorite is None:
+                return Response({"detail": "收藏功能不可用"}, status=status.HTTP_400_BAD_REQUEST)
+            fav, created = ForumPostFavorite.objects.get_or_create(post=post, user=request.user)
+            if action == 'toggle' and not created:
+                fav.delete()
+                active = False
+            else:
+                active = created
+            favorite_count = ForumPostFavorite.objects.filter(post=post).count()
+            return Response({"active": active, "favorite_count": favorite_count})
+        
+        return Response({"detail": "不支持的反应类型"}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=["get"], url_path="qrcode", permission_classes=[permissions.AllowAny])
     def qrcode_image(self, request, pk=None):
@@ -411,6 +535,32 @@ class ForumPostViewSet(viewsets.ModelViewSet):
         response = HttpResponse(buffer, content_type='image/png')
         response['Content-Disposition'] = f'inline; filename="qrcode-post-{post.id}.png"'
         return response
+
+    @action(detail=True, methods=["post"], url_path="share", permission_classes=[permissions.AllowAny])
+    def share(self, request, pk=None):
+        """分享计数接口：增加帖子 share_count 并返回最新计数。"""
+        post = self.get_object()
+        try:
+            ForumPost.objects.filter(pk=post.pk).update(share_count=F("share_count") + 1)
+            post.refresh_from_db(fields=["share_count"]) 
+        except Exception:
+            pass
+        # 若存在分享日志模型可选择记录（可选，不强制）
+        try:
+            if Notification is not None and getattr(post, "author_id", None) and request.user.is_authenticated and post.author_id != request.user.id:
+                # 可选：给作者发个分享通知，忽略任何错误
+                try:
+                    Notification.create(
+                        recipient=post.author,
+                        actor=request.user,
+                        action_type="post_share",
+                        post=post,
+                    )
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return Response({"share_count": getattr(post, "share_count", 0)})
 
 
 class ForumCommentListCreateView(APIView):
@@ -446,11 +596,15 @@ class ForumCommentListCreateView(APIView):
 
     def post(self, request, post_id):
         post = get_object_or_404(ForumPost, pk=post_id)
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"[DEBUG] Comment data: {dict(request.data)}")
         serializer = ForumCommentCreateSerializer(
             data=request.data,
             context={"request": request, "post": post},
         )
         serializer.is_valid(raise_exception=True)
+        logger.error(f"[DEBUG] Validated: {serializer.validated_data}")
         comment = serializer.save()
         # 通知：兼容旧 Notification
         try:
@@ -539,7 +693,8 @@ class UserFavoritesView(APIView):
             return Response([], status=status.HTTP_200_OK)
         posts = (
             ForumPost.objects.filter(post_favorites__user=request.user)
-            .select_related("author")
+            .select_related("author", "category_obj")
+            .prefetch_related("tags", "attachments", "images")
             .annotate(
                 comments_count=Count("comments", distinct=True),
                 likes_count=Count("reactions", filter=Q(reactions__reaction_type="like"), distinct=True),
@@ -575,7 +730,8 @@ class UserHistoryView(APIView):
             return Response([], status=status.HTTP_200_OK)
         posts = (
             ForumPost.objects.filter(view_histories__user=request.user)
-            .select_related("author")
+            .select_related("author", "category_obj")
+            .prefetch_related("tags", "attachments", "images")
             .annotate(
                 comments_count=Count("comments", distinct=True),
                 likes_count=Count("reactions", filter=Q(reactions__reaction_type="like"), distinct=True),
@@ -611,7 +767,8 @@ class UserLikedPostsView(APIView):
         # 获取点赞的帖子
         posts = (
             ForumPost.objects.filter(reactions__user=request.user, reactions__reaction_type="like")
-            .select_related("author")
+            .select_related("author", "category_obj")
+            .prefetch_related("tags", "attachments", "images")
             .annotate(
                 comments_count=Count("comments", distinct=True),
                 likes_count=Count("reactions", filter=Q(reactions__reaction_type="like"), distinct=True),

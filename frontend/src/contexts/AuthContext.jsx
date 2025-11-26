@@ -11,6 +11,7 @@ export const AuthProvider = ({ children }) => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loadingProfile, setLoadingProfile] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true); // 初始化认证状态
 
   const applyAccessToken = (access) => {
     apiClient.defaults.headers.common['Authorization'] = `Bearer ${access}`;
@@ -133,6 +134,8 @@ export const AuthProvider = ({ children }) => {
       } catch (error) {
         console.error('初始化认证失败:', error);
         // 不阻止应用渲染,只是记录错误
+      } finally {
+        setIsInitializing(false);
       }
     };
     initAuth();
@@ -149,6 +152,7 @@ export const AuthProvider = ({ children }) => {
     refreshProfile,
     loadNotifications,
     loadingProfile,
+    isInitializing,
   };
 
   return (
