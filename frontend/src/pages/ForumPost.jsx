@@ -43,6 +43,7 @@ import {
   uploadForumAttachment,
   deleteForumAttachment,
 } from '../api/forum';
+import ShareModal from '../components/ShareModal';
 
 const { Text, Title, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -164,6 +165,17 @@ export default function ForumPost() {
         setReplyAttachments((prev) => prev.filter((item) => item.uid !== file.uid));
         onError(error);
         message.error('图片上传失败，请稍后再试');
+  const [replyImages, setReplyImages] = useState([]); // 上传的评论图片文件列表
+  const [shareModalVisible, setShareModalVisible] = useState(false); // 分享弹窗状态
+  const topRef = useRef(null);
+
+  // 根据 hash 定位评论
+  const scrollToHash = useCallback(() => {
+    const anchor = window.location.hash?.replace('#', '');
+    if (anchor && anchor.startsWith('comment-')) {
+      const el = document.getElementById(anchor);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
     },
     []
@@ -301,6 +313,9 @@ export default function ForumPost() {
     } catch {
       message.error('操作失败，请稍后再试');
     }
+  const handleShare = () => {
+    if (!post) return;
+    setShareModalVisible(true);
   };
 
   const handleReplyClick = (comment) => {
@@ -368,6 +383,15 @@ export default function ForumPost() {
 
   return (
     <div>
+      {/* 分享弹窗 */}
+      <ShareModal
+        visible={shareModalVisible}
+        onClose={() => setShareModalVisible(false)}
+        shareUrl={`${getPublicOrigin()}/forum/post/${post?.id || id}`}
+        title={post?.title}
+      />
+
+      {/* 头部导航 */}
       <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
         <Col>
           <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/forum')}>返回论坛</Button>

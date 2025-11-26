@@ -15,8 +15,10 @@ import Chat from "./pages/Chat.jsx";
 import AppLayout from "./components/AppLayout.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import UserCenter from "./pages/UserCenter.jsx";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
 
-// Context
+import DatasetEvaluationPage from "./pages/DatasetEvaluation.jsx";
+// 2. 导入所有需要的 Context Provider
 import { AuthProvider } from "./contexts/AuthContext.jsx";
 import { ModeProvider } from './contexts/ModeContext';
 import { ChatProvider } from './contexts/ChatContext';
@@ -81,6 +83,7 @@ function App() {
 
                   {/* 保留 shallcheer 的用户面板 */}
                   <Route path="/user" element={<UserPanel />} />
+                  <Route path="/evaluate-dataset" element={<DatasetEvaluationPage />} />
                 </Route>
               </Routes>
             </DialogProvider>
@@ -95,19 +98,21 @@ function App() {
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(
   <React.StrictMode>
-    <ConfigProvider
-      theme={{
-        token: {
-          colorPrimary: '#000000',
-          colorInfo: '#000000',
-          colorLink: '#000000',
-          colorSuccess: '#595959',
-        },
-      }}
-    >
-      <IntlProvider locale="zh" messages={{}}>
-        <App />
-      </IntlProvider>
-    </ConfigProvider>
+    <ErrorBoundary>
+      <ConfigProvider
+        theme={{
+          token: {
+            colorPrimary: '#000000',
+            colorInfo: '#000000',
+            colorLink: '#000000',
+            colorSuccess: '#595959',
+          },
+        }}
+      >
+        <IntlProvider locale="zh" messages={{}}>
+          <App />
+        </IntlProvider>
+      </ConfigProvider>
+    </ErrorBoundary>
   </React.StrictMode>
 );

@@ -31,6 +31,10 @@ export const AuthProvider = ({ children }) => {
       setUser(res.data);
     } catch (e) {
       console.warn('获取用户资料失败', e);
+      // 如果 token 过期或无效,清除本地存储
+      if (e.response && (e.response.status === 401 || e.response.status === 403)) {
+        logout();
+      }
     } finally {
       setLoadingProfile(false);
     }
@@ -122,10 +126,16 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     // 初始化加载资料与通知（如果已登录）
-    (async () => {
-      await loadProfile();
-      await loadNotifications();
-    })();
+    const initAuth = async () => {
+      try {
+        await loadProfile();
+        await loadNotifications();
+      } catch (error) {
+        console.error('初始化认证失败:', error);
+        // 不阻止应用渲染,只是记录错误
+      }
+    };
+    initAuth();
   }, [loadProfile, loadNotifications]);
 
   const authContextValue = {

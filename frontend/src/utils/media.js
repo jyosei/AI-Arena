@@ -68,11 +68,20 @@ export function getPublicOrigin() {
       return env.replace(/\/$/, '');
     }
   } catch (_) {}
-  if (typeof window !== 'undefined' && window.__PUBLIC_ORIGIN) {
-    try {
+  
+  try {
+    if (typeof window !== 'undefined' && window.__PUBLIC_ORIGIN) {
       const v = String(window.__PUBLIC_ORIGIN);
       return v.replace(/\/$/, '');
-    } catch (_) {}
-  }
-  return window.location.origin;
+    }
+  } catch (_) {}
+  
+  try {
+    if (typeof window !== 'undefined' && window.location && window.location.origin) {
+      return window.location.origin;
+    }
+  } catch (_) {}
+  
+  // 最后的降级方案
+  return '';
 }

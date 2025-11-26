@@ -18,9 +18,10 @@ export const compareModels = (ids = []) => {
  * @param {string} prompt - 文本提示
  * @param {string|null} conversationId - 对话ID
  * @param {File|null} imageFile - 上传的图片文件
+ * @param {boolean} saveUserMessage - 是否保存用户消息（默认true）
  * @returns Promise
  */
-export const evaluateModel = (modelName, prompt, conversationId, imageFile) => {
+export const evaluateModel = (modelName, prompt, conversationId, imageFile, saveUserMessage = true) => {
   
   // 检查是否存在图片文件。imageFile 应该是来自 antd beforeUpload 的原始 File 对象。
   if (imageFile && imageFile instanceof File) {
@@ -32,6 +33,7 @@ export const evaluateModel = (modelName, prompt, conversationId, imageFile) => {
     formData.append('model_name', modelName);
     formData.append('prompt', prompt || ''); // 确保 prompt 即使为空也作为空字符串发送
     formData.append('conversation_id', conversationId || ''); // 确保 conversationId 存在
+    formData.append('save_user_message', saveUserMessage ? 'true' : 'false'); // 添加控制参数
     
     // 将 File 对象添加到 FormData 中
     formData.append('image', imageFile, imageFile.name); 
@@ -52,6 +54,7 @@ export const evaluateModel = (modelName, prompt, conversationId, imageFile) => {
       model_name: modelName,
       prompt: prompt,
       conversation_id: conversationId,
+      save_user_message: saveUserMessage, // 添加控制参数
     });
   }
 };

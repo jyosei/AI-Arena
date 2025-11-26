@@ -63,41 +63,37 @@ class ModelListView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, *args, **kwargs):
-        # 以后这里会是从数据库查询的真实数据
-        # models = Model.objects.all()
-        # serializer = ModelSerializer(models, many=True)
-        # return Response(serializer.data)
-
-        # 现在，为了快速测试，我们返回一些硬编码的假数据
+        # 建议：将 'task' 字段改为 'capabilities' 列表，以支持多功能表示
+        # 'chat': 对话, 'vision': 识图, 'image_generation': 文生图, 'code': 代码
         dummy_models = [
-            {"id": 1, "name": "gpt-3.5-turbo", "owner_name": "OpenAI", "task": "通用"},
-            {"id": 2, "name": "gpt-5", "owner_name": "OpenAI", "task": "通用"},
-            {"id": 3, "name": "gpt-5.1", "owner_name": "OpenAI", "task": "通用"},
-            {"id": 4, "name": "gpt-5-codex", "owner_name": "OpenAI", "task": "通用"},
-            {"id": 5, "name": "gpt-5-mini", "owner_name": "OpenAI", "task": "通用"},
-            {"id": 6, "name": "gpt-5-search-api", "owner_name": "OpenAI", "task": "通用"},
-            {"id": 7, "name": "dall-e-3", "owner_name": "OpenAI", "task": "image"},
-            {"id": 8, "name": "gpt-4", "owner_name": "OpenAI", "task": "通用"},
-            {"id": 9, "name": "gpt-4-turbo", "owner_name": "OpenAI", "task": "通用"},
-            {"id": 10, "name": "gpt-4.1", "owner_name": "OpenAI", "task": "通用"},
-            {"id": 11, "name": "gpt-4o-mini", "owner_name": "OpenAI", "task": "通用"},
-            {"id": 12, "name": "claude-haiku-4-5-20251001", "owner_name": "Anthropic", "task": "通用"},
-            {"id": 13, "name": "claude-opus-4-20245014-thinking", "owner_name": "Anthropic", "task": "通用"},
-            {"id": 14, "name": "claude-3-sonnet-20240229", "owner_name": "Anthropic", "task": "通用"},
-            {"id": 15, "name": "veo_3_1-fast", "owner_name": "google", "task": "通用"},
-            {"id": 16, "name": "gemini-2.0-flash", "owner_name": "Google", "task": "通用"},
-            {"id": 17, "name": "gemini-2.5-flash", "owner_name": "Google", "task": "image"},
-            {"id": 18, "name": "gemini-2.5-flash-image", "owner_name": "Google", "task": "通用"},
-            {"id": 19, "name": "gemini-2.5-pro", "owner_name": "Google", "task": "通用"},
-            {"id": 20, "name": "glm-4", "owner_name": "ZhipuAI", "task": "通用"},
-            {"id": 21, "name": "glm-4.5", "owner_name": "ZhipuAI", "task": "通用"},
-            {"id": 22, "name": "deepseek-chat", "owner_name": "深度求索", "task": "代码"},
-            {"id": 23, "name": "deepseek-ocr", "owner_name": "深度求索", "task": "代码"},
-            {"id": 24, "name": "deepseek-r1", "owner_name": "深度求索", "task": "代码"},
-            {"id": 25, "name": "kimi-k2", "owner_name": "Moonshot", "task": "代码"},
-            {"id": 26, "name": "doubao-1-5-pro-32k-character-250228", "owner_name": "Doubao", "task": "代码"},
-            {"id": 27, "name": "llama-2-13b", "owner_name": "Ollama", "task": "代码"},
-            {"id": 28, "name": "qwen-max", "owner_name": "阿里巴巴", "task": "通用"},
+            {"id": 1, "name": "gpt-3.5-turbo", "owner_name": "OpenAI", "capabilities": ["chat", "code"]},
+            {"id": 2, "name": "gpt-5", "owner_name": "OpenAI", "capabilities": ["chat", "vision", "code"]},
+            {"id": 3, "name": "gpt-5.1", "owner_name": "OpenAI", "capabilities": ["chat", "vision", "code"]},
+            {"id": 4, "name": "gpt-5-codex", "owner_name": "OpenAI", "capabilities": ["chat", "vision", "code"]},
+            {"id": 5, "name": "gpt-5-mini", "owner_name": "OpenAI", "capabilities": ["chat", "vision", "code"]},
+            {"id": 6, "name": "gpt-5-search-api", "owner_name": "OpenAI", "capabilities": ["chat", "vision", "code"]},
+            {"id": 7, "name": "dall-e-3", "owner_name": "OpenAI", "capabilities": ["image_generation"]},
+            {"id": 8, "name": "gpt-4", "owner_name": "OpenAI", "capabilities": ["chat", "vision", "code"]},
+            {"id": 9, "name": "gpt-4-turbo", "owner_name": "OpenAI", "capabilities": ["chat", "vision", "code"]},
+            {"id": 10, "name": "gpt-4.1", "owner_name": "OpenAI", "capabilities": ["chat", "vision", "code"]},
+            {"id": 11, "name": "gpt-4o-mini", "owner_name": "OpenAI", "capabilities": ["chat", "vision", "code"]},
+            {"id": 12, "name": "claude-haiku-4-5-20251001", "owner_name": "Anthropic", "capabilities": ["chat", "vision"]},
+            {"id": 13, "name": "claude-opus-4-20245014-thinking", "owner_name": "Anthropic", "capabilities": ["chat", "vision"]},
+            {"id": 14, "name": "claude-3-sonnet-20240229", "owner_name": "Anthropic", "capabilities": ["chat", "vision"]},
+            {"id": 15, "name": "veo_3_1-fast", "owner_name": "google", "capabilities": ["chat"]},
+            {"id": 16, "name": "gemini-2.0-flash", "owner_name": "Google", "capabilities": ["chat", "vision"]},
+            {"id": 17, "name": "gemini-2.5-flash", "owner_name": "Google", "capabilities": ["chat", "vision"]},
+            {"id": 18, "name": "gemini-2.5-flash-image", "owner_name": "Google", "capabilities": ["chat", "vision"]},
+            {"id": 19, "name": "gemini-2.5-pro", "owner_name": "Google", "capabilities": ["chat", "vision", "code"]},
+            {"id": 20, "name": "glm-4", "owner_name": "ZhipuAI", "capabilities": ["chat", "vision", "code"]},
+            {"id": 21, "name": "glm-4.5", "owner_name": "ZhipuAI", "capabilities": ["chat", "vision", "code"]},
+            {"id": 22, "name": "deepseek-chat", "owner_name": "深度求索", "capabilities": ["chat", "code"]},
+            {"id": 23, "name": "deepseek-ocr", "owner_name": "深度求索", "capabilities": ["vision"]},
+            {"id": 24, "name": "deepseek-r1", "owner_name": "深度求索", "capabilities": ["chat", "code"]},
+            {"id": 25, "name": "kimi-k2", "owner_name": "Moonshot", "capabilities": ["chat"]},
+            {"id": 26, "name": "doubao-1-5-pro-32k-character-250228", "owner_name": "Doubao", "capabilities": ["chat"]},
+            {"id": 27, "name": "llama-2-13b", "owner_name": "Ollama", "capabilities": ["chat", "code"]},
+            {"id": 28, "name": "qwen-max", "owner_name": "阿里巴巴", "capabilities": ["chat", "vision", "code"]},
         ]
         return Response(dummy_models, status=status.HTTP_200_OK)
 
@@ -111,6 +107,14 @@ class EvaluateModelView(APIView):
         prompt = request.data.get("prompt", "") # 允许 prompt 为空
         image_file = request.FILES.get("image") # 3. 获取可选的图片文件
         conversation_id = request.data.get("conversation_id")
+        # 获取 save_user_message 参数，支持布尔值和字符串
+        save_user_message_raw = request.data.get("save_user_message", True)
+        if isinstance(save_user_message_raw, bool):
+            save_user_message = save_user_message_raw
+        elif isinstance(save_user_message_raw, str):
+            save_user_message = save_user_message_raw.lower() in ['true', '1', 'yes']
+        else:
+            save_user_message = True  # 默认保存
 
         # 4. 更新验证逻辑：prompt 和 image 不能同时为空
         if not model_name or (not prompt and not image_file):
@@ -135,12 +139,15 @@ class EvaluateModelView(APIView):
                 )
             
             # --- 保存用户消息（包含可选的图片） ---
-            ChatMessage.objects.create(
-                conversation=conversation,
-                role='user',
-                content=prompt,
-                image=image_file # 如果 image_file 为 None，Django 会正确处理
-            )
+            # 根据参数决定是否保存用户消息
+            if save_user_message:
+                ChatMessage.objects.create(
+                    conversation=conversation,
+                    role='user',
+                    is_user=True,
+                    content=prompt,
+                    image=image_file
+                )
             
             # --- 构建包含完整历史（包括历史图片）的消息体 ---
             history_messages = []
@@ -188,7 +195,9 @@ class EvaluateModelView(APIView):
             ChatMessage.objects.create(
                 conversation=conversation,
                 role='assistant',
-                content=response_text
+                is_user=False,
+                content=response_text,
+                model_name=model_name
             )
             
             return Response({
@@ -621,3 +630,49 @@ class AnalyzeImageView(APIView):
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             return Response({"error": f"服务器内部错误: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+class EvaluateDatasetView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, *args, **kwargs):
+        dataset_file = request.FILES.get('dataset')
+        model_name = request.data.get('model_name')
+
+        if not dataset_file:
+            return Response({"error": "未提供数据集文件"}, status=status.HTTP_400_BAD_REQUEST)
+        if not model_name:
+            return Response({"error": "未指定要测评的模型"}, status=status.HTTP_400_BAD_REQUEST)
+
+        results = []
+        try:
+            # 使用 io.TextIOWrapper 以文本模式读取文件
+            # 使用 utf-8-sig 来处理可能存在的 BOM (Byte Order Mark)
+            decoded_file = io.TextIOWrapper(dataset_file, encoding='utf-8-sig')
+            reader = csv.DictReader(decoded_file)
+            
+            if 'prompt' not in reader.fieldnames:
+                return Response({"error": "CSV 文件缺少 'prompt' 列"}, status=status.HTTP_400_BAD_REQUEST)
+
+            for row in reader:
+                prompt = row['prompt']
+                # 调用您现有的模型评估逻辑
+                # 注意：这里假设 evaluate_model_sync 是一个同步函数
+                # 如果模型调用是异步的，需要做相应调整
+                try:
+                    response_content = get_model_service(model_name).evaluate(prompt=prompt, model_name=model_name)
+                    results.append({
+                        "prompt": prompt,
+                        "response": response_content,
+                        "status": "success"
+                    })
+                except Exception as e:
+                    results.append({
+                        "prompt": prompt,
+                        "response": str(e),
+                        "status": "error"
+                    })
+        
+        except Exception as e:
+            return Response({"error": f"处理文件时出错: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return Response(results, status=status.HTTP_200_OK)
