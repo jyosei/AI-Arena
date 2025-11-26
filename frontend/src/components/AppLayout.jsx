@@ -12,6 +12,7 @@ import {
   DownOutlined,
   DeleteOutlined,
   CloseOutlined,
+  MenuOutlined,
   UploadOutlined
 } from '@ant-design/icons';
 import{
@@ -41,6 +42,7 @@ const AppLayout = () => {
   const { chatHistory, clearHistory, addChat, deleteChat } = useChat();
   const [showRegister, setShowRegister] = React.useState(false);
   const [showLogin, setShowLogin] = React.useState(false);
+  const [mobileSiderOpen, setMobileSiderOpen] = React.useState(false);
   const intl = useIntl();
   const { login, logout, user } = React.useContext(AuthContext);
   const isLoggedIn = !!user;
@@ -85,6 +87,10 @@ const AppLayout = () => {
   const handleLogout = () => {
     logout();
     message.success('已登出');
+  };
+
+  const closeMobileSider = () => {
+    setMobileSiderOpen(false);
   };
 
   const handleDeleteChat = async (e, chatId) => {
@@ -236,7 +242,16 @@ const AppLayout = () => {
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Sider width={260} style={{ background: '#f7f7f8', borderRight: '1px solid #e8e8e8' }}>
+      {/* 移动端遮罩 */}
+      <div 
+        className={`mobile-sider-mask ${mobileSiderOpen ? 'visible' : ''}`}
+        onClick={closeMobileSider}
+      />
+      <Sider 
+        width={260} 
+        style={{ background: '#f7f7f8', borderRight: '1px solid #e8e8e8' }}
+        className={mobileSiderOpen ? 'mobile-sider-open' : ''}
+      >
         <div style={{ padding: '16px', height: '64px', display: 'flex', alignItems: 'center' }}>
           <Link to="/" style={{ fontSize: '20px', fontWeight: 'bold', color: '#000' }}>
             AI Arena
@@ -253,18 +268,18 @@ const AppLayout = () => {
               key: '1',
               icon: <EditOutlined />,
               // 使用 onClick 处理新建会话
-              label: <span onClick={openNewChatModal}>新对话</span>,
+              label: <span onClick={() => { openNewChatModal(); closeMobileSider(); }}>新对话</span>,
             },
             {
               key: '2',
               icon: <TrophyOutlined />,
               // 使用 Link 组件包裹，使其可以点击跳转
-              label: <Link to="/leaderboard">排行榜</Link>,
+              label: <Link to="/leaderboard" onClick={closeMobileSider}>排行榜</Link>,
             },
             { // <-- 这是新添加的项
               key: '3',
               icon: <MessageOutlined />,
-              label: <Link to="/forum">社区论坛</Link>,
+              label: <Link to="/forum" onClick={closeMobileSider}>社区论坛</Link>,
             },
             { // <-- 这是新添加的项
               key: '4',
@@ -309,7 +324,7 @@ const AppLayout = () => {
               暂无聊天记录
             </div>
           ) : (
-            <div style={{ maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}>
+            <div className="chat-history-container" style={{ maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}>
               {chatHistory.map(chat => (
                 <div 
                   key={chat.id} 
@@ -323,7 +338,7 @@ const AppLayout = () => {
                     background: location.pathname === `/chat/${chat.id}` ? '#f0f0f0' : 'transparent'
                   }}
                   className="chat-history-item"
-                  onClick={() => navigate(`/chat/${chat.id}`)}
+                  onClick={() => { navigate(`/chat/${chat.id}`); closeMobileSider(); }}
                   onMouseEnter={(e) => {
                     if (location.pathname !== `/chat/${chat.id}`) {
                       e.currentTarget.style.background = '#f5f5f5';
@@ -382,8 +397,22 @@ const AppLayout = () => {
       </Sider>
       <Layout>
         <Header style={{ background: '#fff', padding: '0 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
-          <div style={{ fontSize: '18px', fontWeight: 600, color: '#000' }}>
-            AI Arena
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <Button
+              type="text"
+              icon={<MenuOutlined />}
+              onClick={() => setMobileSiderOpen(!mobileSiderOpen)}
+              style={{ 
+                fontSize: '20px',
+                width: '40px',
+                height: '40px',
+                display: 'none'
+              }}
+              className="mobile-menu-btn"
+            />
+            <div style={{ fontSize: '18px', fontWeight: 600, color: '#000' }}>
+              AI Arena
+            </div>
           </div>
 
           {isLoggedIn ? (
@@ -408,9 +437,9 @@ const AppLayout = () => {
                   tabIndex={0}
                 />
               </Tooltip>
-              <span style={{ fontWeight: 500, fontSize: 16 }}>{userEmail}</span>
+              <span className="header-user-email" style={{ fontWeight: 500, fontSize: 16 }}>{userEmail}</span>
               <Button icon={<LogoutOutlined />} shape="round" type="default" style={{ borderRadius: 20, fontWeight: 500 }} onClick={handleLogout}>
-                退出登录
+                <span className="logout-btn-text">退出登录</span>
               </Button>
             </div>
           ) : (
@@ -526,16 +555,16 @@ const AppLayout = () => {
         }}>
           {shouldShowModelSelectors && (
             <div style={{ marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid #f0f0f0' }}>
-          <Space size="large">
-            <Dropdown overlay={menu}>
-              <Button size="large">
-                <Space align="center">
-                  {currentModeIcon}
-                  {currentModeLabel}
-                  <DownOutlined />
-                </Space>
-              </Button>
-            </Dropdown>
+              <Space size="large" className="model-selector-space">
+                <Dropdown overlay={menu}>
+                  <Button size="large">
+                    <Space align="center">
+                      {currentModeIcon}
+                      {currentModeLabel}
+                      <DownOutlined />
+                    </Space>
+                  </Button>
+                </Dropdown>
 
             {mode === 'side-by-side' && (
               <>

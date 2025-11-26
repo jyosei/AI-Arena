@@ -3,18 +3,221 @@
   user-select: none;
 }
 
-/* 评论高亮闪烁动画 */
-@keyframes highlightPulse {
-  0%, 100% {
-    background-color: #fff7e6;
-    box-shadow: 0 0 0 0 rgba(250, 173, 20, 0.4);
-  }
-  50% {
-    background-color: #ffe7ba;
-    box-shadow: 0 0 0 8px rgba(250, 173, 20, 0);
-  }
+/* 全局样式 - 防止水平滚动 */
+* {
+  box-sizing: border-box;
 }
 
-.comment-highlight {
-  animation: highlightPulse 1s ease-in-out 3;
+html, body {
+  overflow-x: hidden;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* 移动端响应式样式 */
+@media (max-width: 768px) {
+  /* 隐藏侧边栏，通过汉堡菜单控制 */
+  .ant-layout-sider {
+    position: fixed !important;
+    left: -260px !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    height: 100vh !important;
+    z-index: 1000 !important;
+    transition: left 0.3s ease !important;
+  }
+
+  .ant-layout-sider.mobile-sider-open {
+    left: 0 !important;
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15) !important;
+  }
+
+  /* 遮罩层 */
+  .mobile-sider-mask {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 999;
+    display: none;
+  }
+
+  .mobile-sider-mask.visible {
+    display: block;
+  }
+
+  /* 调整主内容区域，不留边距给侧边栏 */
+  .ant-layout-has-sider > .ant-layout,
+  .ant-layout.ant-layout-has-sider > .ant-layout {
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+
+  /* 确保主布局占满全宽 */
+  .ant-layout-has-sider {
+    flex-direction: row !important;
+  }
+
+  /* 主Layout容器 */
+  .ant-layout {
+    width: 100vw !important;
+  }
+
+  /* 内部Layout（包含Header和Content） */
+  .ant-layout-has-sider > .ant-layout {
+    flex: 1 !important;
+    max-width: 100vw !important;
+    overflow-x: hidden !important;
+  }
+
+  /* Header 样式调整 */
+  .ant-layout-header {
+    padding: 0 12px !important;
+  }
+
+  /* Header 中的用户信息简化显示 */
+  .header-user-email {
+    display: none !important;
+  }
+
+  /* 按钮文字在小屏幕上隐藏 */
+  .logout-btn-text {
+    display: none !important;
+  }
+
+  /* Content 区域边距调整 */
+  .ant-layout-content {
+    margin: 12px !important;
+    padding: 12px !important;
+    height: calc(100vh - 64px - 24px) !important;
+    width: 100% !important;
+    max-width: 100vw !important;
+    box-sizing: border-box !important;
+  }
+
+  /* 模型选择器在移动端调整为垂直布局 */
+  .model-selector-space {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+
+  .model-selector-space .ant-select,
+  .model-selector-space .ant-btn {
+    width: 100% !important;
+  }
+
+  /* 聊天历史记录调整 */
+  .chat-history-container {
+    max-height: calc(100vh - 240px) !important;
+  }
+
+  /* 显示汉堡菜单按钮 */
+  .mobile-menu-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  /* Header 标题字体调整 */
+  .ant-layout-header > div > div {
+    font-size: 16px !important;
+  }
+
+  /* 通知铃铛保持可见 */
+  .ant-badge {
+    margin-right: 8px;
+  }
+
+  /* 头像大小调整 */
+  .ant-avatar {
+    width: 36px !important;
+    height: 36px !important;
+  }
+
+  /* 按钮间距调整 */
+  .ant-space-item {
+    margin-right: 8px !important;
+  }
+
+  /* Modal 在移动端的优化 */
+  .ant-modal {
+    max-width: calc(100vw - 32px) !important;
+    margin: 16px auto !important;
+  }
+
+  .ant-modal-body {
+    padding: 16px !important;
+  }
+
+  /* Select 组件在移动端全宽 */
+  .ant-select-dropdown {
+    max-width: calc(100vw - 32px);
+  }
+
+  /* 表单项间距调整 */
+  .ant-form-item {
+    margin-bottom: 16px !important;
+  }
+
+  /* 按钮组在移动端堆叠 */
+  .ant-radio-group {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+  }
+
+  .ant-radio-button-wrapper {
+    width: 100% !important;
+    text-align: center !important;
+  }
+
+  /* 强制登录/注册按钮显示 */
+  .ant-space {
+    gap: 8px !important;
+  }
+
+  /* 确保按钮文字在移动端完全隐藏 */
+  .ant-btn > span:not(.anticon) {
+    display: inline !important;
+  }
+
+  /* 页面内容宽度调整 */
+  body {
+    overflow-x: hidden;
+  }
+
+  /* Space组件间距 */
+  .ant-space-horizontal {
+    gap: 8px !important;
+  }
+
+  /* Chat页面优化 */
+  .ant-layout-content > div {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* 标题和模式信息区域 */
+  .ant-layout-content h2 {
+    font-size: 18px !important;
+  }
+
+  /* 消息容器 */
+  .ant-layout-content > div > div:last-child {
+    padding: 8px !important;
+  }
+
+  /* 输入框区域 */
+  .ant-input-search {
+    width: 100% !important;
+  }
+
+  /* 图片预览 */
+  .ant-image {
+    max-width: 100% !important;
+  }
 }
