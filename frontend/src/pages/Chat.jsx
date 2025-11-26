@@ -539,25 +539,6 @@ export default function ChatPage() {
             }
           });
         }
-      // 不在这里保存用户消息，由第一个 evaluateModel 调用保存
-
-      try {
-        // 只在左侧模型调用时保存用户消息，避免重复
-        const [leftResponse, rightResponse] = await Promise.all([
-          evaluateModel(modelA, currentPrompt, id, currentImage, true).catch(err => ({ error: err })),  // 保存用户消息
-          evaluateModel(modelB, currentPrompt, id, currentImage, false).catch(err => ({ error: err })) // 不保存用户消息
-        ]);
-
-        const processResponse = async (response, modelName, setMessagesCallback) => {
-          if (response.error) {
-            const errorMessage = { content: `调用模型出错: ${response.error.response?.data?.detail || response.error.message}`, isUser: false, isError: true };
-            setMessagesCallback(prev => [...prev, errorMessage]);
-          } else {
-            const aiMessage = { content: response.data.response, isUser: false, model_name: modelName };
-            setMessagesCallback(prev => [...prev, aiMessage]);
-            // 后端已经自动保存AI消息，不需要重复保存
-          }
-        };
 
         // 如果这是新创建的会话,更新URL
         if (!id && conversation_id) {
