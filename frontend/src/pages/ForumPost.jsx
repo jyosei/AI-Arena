@@ -44,6 +44,7 @@ import {
   deleteForumAttachment,
 } from '../api/forum';
 import ShareModal from '../components/ShareModal';
+import { getPublicOrigin } from '../utils/media';
 
 const { Text, Title, Paragraph } = Typography;
 const { TextArea } = Input;

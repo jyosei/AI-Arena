@@ -211,15 +211,24 @@ class ForumPostViewSet(viewsets.ModelViewSet):
     @method_decorator(never_cache)
     def retrieve(self, request, *args, **kwargs):
         pk = kwargs["pk"]
+        instance = self.get_queryset().get(pk=pk)
+        serializer = self.get_serializer(instance, context={"request": request})
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"], url_path="view", permission_classes=[permissions.AllowAny])
+    def increment_view(self, request, pk=None):
+        """增加帖子浏览量"""
         # 兼容不同字段名：尝试 update view_count，否则更新 views
         if hasattr(ForumPost, "_meta"):
             if any(f.name == "view_count" for f in ForumPost._meta.get_fields()):
                 ForumPost.objects.filter(pk=pk).update(view_count=F("view_count") + 1)
+                post = ForumPost.objects.get(pk=pk)
+                return Response({"view_count": post.view_count})
             else:
                 ForumPost.objects.filter(pk=pk).update(views=F("views") + 1)
-        instance = self.get_queryset().get(pk=pk)
-        serializer = self.get_serializer(instance, context={"request": request})
-        return Response(serializer.data)
+                post = ForumPost.objects.get(pk=pk)
+                return Response({"view_count": post.views})
+        return Response({"detail": "更新失败"}, status=status.HTTP_400_BAD_REQUEST)
 
     def perform_create(self, serializer):
         post = serializer.save(author=getattr(self.request, "user", None))
