@@ -1,14 +1,17 @@
 #!/bin/sh
-# 说明: 等待数据库端口可用后执行后续命令。
-# 去掉 set -e，避免因潜在 CRLF 造成 "set: Illegal option -"；使用显式返回码控制。
+# wait-for-db.sh
+# 等待数据库端口可用后执行后续命令
+# 支持 DB_PORT 环境变量覆盖默认端口 3306
+# 兼容 Windows CRLF
 
 host="$1"
 shift
-# 可从环境变量 DB_PORT 覆盖端口，默认 3306
 port="${DB_PORT:-3306}"
 cmd="$@"
 
 echo "[wait-for-db] Waiting for $host:$port ..." >&2
+
+# 循环检测端口
 while true; do
   if nc -z "$host" "$port" 2>/dev/null; then
     echo "[wait-for-db] MySQL ready - executing: $cmd" >&2
@@ -18,4 +21,5 @@ while true; do
   sleep 1
 done
 
-exec "$@"
+# 执行命令，兼容多参数和空格
+exec sh -c "$cmd"

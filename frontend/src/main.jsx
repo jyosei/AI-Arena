@@ -5,12 +5,12 @@ import { IntlProvider } from "react-intl";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { Modal, ConfigProvider } from "antd";
 
-// 1. 导入所有页面和组件
+// 页面和组件
 import ModelList from "./pages/ModelList.jsx";
 import Leaderboard from "./pages/Leaderboard.jsx";
-import Login from "./pages/Login.jsx";
+import UserPanel from "./pages/UserPanel.jsx";
 import Forum from "./pages/Forum.jsx";
-import ForumPost from "./pages/ForumPost.jsx"; // 新增导入
+import ForumPost from "./pages/ForumPost.jsx";
 import Chat from "./pages/Chat.jsx";
 import AppLayout from "./components/AppLayout.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
@@ -23,7 +23,7 @@ import { AuthProvider } from "./contexts/AuthContext.jsx";
 import { ModeProvider } from './contexts/ModeContext';
 import { ChatProvider } from './contexts/ChatContext';
 
-// 3. 定义 Dialog Context (如果它只在这里使用)
+// Dialog Context
 const DialogContext = createContext();
 
 export const DialogProvider = ({ children }) => {
@@ -55,8 +55,7 @@ export const DialogProvider = ({ children }) => {
 
 export const useDialog = () => useContext(DialogContext);
 
-
-// 4. 定义应用的根组件，它包含了所有路由和布局
+// App 根组件
 function App() {
   return (
     <Router>
@@ -70,18 +69,22 @@ function App() {
                   <Route path="/chat/:id" element={<Chat />} />
                   <Route path="/leaderboard" element={<Leaderboard />} />
                   <Route path="/forum" element={<Forum />} />
-                  <Route path="/forum/post/:id" element={<ForumPost />} /> {/* 新增路由 */}
+                  <Route path="/forum/post/:id" element={<ForumPost />} />
+
+                  {/* 保留 HEAD 的用户中心 */}
                   <Route
                     path="/user-center"
-                    element={(
+                    element={
                       <ProtectedRoute>
                         <UserCenter />
                       </ProtectedRoute>
-                    )}
+                    }
                   />
+
+                  {/* 保留 shallcheer 的用户面板 */}
+                  <Route path="/user" element={<UserPanel />} />
                   <Route path="/evaluate-dataset" element={<DatasetEvaluationPage />} />
                 </Route>
-                <Route path="/login" element={<Login />} />
               </Routes>
             </DialogProvider>
           </ChatProvider>
@@ -91,7 +94,7 @@ function App() {
   );
 }
 
-// 5. 渲染应用
+// 渲染
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(
   <React.StrictMode>

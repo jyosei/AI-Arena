@@ -3,7 +3,7 @@ import apiClient from '../api/apiClient';
 import { jwtDecode } from 'jwt-decode';
 import { getProfile, fetchNotifications } from '../api/users';
 
-const AuthContext = createContext(null);
+export const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null); // 完整用户资料（包含描述、头像等）
@@ -68,8 +68,20 @@ export const AuthProvider = ({ children }) => {
       return false;
     } catch (error) {
       console.error('登录失败', error);
-      logout();
-      return false;
+      // 提取后端友好错误信息（兼容两边）
+      const errorMsg =
+        error?.response?.data?.detail ||
+        (Array.isArray(error?.response?.data?.non_field_errors) && error.response.data.non_field_errors.join(' ')) ||
+        error?.response?.data ||
+        error?.message ||
+        '登录失败，请检查用户名和密码';
+      // 清理本地 token（保持 HEAD 的行为），然后抛出带有详细信息的错误（保持 shallcheer 的行为）
+      try {
+        logout();
+      } catch (e) {
+        // ignore
+      }
+      throw new Error(typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg));
     }
   };
 
@@ -85,12 +97,12 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (payload) => {
     try {
-      const res = await apiClient.post('users/register/', payload);
+      const res = await apiClient.post('/users/register/', payload);
       try {
         await login(payload.username, payload.password);
         return { success: true, autoLogin: true, raw: res };
       } catch (e) {
-        return { success: true, autoLogin: false, raw: res, error: e };
+        return { success: true, autoLogin: false, raw: res, loginError: e.message };
       }
     } catch (err) {
       // 更详细地返回后端错误，便于前端展示
@@ -99,8 +111,10 @@ export const AuthProvider = ({ children }) => {
       console.error('Register error response:', status, data || err.message);
       return {
         success: false,
-        status,
-        errors: data || err.message,
+        // 兼容旧版和新版：返回标准化的对象，并保留原始错误文本
+        status: err.response ? err.response.status : null,
+        errors: err.response && err.response.data ? err.response.data : { message: err.message },
+        errors_raw: err.response && err.response.data ? JSON.stringify(err.response.data) : err.message,
         raw: err,
       };
     }
