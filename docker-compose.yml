@@ -17,8 +17,8 @@ services:
 
   backend:
     build: ./backend
-    # 不再需要对外暴露端口，因为它只和 frontend 通信
-    #ports: ["8000:8000"] 
+    # 不再需要对外暴露端口，因为它只与 frontend 通信
+    #ports: ["8000:8000"]
     depends_on: [db]
     volumes: ["./backend:/app"]
     environment:
@@ -29,7 +29,14 @@ services:
       DB_HOST: 'db'
       DB_PORT: '3306'
       # 在这里添加您的 API Key
-      OPENAI_API_KEY: 'sk-ser2cEa4NSlALdseJwob4oube3Trg0NOLwvXEH7yUAeYy9k9' 
+      OPENAI_API_KEY: 'sk-ser2cEa4NSlALdseJwob4oube3Trg0NOLwvXEH7yUAeYy9k9'
+      # GitHub OAuth 配置 (将占位值替换成你的实际应用配置)
+      GITHUB_CLIENT_ID: 'Ov23li8J7zm7OnqPEL02'
+      GITHUB_CLIENT_SECRET: '8eb5be5e9ddd980a53a3cbe83320cb5921c7be8c'
+      # GitHub OAuth 回调必须指向后端 API 路由
+      # 确保 GitHub OAuth App 的回调设置与此一致
+      GITHUB_REDIRECT_URI: 'http://localhost:8000/api/users/github/callback/'
+      FRONTEND_URL: 'http://localhost:8000'
     # 关键修改：
     # 1. 使用 bash -c 来确保脚本由 bash 执行
     # 2. 确保 wait-for-db.sh 脚本在本地 ./backend 文件夹中存在
@@ -38,19 +45,16 @@ services:
       bash -c "dos2unix wait-for-db.sh 2>/dev/null || sed -i 's/\r$//' wait-for-db.sh &&
                chmod +x wait-for-db.sh &&
                ./wait-for-db.sh db python manage.py migrate &&
-               python manage.py runserver 0.0.0.0:8000"
+               python manage.py runserver 0.0.0.0:8000 --noreload"
 
-  frontend: # <-- 🌟 确保这里有正确的缩进，使其成为 services 的子项
+  frontend:
     build:
       context: ./frontend
       args:
-        # 使用相对路径 /api/，让浏览器中的请求走 nginx 的 /api/ 代理到后端
         VITE_API_BASE: /api/
-        # 设置公共访问地址（用于生成分享链接等）- 使用 DevTunnel 公网域名
-        VITE_PUBLIC_ORIGIN: https://qt5g1b30-8000.asse.devtunnels.ms
-    ports: 
-      - "0.0.0.0:8000:80"  # 明确绑定到所有接口
-    # volumes: ["./frontend:/app"]
+        VITE_PUBLIC_ORIGIN: http://localhost:8000
+    ports:
+      - "8000:80"
     depends_on:
       - backend
 

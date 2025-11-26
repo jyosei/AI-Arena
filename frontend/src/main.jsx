@@ -16,6 +16,7 @@ import AppLayout from "./components/AppLayout.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import UserCenter from "./pages/UserCenter.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
+import GitHubCallback from "./pages/GitHubCallback.jsx"; // GitHub 登录回调页面
 
 import DatasetEvaluationPage from "./pages/DatasetEvaluation.jsx";
 // 2. 导入所有需要的 Context Provider
@@ -82,6 +83,7 @@ function App() {
                   <Route path="/evaluate-dataset" element={<DatasetEvaluationPage />} />
                 </Route>
                 <Route path="/login" element={<Login />} />
+                <Route path="/login/github/callback" element={<GitHubCallback />} /> {/* GitHub 登录回调 */}
               </Routes>
             </DialogProvider>
           </ChatProvider>

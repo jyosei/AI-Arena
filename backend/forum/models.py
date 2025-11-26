@@ -128,3 +128,52 @@ class ForumCommentImage(models.Model):
 
     def __str__(self) -> str:
         return f"CommentImage {self.pk} for comment {getattr(self, 'comment_id', None)}"
+
+
+class ForumPostFavorite(models.Model):
+    """帖子收藏关系 (用户 -> 帖子)。唯一约束避免重复收藏。"""
+    post = models.ForeignKey(
+        ForumPost,
+        on_delete=models.CASCADE,
+        related_name="post_favorites",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="forum_post_favorites",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("post", "user")
+        indexes = [
+            models.Index(fields=["user", "post"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"PostFavorite user={getattr(self, 'user_id', None)} post={getattr(self, 'post_id', None)}"
+
+
+class ForumPostViewHistory(models.Model):
+    """帖子浏览历史。记录用户最近一次查看时间与总次数。"""
+    post = models.ForeignKey(
+        ForumPost,
+        on_delete=models.CASCADE,
+        related_name="view_histories",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="forum_post_view_histories",
+    )
+    view_count = models.PositiveIntegerField(default=1)
+    last_viewed_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("post", "user")
+        indexes = [
+            models.Index(fields=["user", "last_viewed_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"PostViewHistory user={getattr(self, 'user_id', None)} post={getattr(self, 'post_id', None)} count={self.view_count}"

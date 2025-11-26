@@ -15,7 +15,16 @@ from rest_framework.views import APIView
 import qrcode
 from io import BytesIO
 
-from .models import ForumComment, ForumCommentLike, ForumPost, ForumPostImage, ForumPostLike, ForumCommentImage
+from .models import (
+    ForumComment,
+    ForumCommentLike,
+    ForumPost,
+    ForumPostImage,
+    ForumPostLike,
+    ForumCommentImage,
+    ForumPostFavorite,
+    ForumPostViewHistory,
+)
 from users.models import Notification
 from .serializers import (
     ForumCommentCreateSerializer,
@@ -61,6 +70,7 @@ class ForumPostViewSet(viewsets.ModelViewSet):
         qs = qs.annotate(
             comments_count=Count("comments", distinct=True),
             likes_count=Count("post_likes", distinct=True),
+            favorites_count=Count("post_favorites", distinct=True),
             last_comment_at=Max("comments__created_at"),
         ).annotate(
             last_activity=Greatest(
@@ -75,6 +85,12 @@ class ForumPostViewSet(viewsets.ModelViewSet):
                 is_liked=Count(
                     "post_likes",
                     filter=Q(post_likes__user=request.user),
+                    distinct=True,
+                )
+            ).annotate(
+                is_favorited=Count(
+                    "post_favorites",
+                    filter=Q(post_favorites__user=request.user),
                     distinct=True,
                 )
             )
@@ -116,6 +132,14 @@ class ForumPostViewSet(viewsets.ModelViewSet):
         pk = kwargs["pk"]
         ForumPost.objects.filter(pk=pk).update(views=F("views") + 1)
         instance = self.get_queryset().get(pk=pk)
+        # 记录浏览历史
+        if request.user.is_authenticated:
+            try:
+                history, created = ForumPostViewHistory.objects.get_or_create(post=instance, user=request.user)
+                if not created:
+                    ForumPostViewHistory.objects.filter(pk=history.pk).update(view_count=F("view_count") + 1)
+            except Exception:
+                pass
         serializer = self.get_serializer(instance, context={"request": request})
         return Response(serializer.data)
 
@@ -155,7 +179,30 @@ class ForumPostViewSet(viewsets.ModelViewSet):
                     post=post,
                 )
         likes_count = ForumPostLike.objects.filter(post=post).count()
-        return Response({"liked": liked, "likes_count": likes_count})
+        favorites_count = ForumPostFavorite.objects.filter(post=post).count()
+        is_favorited = ForumPostFavorite.objects.filter(post=post, user=request.user).exists()
+        return Response({"liked": liked, "likes_count": likes_count, "favorites_count": favorites_count, "is_favorited": is_favorited})
+
+    @action(detail=True, methods=["post"], url_path="favorite", permission_classes=[permissions.IsAuthenticated])
+    def favorite(self, request, pk=None):
+        post = self.get_object()
+        fav, created = ForumPostFavorite.objects.get_or_create(post=post, user=request.user)
+        if not created:
+            fav.delete()
+            favorited = False
+        else:
+            favorited = True
+            if post.author_id != request.user.id:
+                Notification.create(
+                    recipient=post.author,
+                    actor=request.user,
+                    action_type="post_favorite",
+                    post=post,
+                )
+        favorites_count = ForumPostFavorite.objects.filter(post=post).count()
+        likes_count = ForumPostLike.objects.filter(post=post).count()
+        is_liked = ForumPostLike.objects.filter(post=post, user=request.user).exists()
+        return Response({"favorited": favorited, "favorites_count": favorites_count, "likes_count": likes_count, "is_liked": is_liked})
 
     @action(detail=True, methods=["get"], url_path="qrcode", permission_classes=[permissions.AllowAny])
     def qrcode_image(self, request, pk=None):
@@ -287,3 +334,145 @@ class ForumCommentLikeView(APIView):
                     pass
         likes_count = ForumCommentLike.objects.filter(comment=comment).count()
         return Response({"liked": liked, "likes_count": likes_count})
+
+
+class UserFavoritesView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        posts = (
+            ForumPost.objects.filter(post_favorites__user=request.user)
+            .select_related("author")
+            .annotate(
+                comments_count=Count("comments", distinct=True),
+                likes_count=Count("post_likes", distinct=True),
+                favorites_count=Count("post_favorites", distinct=True),
+                last_comment_at=Max("comments__created_at"),
+            ).annotate(
+                last_activity=Greatest(
+                    F("updated_at"),
+                    Coalesce("last_comment_at", F("updated_at")),
+                ),
+                is_liked=Count(
+                    "post_likes",
+                    filter=Q(post_likes__user=request.user),
+                    distinct=True,
+                ),
+                is_favorited=Count(
+                    "post_favorites",
+                    filter=Q(post_favorites__user=request.user),
+                    distinct=True,
+                ),
+            ).order_by("-post_favorites__created_at")
+        )
+        serializer = ForumPostListSerializer(posts, many=True, context={"request": request})
+        return Response(serializer.data)
+
+
+class UserHistoryView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        posts = (
+            ForumPost.objects.filter(view_histories__user=request.user)
+            .select_related("author")
+            .annotate(
+                comments_count=Count("comments", distinct=True),
+                likes_count=Count("post_likes", distinct=True),
+                favorites_count=Count("post_favorites", distinct=True),
+                last_comment_at=Max("comments__created_at"),
+                last_viewed_at=Max("view_histories__last_viewed_at"),
+            ).annotate(
+                last_activity=Greatest(
+                    F("updated_at"),
+                    Coalesce("last_comment_at", F("updated_at")),
+                ),
+                is_liked=Count(
+                    "post_likes",
+                    filter=Q(post_likes__user=request.user),
+                    distinct=True,
+                ),
+                is_favorited=Count(
+                    "post_favorites",
+                    filter=Q(post_favorites__user=request.user),
+                    distinct=True,
+                ),
+            ).order_by("-last_viewed_at")
+        )
+        serializer = ForumPostListSerializer(posts, many=True, context={"request": request})
+        return Response(serializer.data)
+
+
+class UserLikedPostsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        # 获取点赞的帖子
+        posts = (
+            ForumPost.objects.filter(post_likes__user=request.user)
+            .select_related("author")
+            .annotate(
+                comments_count=Count("comments", distinct=True),
+                likes_count=Count("post_likes", distinct=True),
+                favorites_count=Count("post_favorites", distinct=True),
+                last_comment_at=Max("comments__created_at"),
+            ).annotate(
+                last_activity=Greatest(
+                    F("updated_at"),
+                    Coalesce("last_comment_at", F("updated_at")),
+                ),
+                is_liked=Count(
+                    "post_likes",
+                    filter=Q(post_likes__user=request.user),
+                    distinct=True,
+                ),
+                is_favorited=Count(
+                    "post_favorites",
+                    filter=Q(post_favorites__user=request.user),
+                    distinct=True,
+                ),
+            ).order_by("-post_likes__created_at")
+        )
+        
+        # 获取点赞的评论
+        comments = (
+            ForumComment.objects.filter(comment_likes__user=request.user)
+            .select_related("author", "post")
+            .prefetch_related("comment_likes")
+            .annotate(
+                likes_count=Count("comment_likes", distinct=True),
+                is_liked=Count(
+                    "comment_likes",
+                    filter=Q(comment_likes__user=request.user),
+                    distinct=True,
+                ),
+            ).order_by("-comment_likes__created_at")
+        )
+        
+        posts_serializer = ForumPostListSerializer(posts, many=True, context={"request": request})
+        comments_serializer = ForumCommentSerializer(comments, many=True, context={"request": request})
+        return Response({
+            "posts": posts_serializer.data,
+            "comments": comments_serializer.data,
+        })
+
+
+class UserCommentsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        comments = (
+            ForumComment.objects.filter(author=request.user)
+            .select_related("author", "post")
+            .prefetch_related("comment_likes")
+            .annotate(
+                likes_count=Count("comment_likes", distinct=True),
+                is_liked=Count(
+                    "comment_likes",
+                    filter=Q(comment_likes__user=request.user),
+                    distinct=True,
+                ),
+            ).order_by("-created_at")
+        )
+        serializer = ForumCommentSerializer(comments, many=True, context={"request": request})
+        return Response(serializer.data)

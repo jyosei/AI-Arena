@@ -160,6 +160,8 @@ class ForumPostListSerializer(serializers.ModelSerializer):
     likes_count = serializers.IntegerField(read_only=True)
     last_activity = serializers.DateTimeField(read_only=True)
     excerpt = serializers.SerializerMethodField()
+    favorites_count = serializers.IntegerField(read_only=True)
+    is_favorited = serializers.SerializerMethodField()
 
     class Meta:
         model = ForumPost
@@ -175,13 +177,23 @@ class ForumPostListSerializer(serializers.ModelSerializer):
             "last_activity",
             "comments_count",
             "likes_count",
+            "favorites_count",
             "author",
             "excerpt",
+            "is_favorited",
         ]
         read_only_fields = fields
 
     def get_excerpt(self, obj: ForumPost) -> str:
         return Truncator(obj.content).words(50, truncate="...")
+
+    def get_is_favorited(self, obj: ForumPost) -> bool:
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return False
+        if hasattr(obj, "is_favorited"):
+            return bool(getattr(obj, "is_favorited"))
+        return obj.post_favorites.filter(user=request.user).exists()  # type: ignore[attr-defined]
 
 
 class ForumPostDetailSerializer(serializers.ModelSerializer):
@@ -191,6 +203,8 @@ class ForumPostDetailSerializer(serializers.ModelSerializer):
     likes_count = serializers.IntegerField(read_only=True)
     comments_count = serializers.IntegerField(read_only=True)
     is_liked = serializers.SerializerMethodField()
+    favorites_count = serializers.IntegerField(read_only=True)
+    is_favorited = serializers.SerializerMethodField()
 
     class Meta:
         model = ForumPost
@@ -210,6 +224,8 @@ class ForumPostDetailSerializer(serializers.ModelSerializer):
             "likes_count",
             "comments_count",
             "is_liked",
+            "favorites_count",
+            "is_favorited",
         ]
         read_only_fields = fields
 
@@ -240,6 +256,14 @@ class ForumPostDetailSerializer(serializers.ModelSerializer):
         if hasattr(obj, "is_liked"):
             return bool(obj.is_liked)  # type: ignore[attr-defined]
         return obj.post_likes.filter(user=request.user).exists()  # type: ignore[attr-defined]
+
+    def get_is_favorited(self, obj: ForumPost) -> bool:
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return False
+        if hasattr(obj, "is_favorited"):
+            return bool(getattr(obj, "is_favorited"))
+        return obj.post_favorites.filter(user=request.user).exists()  # type: ignore[attr-defined]
 
 
 class ForumPostCreateSerializer(serializers.ModelSerializer):
@@ -281,6 +305,8 @@ class ForumPostCreateSerializer(serializers.ModelSerializer):
 
 
 class ForumCommentCreateSerializer(serializers.ModelSerializer):
+    # 允许内容为空（当包含图片时），并使其为可选字段
+    content = serializers.CharField(allow_blank=True, required=False)
     class Meta:
         model = ForumComment
         fields = ["content", "parent"]
@@ -296,13 +322,19 @@ class ForumCommentCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         request = self.context["request"]
         post: ForumPost = self.context["post"]
+        # 处理文件上传
+        files = request.FILES.getlist("images") if hasattr(request, "FILES") else []
+
+        # 业务校验：当没有文本内容时，必须至少有一张图片
+        content_val = (validated_data.get("content") or "").strip()
+        if not content_val and len(files) == 0:
+            raise serializers.ValidationError("评论内容为空时，至少需要上传一张图片")
+
         comment = ForumComment.objects.create(
             post=post,
             author=request.user,
             **validated_data,
         )
-        # 处理文件上传
-        files = request.FILES.getlist("images") if hasattr(request, "FILES") else []
         for f in files:
             ForumCommentImage.objects.create(comment=comment, image=f)
         return comment

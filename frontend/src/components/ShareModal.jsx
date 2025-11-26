@@ -157,7 +157,7 @@ export default function ShareModal({ visible, onClose, shareUrl, title }) {
           </Space>
 
           <Text type="secondary" style={{ fontSize: 12 }}>
-            使用微信扫一扫即可查看此帖子
+            移动端扫描二维码即可查看此帖子
           </Text>
         </Space>
       </div>

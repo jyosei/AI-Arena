@@ -26,9 +26,12 @@ import {
   PlusOutlined,
   EyeOutlined,
   LikeOutlined,
+  LikeFilled,
+  StarOutlined,
+  StarFilled,
   UploadOutlined
 } from '@ant-design/icons';
-import { fetchForumPosts, createForumPost, toggleForumPostLike } from '../api/forum';
+import { fetchForumPosts, createForumPost, toggleForumPostLike, toggleForumPostFavorite } from '../api/forum';
 import { resolveMediaUrl } from '../utils/media';
 import AuthContext from '../contexts/AuthContext.jsx';
 
@@ -135,9 +138,9 @@ const PostForm = ({ visible, onCancel, onSubmit, submitting }) => {
           <Select mode="tags" placeholder="添加标签（可选）" style={{ width: '100%' }} />
         </Form.Item>
 
-        <Form.Item label="附件图片（最多6张）">
+        <Form.Item label="附件图片（最多9张）">
           <Upload {...uploadProps} listType="picture-card">
-            {fileList.length >= 6 ? null : (
+            {fileList.length >= 9 ? null : (
               <div>
                 <UploadOutlined />
                 <div style={{ marginTop: 8 }}>上传</div>
@@ -240,11 +243,33 @@ export default function Forum() {
     }
     try {
       const res = await toggleForumPostLike(post.id);
-      const { liked, likes_count } = res.data;
+      const { liked, likes_count, favorites_count, is_favorited } = res.data;
       setPosts((prev) => prev.map((item) => (item.id === post.id ? {
         ...item,
         likes_count,
         is_liked: liked,
+        favorites_count: favorites_count ?? item.favorites_count,
+        is_favorited: is_favorited ?? item.is_favorited,
+      } : item)));
+    } catch (error) {
+      message.error('操作失败，请稍后再试');
+    }
+  };
+
+  const handleToggleFavorite = async (post) => {
+    if (!user) {
+      message.warning('请先登录后再收藏');
+      return;
+    }
+    try {
+      const res = await toggleForumPostFavorite(post.id);
+      const { favorited, favorites_count, likes_count, is_liked } = res.data;
+      setPosts((prev) => prev.map((item) => (item.id === post.id ? {
+        ...item,
+        favorites_count,
+        is_favorited: favorited,
+        likes_count: likes_count ?? item.likes_count,
+        is_liked: is_liked ?? item.is_liked,
       } : item)));
     } catch (error) {
       message.error('操作失败，请稍后再试');
@@ -267,14 +292,26 @@ export default function Forum() {
     <Button
       key="list-likes"
       type="text"
-      icon={<LikeOutlined style={{ color: item.is_liked ? '#1677ff' : undefined }} />}
+      icon={item.is_liked ? <LikeFilled style={{ color: '#ff4d4f' }} /> : <LikeOutlined />}
       onClick={(e) => {
         e.stopPropagation();
         handleToggleLike(item);
       }}
-      style={{ color: item.is_liked ? '#1677ff' : undefined }}
+      style={{ color: item.is_liked ? '#ff4d4f' : undefined }}
     >
       {item.likes_count || 0}
+    </Button>,
+    <Button
+      key="list-favorites"
+      type="text"
+      icon={item.is_favorited ? <StarFilled style={{ color: '#faad14' }} /> : <StarOutlined />}
+      onClick={(e) => {
+        e.stopPropagation();
+        handleToggleFavorite(item);
+      }}
+      style={{ color: item.is_favorited ? '#faad14' : undefined }}
+    >
+      {item.favorites_count || 0}
     </Button>,
     <Space key="list-activity">
       <ClockCircleOutlined />

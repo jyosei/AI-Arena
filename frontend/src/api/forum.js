@@ -41,6 +41,16 @@ export const toggleForumPostLike = (postId) => {
   return apiClient.post(`/forum/posts/${postId}/like/`);
 };
 
+export const toggleForumPostFavorite = (postId) => {
+  return apiClient.post(`/forum/posts/${postId}/favorite/`);
+};
+
 export const toggleForumCommentLike = (commentId) => {
   return apiClient.post(`/forum/comments/${commentId}/like/`);
 };
+
+// 用户中心相关列表
+export const getMyFavoritePosts = () => apiClient.get('/forum/me/favorites/');
+export const getMyHistoryPosts = () => apiClient.get('/forum/me/history/');
+export const getMyLikedPosts = () => apiClient.get('/forum/me/likes/');
+export const getMyComments = () => apiClient.get('/forum/me/comments/');

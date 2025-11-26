@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layout, Menu, Dropdown, Button, Avatar, Space, Select, Typography, Form, Input, Modal, message, Tooltip, Radio } from 'antd';
+import { Layout, Menu, Dropdown, Button, Avatar, Space, Select, Typography, Form, Input, Modal, message, Tooltip, Radio, Divider } from 'antd';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useMode } from '../contexts/ModeContext';
 import { useChat } from '../contexts/ChatContext';
@@ -20,6 +20,7 @@ import{
     SendHorizontal,
 }from 'lucide-react';
 import RegisterModal from './RegisterModal';
+import GitHubLogin from './GitHubLogin.jsx';
 import NotificationBell from './NotificationBell.jsx';
 import { useIntl } from 'react-intl';
 import AuthContext from '../contexts/AuthContext.jsx';
@@ -227,6 +228,8 @@ const AppLayout = () => {
         <Form.Item>
           <Button type="primary" htmlType="submit" block loading={loading}>{intl.formatMessage({ id: 'login.button', defaultMessage: '登录' })}</Button>
         </Form.Item>
+        <Divider plain style={{ margin: '12px 0' }}>或</Divider>
+        <GitHubLogin buttonText="使用 GitHub 登录" buttonProps={{ type: 'default', style: { borderRadius: 20 } }} />
       </Form>
     );
   };

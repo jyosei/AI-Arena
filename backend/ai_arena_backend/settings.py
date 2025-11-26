@@ -121,6 +121,19 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60), # 访问令牌有效期
     "REFRESH_TOKEN_LIFETIME": timedelta(days=30),    # 刷新令牌有效期
 }
+
+# 前端根地址（用于 OAuth 回调重定向）
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
+
+# GitHub OAuth 配置（替换原微信登录）
+GITHUB_CLIENT_ID = os.getenv('GITHUB_CLIENT_ID', 'your_github_client_id')
+GITHUB_CLIENT_SECRET = os.getenv('GITHUB_CLIENT_SECRET', 'your_github_client_secret')
+GITHUB_REDIRECT_URI = os.getenv(
+    'GITHUB_REDIRECT_URI', 
+    f"{FRONTEND_URL}/login/github/callback"
+)
+GITHUB_SCOPES = os.getenv('GITHUB_SCOPES', 'read:user user:email')
+
 # CORS 配置：允许通过环境变量控制
 # 开发时可以设置 CORS_ALLOW_ALL_ORIGINS=1 以允许所有来源（仅开发）
 CORS_ALLOW_ALL_ORIGINS = os.getenv('CORS_ALLOW_ALL_ORIGINS', '0') in ('1', 'true', 'True')
