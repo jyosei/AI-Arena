@@ -23,7 +23,7 @@ export default function UserPanel() {
       }
     } catch (e) {
       console.error(e);
-      message.error(intl.formatMessage({ id: 'login.error', defaultMessage: '登录出错' }));
+      message.error(e.message || intl.formatMessage({ id: 'login.error', defaultMessage: '登录出错' }));
     } finally {
       setLoadingLogin(false);
     }
@@ -37,12 +37,26 @@ export default function UserPanel() {
         if (result.autoLogin) {
           message.success(intl.formatMessage({ id: 'register.success', defaultMessage: '注册并已自动登录' }));
         } else {
-          message.success(intl.formatMessage({ id: 'register.success', defaultMessage: '注册成功，请登录' }));
+          const loginErrMsg = result.loginError || intl.formatMessage({ id: 'register.success.login.manual', defaultMessage: '注册成功，但自动登录失败，请手动登录' });
+          message.success(intl.formatMessage({ id: 'register.success', defaultMessage: '注册成功' }));
+          message.warning(loginErrMsg);
           setActiveTab('login');
         }
       } else {
         // 注册失败：尝试显示后端返回的错误信息
-        const errMsg = result && result.errors ? JSON.stringify(result.errors) : intl.formatMessage({ id: 'register.failed', defaultMessage: '注册失败' });
+        const errors = result?.errors;
+        let errMsg = intl.formatMessage({ id: 'register.failed', defaultMessage: '注册失败' });
+        if (errors) {
+          if (errors.username) {
+            errMsg = Array.isArray(errors.username) ? errors.username[0] : errors.username;
+          } else if (errors.password) {
+            errMsg = Array.isArray(errors.password) ? errors.password[0] : errors.password;
+          } else if (errors.non_field_errors) {
+            errMsg = Array.isArray(errors.non_field_errors) ? errors.non_field_errors[0] : errors.non_field_errors;
+          } else if (errors.message) {
+            errMsg = errors.message;
+          }
+        }
         message.error(errMsg);
       }
     } catch (e) {

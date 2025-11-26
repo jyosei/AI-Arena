@@ -13,6 +13,7 @@ import {
   DeleteOutlined,
   CloseOutlined,
   MenuOutlined
+  UploadOutlined
 } from '@ant-design/icons';
 import{
     Swords,
@@ -264,18 +265,23 @@ const AppLayout = () => {
               key: '1',
               icon: <EditOutlined />,
               // 使用 onClick 处理新建会话
-              label: <span onClick={() => { openNewChatModal(); closeMobileSider(); }}>New Chat / Models</span>,
+              label: <span onClick={() => { openNewChatModal(); closeMobileSider(); }}>新对话</span>,
             },
             {
               key: '2',
               icon: <TrophyOutlined />,
               // 使用 Link 组件包裹，使其可以点击跳转
-              label: <Link to="/leaderboard" onClick={closeMobileSider}>Leaderboard</Link>,
+              label: <Link to="/leaderboard" onClick={closeMobileSider}>排行榜</Link>,
             },
             { // <-- 这是新添加的项
               key: '3',
               icon: <MessageOutlined />,
               label: <Link to="/forum" onClick={closeMobileSider}>社区论坛</Link>,
+            },
+            { // <-- 这是新添加的项
+              key: '4',
+              icon: <UploadOutlined />,
+              label: <Link to="/evaluate-dataset">上传数据集</Link>,
             },
           ]}
           // ---
@@ -557,41 +563,41 @@ const AppLayout = () => {
                   </Button>
                 </Dropdown>
 
-                {mode === 'side-by-side' && (
-                  <>
-                    <Select
-                      showSearch
-                      placeholder="选择左侧模型"
-                      value={leftModel}
-                      onChange={setLeftModel}
-                      style={{ width: 180 }}
-                      options={modelOptions}
-                      filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
-                    />
-                    <Typography.Text strong>VS</Typography.Text>
-                    <Select
-                      showSearch
-                      placeholder="选择右侧模型"
-                      value={rightModel}
-                      onChange={setRightModel}
-                      style={{ width: 180 }}
-                      options={modelOptions}
-                      filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
-                    />
-                  </>
-                )}
-                {mode === 'direct-chat' && (
-                  <Select
-                    showSearch
-                    placeholder="选择一个模型"
-                    value={leftModel}
-                    onChange={setLeftModel}
-                    style={{ width: 180 }}
-                    options={modelOptions}
-                    filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
-                  />
-                )}
-              </Space>
+            {mode === 'side-by-side' && (
+              <>
+                <Select
+                  showSearch
+                  placeholder="选择左侧模型"
+                  value={leftModel}
+                  onChange={setLeftModel}
+                  style={{ width: 180 }}
+                  options={modelOptions}
+                  filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+                />
+                <Typography.Text strong>VS</Typography.Text>
+                <Select
+                  showSearch
+                  placeholder="选择右侧模型"
+                  value={rightModel}
+                  onChange={setRightModel}
+                  style={{ width: 180 }}
+                  options={modelOptions}
+                  filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+                />
+              </>
+            )}
+            {mode === 'direct-chat' && (
+              <Select
+                showSearch
+                placeholder="选择一个模型"
+                value={leftModel}
+                onChange={setLeftModel}
+                style={{ width: 180 }}
+                options={modelOptions}
+                filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+              />
+            )}
+          </Space>
             </div>
           )}
           <Outlet />
