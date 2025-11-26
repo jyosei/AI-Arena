@@ -58,6 +58,25 @@ export const evaluateModel = (modelName, prompt, conversationId, imageFile, save
     });
   }
 };
+/**
+ * Battle 对战接口 (支持 Battle 和 Side-by-Side 模式)
+ * @param {string} modelA - 模型A名称
+ * @param {string} modelB - 模型B名称
+ * @param {string} prompt - 提示词
+ * @param {string|null} conversationId - 对话ID
+ * @param {string} mode - 模式: 'battle' 或 'side-by-side'
+ * @returns Promise
+ */
+export const battleModels = (modelA, modelB, prompt, conversationId, mode = 'battle') => {
+  return apiClient.post('/models/battle/', {
+    model_a: modelA,
+    model_b: modelB,
+    prompt: prompt,
+    conversation_id: conversationId,
+    mode: mode
+  });
+};
+
 export const recordVote = (data) => {
   // --- 关键修改：截断 prompt 以防止超出数据库限制 ---
   const truncatedPrompt = data.prompt && data.prompt.length > 500 

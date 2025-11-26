@@ -2,9 +2,13 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    ForumCategoryViewSet,
+    ForumCommentViewSet,
+    ForumAttachmentViewSet,
+    ForumPostViewSet,
+    ForumTagViewSet,
     ForumCommentLikeView,
     ForumCommentListCreateView,
-    ForumPostViewSet,
     UserFavoritesView,
     UserHistoryView,
     UserLikedPostsView,
@@ -12,7 +16,11 @@ from .views import (
 )
 
 router = DefaultRouter()
-router.register(r"posts", ForumPostViewSet, basename="forum-posts")
+router.register(r"posts", ForumPostViewSet, basename="forum-post")
+router.register(r"comments", ForumCommentViewSet, basename="forum-comment")
+router.register(r"attachments", ForumAttachmentViewSet, basename="forum-attachment")
+router.register(r"tags", ForumTagViewSet, basename="forum-tag")
+router.register(r"categories", ForumCategoryViewSet, basename="forum-category")
 
 urlpatterns = [
     path("", include(router.urls)),

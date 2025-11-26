@@ -15,19 +15,35 @@ export default function RegisterModal({ visible, onClose, onShowLogin }) {
     try {
       const result = await register({ username: values.username, password: values.password });
       if (result && result.success) {
-        message.success(intl.formatMessage({ id: 'register.success', defaultMessage: '注册成功，请登录' }));
-        onClose();
-        onShowLogin();
+        if (result.autoLogin) {
+          message.success(intl.formatMessage({ id: 'register.success.autologin', defaultMessage: '注册成功并已自动登录' }));
+          onClose();
+        } else {
+          message.success(intl.formatMessage({ id: 'register.success', defaultMessage: '注册成功，请登录' }));
+          onClose();
+          onShowLogin();
+        }
       } else {
         // 如果有具体的错误信息，显示它
-        const errorMessage = result.errors?.username || result.errors?.password || result.errors?.non_field_errors || '注册失败';
+        const errors = result?.errors;
+        let errorMessage = '注册失败';
+        if (errors) {
+          if (errors.username) {
+            errorMessage = Array.isArray(errors.username) ? errors.username[0] : errors.username;
+          } else if (errors.password) {
+            errorMessage = Array.isArray(errors.password) ? errors.password[0] : errors.password;
+          } else if (errors.non_field_errors) {
+            errorMessage = Array.isArray(errors.non_field_errors) ? errors.non_field_errors[0] : errors.non_field_errors;
+          } else if (errors.message) {
+            errorMessage = errors.message;
+          }
+        }
         message.error(errorMessage);
         console.error('Registration failed:', result.errors);
       }
     } catch (e) {
-      console.error('Registration error:', e.response?.data || e);
-      const errorMessage = e.response?.data?.username || e.response?.data?.password || e.response?.data?.non_field_errors || '注册失败';
-      message.error(errorMessage);
+      console.error('Registration error:', e);
+      message.error('注册失败');
     } finally {
       setLoading(false);
     }

@@ -7,7 +7,7 @@ import request from '../api/request';
 import { useChat } from '../contexts/ChatContext';
 import { useMode } from '../contexts/ModeContext';
 import AuthContext from '../contexts/AuthContext';
-import { evaluateModel, recordVote } from '../api/models';
+import { evaluateModel, recordVote, battleModels } from '../api/models';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -418,35 +418,44 @@ export default function ChatPage() {
       setLeftMessages(prev => [...prev, userMessage]);
       setRightMessages(prev => [...prev, userMessage]);
 
-      // 注意：不在这里保存用户消息，evaluateModel 会自动保存
-      // 但为了避免重复，我们只让第一个模型调用保存用户消息
-      // 实际上后端会保存两次（左右模型各一次），这是个问题
-      // 暂时移除这里的保存，依赖 evaluateModel 自动保存
-
       try {
-        // 使用 URL 中的 id 作为 conversation_id，保持连续对话
-        // 只在左侧模型调用时保存用户消息，避免重复
-        const [leftResponse, rightResponse] = await Promise.all([
-          evaluateModel(leftModel, currentPrompt, id, currentImage, true).catch(err => ({ error: err })),  // 保存用户消息
-          evaluateModel(rightModel, currentPrompt, id, currentImage, false).catch(err => ({ error: err })) // 不保存用户消息
-        ]);
-
-        const processResponse = async (response, modelName, setMessagesCallback) => {
-          if (response.error) {
-            const errorMessage = { id: Date.now() + Math.random(), content: `调用模型出错: ${response.error.response?.data?.detail || response.error.message}`, isUser: false, isError: true };
-            setMessagesCallback(prev => [...prev, errorMessage]);
-          } else {
-            const aiMessage = { id: Date.now() + Math.random(), content: response.data.response, isUser: false, model_name: modelName };
-            setMessagesCallback(prev => [...prev, aiMessage]);
-            // 后端已经自动保存AI消息，不需要重复保存
+        // 使用统一的 battleModels API,mode 参数设置为 'side-by-side'
+        const response = await battleModels(leftModel, rightModel, currentPrompt, id, 'side-by-side');
+        
+        // 解析响应 - 后端返回 { prompt, results: [{model, response}, {model, response}], conversation_id }
+        const { results, conversation_id } = response.data;
+        
+        // 根据模型名称分配响应到左右两侧
+        results.forEach(result => {
+          const aiMessage = { 
+            id: Date.now() + Math.random(), 
+            content: result.response, 
+            isUser: false,
+            model_name: result.model
+          };
+          
+          if (result.model === leftModel) {
+            setLeftMessages(prev => [...prev, aiMessage]);
+          } else if (result.model === rightModel) {
+            setRightMessages(prev => [...prev, aiMessage]);
           }
+        });
+
+        // 如果这是新创建的会话,更新URL
+        if (!id && conversation_id) {
+          navigate(`/chat/${conversation_id}`, { replace: true });
+        }
+
+      } catch (err) {
+        console.error('Side-by-side battle failed:', err);
+        const errMsg = { 
+          id: Date.now(), 
+          content: `请求失败: ${err.response?.data?.error || err.message}`, 
+          isUser: false, 
+          isError: true 
         };
-
-        await processResponse(leftResponse, leftModel, setLeftMessages);
-        await processResponse(rightResponse, rightModel, setRightMessages);
-
-      } catch (error) {
-        setBattleError(`发生错误: ${error.message}`);
+        setLeftMessages(prev => [...prev, errMsg]);
+        setRightMessages(prev => [...prev, errMsg]);
       } finally {
         setLoading(false);
       }
@@ -481,19 +490,6 @@ export default function ChatPage() {
         
         setLeftModel(modelA);
         setRightModel(modelB);
-        
-        // 更新会话的 model_name 为 "modelA vs modelB"
-        if (user && id) {
-          try {
-            console.log('Updating conversation model_name:', `${modelA} vs ${modelB}`);
-            const response = await request.patch(`models/chat/conversation/${id}/`, {
-              model_name: `${modelA} vs ${modelB}`
-            });
-            console.log('Conversation updated successfully:', response.data);
-          } catch (err) {
-            console.error('Failed to update conversation model_name:', err);
-          }
-        }
       }
 
       setVoted(false);
@@ -502,31 +498,63 @@ export default function ChatPage() {
       setLeftMessages(prev => [...prev, userMessage]);
       setRightMessages(prev => [...prev, userMessage]);
 
-      // 不在这里保存用户消息，由第一个 evaluateModel 调用保存
-
       try {
-        // 只在左侧模型调用时保存用户消息，避免重复
-        const [leftResponse, rightResponse] = await Promise.all([
-          evaluateModel(modelA, currentPrompt, id, currentImage, true).catch(err => ({ error: err })),  // 保存用户消息
-          evaluateModel(modelB, currentPrompt, id, currentImage, false).catch(err => ({ error: err })) // 不保存用户消息
-        ]);
+        // 使用统一的 battleModels API
+        const response = await battleModels(modelA, modelB, currentPrompt, id, 'battle');
+        
+        // 解析响应
+        const { results, conversation_id, is_anonymous } = response.data;
+        
+        // 如果是匿名对战,results 顺序已被打乱,需要显示但不透露模型名
+        // 如果不是匿名,按模型名分配
+        if (is_anonymous) {
+          // 匿名对战:不知道哪个是哪个,按顺序显示
+          const [result1, result2] = results;
+          setLeftMessages(prev => [...prev, { 
+            id: Date.now(), 
+            content: result1.response, 
+            isUser: false,
+            model_name: result1.model // 保存真实模型名,但界面不显示
+          }]);
+          setRightMessages(prev => [...prev, { 
+            id: Date.now() + 1, 
+            content: result2.response, 
+            isUser: false,
+            model_name: result2.model
+          }]);
+        } else {
+          // 非匿名:根据模型名分配
+          results.forEach(result => {
+            const aiMessage = { 
+              id: Date.now() + Math.random(), 
+              content: result.response, 
+              isUser: false,
+              model_name: result.model
+            };
+            
+            if (result.model === modelA) {
+              setLeftMessages(prev => [...prev, aiMessage]);
+            } else if (result.model === modelB) {
+              setRightMessages(prev => [...prev, aiMessage]);
+            }
+          });
+        }
 
-        const processResponse = async (response, modelName, setMessagesCallback) => {
-          if (response.error) {
-            const errorMessage = { content: `调用模型出错: ${response.error.response?.data?.detail || response.error.message}`, isUser: false, isError: true };
-            setMessagesCallback(prev => [...prev, errorMessage]);
-          } else {
-            const aiMessage = { content: response.data.response, isUser: false, model_name: modelName };
-            setMessagesCallback(prev => [...prev, aiMessage]);
-            // 后端已经自动保存AI消息，不需要重复保存
-          }
-        };
-
-        await processResponse(leftResponse, modelA, setLeftMessages);
-        await processResponse(rightResponse, modelB, setRightMessages);
+        // 如果这是新创建的会话,更新URL
+        if (!id && conversation_id) {
+          navigate(`/chat/${conversation_id}`, { replace: true });
+        }
 
       } catch (error) {
-        setBattleError(`发生错误: ${error.message}`);
+        setBattleError(`发生错误: ${error.response?.data?.error || error.message}`);
+        const errMsg = { 
+          id: Date.now(), 
+          content: `请求失败: ${error.response?.data?.error || error.message}`, 
+          isUser: false, 
+          isError: true 
+        };
+        setLeftMessages(prev => [...prev, errMsg]);
+        setRightMessages(prev => [...prev, errMsg]);
       } finally {
         setLoading(false);
       }

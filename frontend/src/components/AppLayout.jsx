@@ -526,52 +526,52 @@ const AppLayout = () => {
         }}>
           {shouldShowModelSelectors && (
             <div style={{ marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid #f0f0f0' }}>
-              <Space size="large">
-                <Dropdown overlay={menu}>
-                  <Button size="large">
-                    <Space align="center">
-                      {currentModeIcon}
-                      {currentModeLabel}
-                      <DownOutlined />
-                    </Space>
-                  </Button>
-                </Dropdown>
+          <Space size="large">
+            <Dropdown overlay={menu}>
+              <Button size="large">
+                <Space align="center">
+                  {currentModeIcon}
+                  {currentModeLabel}
+                  <DownOutlined />
+                </Space>
+              </Button>
+            </Dropdown>
 
-                {mode === 'side-by-side' && (
-                  <>
-                    <Select
-                      showSearch
-                      placeholder="选择左侧模型"
-                      value={leftModel}
-                      onChange={setLeftModel}
-                      style={{ width: 180 }}
-                      options={modelOptions}
-                      filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
-                    />
-                    <Typography.Text strong>VS</Typography.Text>
-                    <Select
-                      showSearch
-                      placeholder="选择右侧模型"
-                      value={rightModel}
-                      onChange={setRightModel}
-                      style={{ width: 180 }}
-                      options={modelOptions}
-                      filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
-                    />
-                  </>
-                )}
-                {mode === 'direct-chat' && (
-                  <Select
-                    showSearch
-                    placeholder="选择一个模型"
-                    value={leftModel}
-                    onChange={setLeftModel}
-                    style={{ width: 180 }}
-                    options={modelOptions}
-                    filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
-                  />
-                )}
-              </Space>
+            {mode === 'side-by-side' && (
+              <>
+                <Select
+                  showSearch
+                  placeholder="选择左侧模型"
+                  value={leftModel}
+                  onChange={setLeftModel}
+                  style={{ width: 180 }}
+                  options={modelOptions}
+                  filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+                />
+                <Typography.Text strong>VS</Typography.Text>
+                <Select
+                  showSearch
+                  placeholder="选择右侧模型"
+                  value={rightModel}
+                  onChange={setRightModel}
+                  style={{ width: 180 }}
+                  options={modelOptions}
+                  filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+                />
+              </>
+            )}
+            {mode === 'direct-chat' && (
+              <Select
+                showSearch
+                placeholder="选择一个模型"
+                value={leftModel}
+                onChange={setLeftModel}
+                style={{ width: 180 }}
+                options={modelOptions}
+                filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+              />
+            )}
+          </Space>
             </div>
           )}
           <Outlet />

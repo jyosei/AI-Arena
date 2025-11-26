@@ -1,3 +1,5 @@
+from django.conf import settings
+from django.conf.urls.static import static
 from django.contrib import admin
 from django.conf import settings
 from django.conf.urls.static import static
@@ -11,9 +13,10 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     # 聚合各应用 API 前缀
     path('api/models/', include('models_manager.urls')),
-    path('api/users/', include('users.urls')),
+    path('api/users/', include('users.urls')),  # 如果你有 users 应用，也这样包含
     path('api/forum/', include('forum.urls')),
-    # JWT 认证
+    # 2. 将 JWT 认证路由也放在 'api/' 前缀下，并确保它们在 include 之前或之后，但不要混淆
+    #    为了清晰，我们把它们放在这里。
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 ]
