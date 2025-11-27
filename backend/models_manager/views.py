@@ -12,7 +12,8 @@ from .serializers import ChatConversationSerializer, ChatMessageSerializer, AIMo
 import random
 import time
 import base64
-
+import os
+from django.conf import settings
 class RecordVoteView(APIView):
     """接收并记录一次对战的投票结果"""
     permission_classes = [AllowAny] # 允许任何人投票
@@ -543,47 +544,125 @@ class AnalyzeImageView(APIView):
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             return Response({"error": f"服务器内部错误: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+class DatasetListView(APIView):
+    # 允许任何人查看数据集列表
+    permission_classes = [AllowAny]
+
+    def get(self, request, *args, **kwargs):
+        # 使用硬编码的结构化数据，类似于 Hugging Face 的展示风格
+        # 模态 (modality) 可以是: 'text', 'image', 'text-to-image', 'audio', 'video', 'synthetic', 'robotics' 等
+        datasets_data = [
+            {
+                "id": "nvidia/PhysicalAI-Autonomous-Vehicles",
+                "creator": "nvidia",
+                "name": "PhysicalAI-Autonomous-Vehicles",
+                "modality": "robotics",
+                "downloads": "123k",
+                "likes": 403,
+            },
+            {
+                "id": "ytz20/LMSYS-Chat-GPT-5-Chat-Response",
+                "creator": "ytz20",
+                "name": "LMSYS-Chat-GPT-5-Chat-Response",
+                "modality": "text",
+                "downloads": "705",
+                "likes": 55,
+            },
+            {
+                "id": "nex-agi/agent-sft",
+                "creator": "nex-agi",
+                "name": "agent-sft",
+                "modality": "synthetic",
+                "downloads": "357",
+                "likes": 47,
+            },
+            {
+                "id": "PleIAs/SYNTH",
+                "creator": "PleIAs",
+                "name": "SYNTH",
+                "modality": "synthetic",
+                "downloads": "47.9k",
+                "likes": 176,
+            },
+            {
+                "id": "opendatalab/AICC",
+                "creator": "opendatalab",
+                "name": "AICC (AI Challenger Corpus)",
+                "modality": "multimodal",
+                "downloads": "2.36k",
+                "likes": 31,
+            },
+            {
+                "id": "facebook/sam-3d-body-dataset",
+                "creator": "facebook",
+                "name": "sam-3d-body-dataset",
+                "modality": "image",
+                "downloads": "2.3k",
+                "likes": 26,
+            },
+            {
+                "id": "facebook/omnilingual-asr-corpus",
+                "creator": "facebook",
+                "name": "omnilingual-asr-corpus",
+                "modality": "audio",
+                "downloads": "35.2k",
+                "likes": 157,
+            },
+            {
+                "id": "openai/gsm8k",
+                "creator": "openai",
+                "name": "gsm8k",
+                "modality": "text",
+                "downloads": "492k",
+                "likes": 985,
+            },
+        ]
+        return Response(datasets_data, status=status.HTTP_200_OK)
+
 class EvaluateDatasetView(APIView):
     permission_classes = [IsAuthenticated]
-    parser_classes = [MultiPartParser, FormParser]
+    # 不再需要文件解析器，使用默认的 JSON 解析器
+    # parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request, *args, **kwargs):
-        dataset_file = request.FILES.get('dataset')
+        # 从请求体中获取数据集文件名和模型名
+        dataset_name = request.data.get('dataset_name')
         model_name = request.data.get('model_name')
 
-        if not dataset_file:
-            return Response({"error": "未提供数据集文件"}, status=status.HTTP_400_BAD_REQUEST)
+        if not dataset_name:
+            return Response({"error": "未指定要测评的数据集"}, status=status.HTTP_400_BAD_REQUEST)
         if not model_name:
             return Response({"error": "未指定要测评的模型"}, status=status.HTTP_400_BAD_REQUEST)
 
+        # 构建数据集文件的完整路径
+        dataset_path = settings.BASE_DIR / 'datasets' / dataset_name
+        
+        if not os.path.exists(dataset_path):
+            return Response({"error": f"数据集文件 '{dataset_name}' 不存在"}, status=status.HTTP_404_NOT_FOUND)
+
         results = []
         try:
-            # 使用 io.TextIOWrapper 以文本模式读取文件
-            # 使用 utf-8-sig 来处理可能存在的 BOM (Byte Order Mark)
-            decoded_file = io.TextIOWrapper(dataset_file, encoding='utf-8-sig')
-            reader = csv.DictReader(decoded_file)
-            
-            if 'prompt' not in reader.fieldnames:
-                return Response({"error": "CSV 文件缺少 'prompt' 列"}, status=status.HTTP_400_BAD_REQUEST)
-
-            for row in reader:
-                prompt = row['prompt']
-                # 调用您现有的模型评估逻辑
-                # 注意：这里假设 evaluate_model_sync 是一个同步函数
-                # 如果模型调用是异步的，需要做相应调整
-                try:
-                    response_content = get_model_service(model_name).evaluate(prompt=prompt, model_name=model_name)
-                    results.append({
-                        "prompt": prompt,
-                        "response": response_content,
-                        "status": "success"
-                    })
-                except Exception as e:
-                    results.append({
-                        "prompt": prompt,
-                        "response": str(e),
-                        "status": "error"
-                    })
+            # 从服务器本地路径打开文件进行读取
+            with open(dataset_path, mode='r', encoding='utf-8-sig') as f:
+                reader = csv.DictReader(f)
+                
+                if 'prompt' not in reader.fieldnames:
+                    return Response({"error": "CSV 文件缺少 'prompt' 列"}, status=status.HTTP_400_BAD_REQUEST)
+                for row in reader:
+                    prompt = row['prompt']
+                    try:
+                        response_content = get_model_service(model_name).evaluate(prompt=prompt, model_name=model_name)
+                        results.append({
+                            "prompt": prompt,
+                            "response": response_content,
+                            "status": "success"
+                        })
+                    except Exception as e:
+                        results.append({
+                            "prompt": prompt,
+                            "response": str(e),
+                            "status": "error"
+                        })
         
         except Exception as e:
             return Response({"error": f"处理文件时出错: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

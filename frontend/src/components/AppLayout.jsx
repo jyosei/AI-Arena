@@ -222,6 +222,11 @@ const AppLayout = () => {
               icon: <MessageOutlined />,
               label: <Link to="/forum">社区论坛</Link>,
             },
+            { // <-- 这是新添加的项
+              key: '4',
+              icon: <MessageOutlined />,
+              label: <Link to="/evaluate-dataset">数据集上传</Link>,
+            },
           ]}
           // ---
         />
