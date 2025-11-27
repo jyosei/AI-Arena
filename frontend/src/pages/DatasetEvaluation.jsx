@@ -3,6 +3,7 @@ import { Upload, Button, Select, Table, message, Spin, Typography, Alert } from 
 import { UploadOutlined } from '@ant-design/icons';
 import { useMode } from '../contexts/ModeContext';
 import request from '../api/request';
+import { Grid } from 'antd';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -13,6 +14,8 @@ export default function DatasetEvaluationPage() {
   const [selectedModel, setSelectedModel] = useState(null);
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
+  const screens = Grid.useBreakpoint();
+  const isMobile = !screens.md;
 
   const handleFileChange = (info) => {
     // 只保留最后一个文件
@@ -73,21 +76,27 @@ export default function DatasetEvaluationPage() {
         showIcon
         style={{ marginBottom: 24 }}
       />
-      <div style={{ display: 'flex', gap: '16px', marginBottom: '24px' }}>
-        <Upload beforeUpload={() => false} onChange={handleFileChange} maxCount={1}>
-          <Button icon={<UploadOutlined />}>选择 CSV 文件</Button>
-        </Upload>
-        <Select
-          style={{ width: 250 }}
-          placeholder="选择要测评的模型"
-          onChange={(value) => setSelectedModel(value)}
-          allowClear
-        >
-          {models.map(m => <Option key={m.id} value={m.name}>{m.name}</Option>)}
-        </Select>
-        <Button type="primary" onClick={handleStartEvaluation} loading={loading} disabled={!file || !selectedModel}>
-          开始测评
-        </Button>
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '24px', flexWrap: 'wrap' }}>
+        <div style={{ flex: isMobile ? '1 1 100%' : '0 0 auto' }}>
+          <Upload beforeUpload={() => false} onChange={handleFileChange} maxCount={1}>
+            <Button icon={<UploadOutlined />} block={isMobile}>选择 CSV 文件</Button>
+          </Upload>
+        </div>
+        <div style={{ flex: isMobile ? '1 1 100%' : '0 0 auto' }}>
+          <Select
+            style={{ width: isMobile ? '100%' : 250 }}
+            placeholder="选择要测评的模型"
+            onChange={(value) => setSelectedModel(value)}
+            allowClear
+          >
+            {models.map(m => <Option key={m.id} value={m.name}>{m.name}</Option>)}
+          </Select>
+        </div>
+        <div style={{ flex: isMobile ? '1 1 100%' : '0 0 auto' }}>
+          <Button type="primary" onClick={handleStartEvaluation} loading={loading} disabled={!file || !selectedModel} block={isMobile}>
+            开始测评
+          </Button>
+        </div>
       </div>
 
       {loading && <div style={{ textAlign: 'center', padding: '50px' }}><Spin size="large" /></div>}

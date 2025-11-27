@@ -70,6 +70,7 @@ const AppLayout = () => {
     '/': '1',
     '/leaderboard': '2',
     '/forum': '3',
+    '/evaluate-dataset': '4',
   };
   
   // 根据当前路径获取应高亮的 key
@@ -281,10 +282,10 @@ const AppLayout = () => {
               icon: <MessageOutlined />,
               label: <Link to="/forum" onClick={closeMobileSider}>社区论坛</Link>,
             },
-            { // <-- 这是新添加的项
+            { // 上传数据集菜单项
               key: '4',
               icon: <UploadOutlined />,
-              label: <Link to="/evaluate-dataset">上传数据集</Link>,
+              label: <Link to="/evaluate-dataset" onClick={closeMobileSider}>上传数据集</Link>,
             },
           ]}
           // ---
