@@ -140,11 +140,12 @@ const PostForm = ({ visible, onCancel, onSuccess, categories, tagSuggestions }) 
     setSubmitting(true);
     try {
       const attachmentIds = fileList.map((item) => item.response?.id).filter(Boolean);
+      // 后端创建帖子序列化器字段为 `category` (映射 category_obj_id)，原代码误用 category_id
       const payload = {
         title: values.title,
         content: values.content,
         tags: values.tags || [],
-        category_id: values.category ? Number(values.category) : null,
+        category: values.category ? Number(values.category) : null,
       };
       if (attachmentIds.length) payload.attachment_ids = attachmentIds;
       const response = await createForumPost(payload);
@@ -254,7 +255,27 @@ export default function Forum() {
       const payload = Array.isArray(res.data) ? res.data : res.data?.results || [];
       const options = payload.map((cat) => ({ value: String(cat.id), label: cat.name }));
       setCategoryOptions([{ value: 'all', label: '全部板块' }, ...options]);
-    } catch {}
+      // 如果后端返回但没有任何分类（极少数场景），提供内置回退
+      if (options.length === 0) {
+        const fallback = [
+          { value: '1', label: '技术交流' },
+          { value: '2', label: '功能建议' },
+          { value: '3', label: '作品分享' },
+          { value: '4', label: '问题反馈' },
+        ];
+        setCategoryOptions([{ value: 'all', label: '全部板块' }, ...fallback]);
+      }
+    } catch (e) {
+      console.error('加载板块失败', e);
+      // 网络或接口失败时也使用回退，避免出现 No data
+      const fallback = [
+        { value: '1', label: '技术交流' },
+        { value: '2', label: '功能建议' },
+        { value: '3', label: '作品分享' },
+        { value: '4', label: '问题反馈' },
+      ];
+      setCategoryOptions([{ value: 'all', label: '全部板块' }, ...fallback]);
+    }
   }, []);
 
   const fetchTags = useCallback(async () => {
