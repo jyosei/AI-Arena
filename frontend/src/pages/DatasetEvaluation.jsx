@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Select, Button, Table, message, Spin, Typography, Alert, Card, Row, Col, Tag, Space } from 'antd';
+import { Select, Button, Table, message, Spin, Typography, Alert, Card, Row, Col, Tag, Space, Statistic, Input } from 'antd';
 import { HddOutlined, DownloadOutlined, HeartOutlined, CheckCircleFilled } from '@ant-design/icons';
 import { useMode } from '../contexts/ModeContext';
 import request from '../api/request';
@@ -68,9 +68,10 @@ export default function DatasetEvaluationPage() {
   const [availableDatasets, setAvailableDatasets] = useState([]);
   const [selectedDataset, setSelectedDataset] = useState(null); 
   const [selectedModel, setSelectedModel] = useState(null);
-  const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingDatasets, setLoadingDatasets] = useState(true);
+  const [benchmarkResult, setBenchmarkResult] = useState(null);
+  const [userApiKey, setUserApiKey] = useState(localStorage.getItem('user_api_key') || '');
 
   useEffect(() => {
     const fetchDatasets = async () => {
@@ -87,6 +88,12 @@ export default function DatasetEvaluationPage() {
     fetchDatasets();
   }, []);
 
+  const handleApiKeyChange = (e) => {
+    const key = e.target.value;
+    setUserApiKey(key);
+    localStorage.setItem('user_api_key', key);
+  };
+
   const handleStartEvaluation = async () => {
     if (!selectedDataset) {
       message.error('请选择一个数据集');
@@ -96,18 +103,23 @@ export default function DatasetEvaluationPage() {
       message.error('请选择一个要测评的模型');
       return;
     }
+    if (!userApiKey.startsWith('sk-') && !userApiKey.startsWith('deepseek')) {
+      message.error('请输入一个有效的API Key！');
+      return;
+    }
 
     setLoading(true);
-    setResults([]);
+    setBenchmarkResult(null);
 
     const payload = {
       dataset_name: selectedDataset.filename,
       model_name: selectedModel,
+      api_key: userApiKey,
     };
 
     try {
       const response = await request.post('/models/evaluate-dataset/', payload);
-      setResults(response.data);
+      setBenchmarkResult(response.data);
       message.success('测评完成！');
     } catch (error) {
       const errorMsg = error.response?.data?.error || '测评过程中发生未知错误';
@@ -117,23 +129,63 @@ export default function DatasetEvaluationPage() {
     }
   };
 
-  const columns = [
-    { title: '问题 (Prompt)', dataIndex: 'prompt', key: 'prompt', width: '30%' },
-    { title: '模型回答 (Response)', dataIndex: 'response', key: 'response', width: '60%' },
-    { 
-      title: '状态', 
-      dataIndex: 'status', 
-      key: 'status',
-      width: '10%',
-      render: (status) => <Text type={status === 'error' ? 'danger' : 'success'}>{status}</Text>
-    },
-  ];
+  const renderBenchmarkResults = () => {
+    if (!benchmarkResult) return null;
+
+    const { metrics, benchmark_type, error_samples } = benchmarkResult;
+
+    const errorColumns = [
+      { title: '问题 (Prompt)', dataIndex: 'prompt', key: 'prompt', width: '40%' },
+      { title: '预期答案 (Expected)', dataIndex: 'expected_answer', key: 'expected_answer', width: '20%' },
+      { title: '模型回答 (Response)', dataIndex: 'model_response', key: 'model_response', width: '40%' },
+    ];
+
+    return (
+      <Card title="Benchmark 测评结果" style={{ marginTop: 24 }}>
+        <Row gutter={[16, 24]}>
+          <Col span={24}>
+            <Text strong>测评任务类型: </Text>
+            <Text>{benchmark_type}</Text>
+          </Col>
+          
+          {Object.entries(metrics).map(([key, value]) => (
+            <Col xs={12} sm={8} md={6} key={key}>
+              <Statistic title={key.replace('_', ' ').toUpperCase()} value={value} suffix="%" />
+            </Col>
+          ))}
+        </Row>
+
+        {error_samples && error_samples.length > 0 && (
+          <>
+            <Title level={4} style={{ marginTop: 32, marginBottom: 16 }}>部分错误案例分析</Title>
+            <Table
+              columns={errorColumns}
+              dataSource={error_samples.map((r, i) => ({ ...r, key: i }))}
+              bordered
+              pagination={false}
+              scroll={{ x: 800 }}
+            />
+          </>
+        )}
+      </Card>
+    );
+  };
 
   return (
     <div style={{ padding: '24px' }}>
       <Title level={2}>数据集批量测评</Title>
       
       <Card style={{ marginBottom: 24 }}>
+        <div style={{ marginBottom: 16 }}>
+          <Text strong>您的API Key:</Text>
+          <Input
+            style={{ width: 400, marginLeft: 8 }}
+            placeholder="请输入您的 API Key (sk-...)"
+            value={userApiKey}
+            onChange={handleApiKeyChange}
+            type="password"
+          />
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <Text strong>选择模型:</Text>
           <Select
@@ -170,17 +222,7 @@ export default function DatasetEvaluationPage() {
       
       {loading && <div style={{ textAlign: 'center', padding: '50px' }}><Spin size="large" /></div>}
       
-      {results.length > 0 && (
-        <>
-          <Title level={3}>测评结果</Title>
-          <Table
-            columns={columns}
-            dataSource={results.map((r, i) => ({ ...r, key: i }))}
-            bordered
-            pagination={{ pageSize: 10 }}
-          />
-        </>
-      )}
+      {renderBenchmarkResults()}
     </div>
   );
 }

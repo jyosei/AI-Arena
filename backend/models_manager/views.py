@@ -4,7 +4,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny # 导入 AllowA
 from rest_framework.parsers import FormParser
 from rest_framework import status
 from rest_framework.parsers import JSONParser, MultiPartParser
-from .services import get_model_service, ELORatingSystem
+from .services import get_chat_model_service, get_evaluation_model_service, ELORatingSystem
 from .models import BattleVote, AIModel
 from .models import ChatConversation
 from .models import ChatMessage
@@ -15,11 +15,21 @@ import base64
 import os
 from django.conf import settings
 import csv 
+import re
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 DATASET_METADATA = {
-    "test_small.csv": {
-        "id": "local/test-small",
+    "test_math_small.csv": {
+        "id": "local/test-math-small",
         "creator": "local",
-        "name": "Small Test Dataset",
+        "name": "Small Math Test",
+        "modality": "text",
+        "downloads": "1",
+        "likes": 0,
+    },
+    "test_sentiment_small.csv": {
+        "id": "local/test-sentiment-small",
+        "creator": "local",
+        "name": "Small Sentiment Test",
         "modality": "text",
         "downloads": "1",
         "likes": 0,
@@ -658,52 +668,167 @@ class DatasetListView(APIView):
         except Exception as e:
             return Response({"error": f"无法读取数据集目录: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+# ... (在文件顶部添加这些导入)
+import re
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 class EvaluateDatasetView(APIView):
     permission_classes = [IsAuthenticated]
-    # 不再需要文件解析器，使用默认的 JSON 解析器
-    # parser_classes = [MultiPartParser, FormParser]
+
+    def _extract_final_answer(self, text: str) -> str:
+        """从文本中提取 #### 后面的数字答案"""
+        match = re.search(r'####\s*([\d,.-]+)', text)
+        if match:
+            return match.group(1).replace(',', '')
+        
+        # 如果没有 ####，尝试从最后一行提取数字
+        lines = text.strip().split('\n')
+        last_line = lines[-1]
+        # 匹配可能包含数字的最后一行
+        match = re.findall(r'[\d,.-]+', last_line)
+        if match:
+            return match[-1].replace(',', '')
+        return ""
+
+    def _evaluate_gsm8k(self, model_service, prompts,model_name:str):
+        """处理 gsm8k 类型的数学推理任务"""
+        correct = 0
+        error_samples = []
+        
+        for row in prompts:
+            question = row.get('question')
+            true_answer_text = row.get('answer')
+            if not question or not true_answer_text:
+                continue
+
+            true_final_answer = self._extract_final_answer(true_answer_text)
+            
+            # 使用思维链 Prompt
+            prompt_to_model = f"Question: {question}\n\nLet's think step by step, and then write the final answer in the format '#### <number>'."
+            
+            try:
+                model_response = model_service.evaluate(prompt=prompt_to_model, model_name=model_name)
+                model_final_answer = self._extract_final_answer(model_response)
+
+                if model_final_answer and true_final_answer and model_final_answer == true_final_answer:
+                    correct += 1
+                else:
+                    if len(error_samples) < 5:
+                        error_samples.append({
+                            "prompt": question,
+                            "expected_answer": true_final_answer,
+                            "model_response": model_response
+                        })
+            except Exception as e:
+                if len(error_samples) < 5:
+                    error_samples.append({"prompt": question, "expected_answer": true_final_answer, "model_response": f"API Error: {e}"})
+
+        accuracy = (correct / len(prompts) * 100) if prompts else 0
+        return {
+            "benchmark_type": "Math Reasoning (GSM8K)",
+            "metrics": {"accuracy": round(accuracy, 2)},
+            "total_prompts": len(prompts),
+            "correct_answers": correct,
+            "error_samples": error_samples,
+        }
+
+    def _evaluate_classification(self, model_service, prompts,model_name:str):
+        """处理 rotten_tomatoes 类型的分类任务"""
+        predictions = []
+        ground_truth = []
+        error_samples = []
+
+        for row in prompts:
+            text = row.get('text')
+            label = row.get('label')
+            if not text or label is None:
+                continue
+
+            ground_truth.append(int(label))
+            
+            # 引导模型做选择题
+            prompt_to_model = f"Analyze the sentiment of the following movie review. Respond with only the word 'positive' or 'negative'.\n\nReview: '{text}'"
+            
+            try:
+                model_response = model_service.evaluate(prompt=prompt_to_model, model_name=model_name).lower()
+                
+                predicted_label = 1 if 'positive' in model_response else 0
+                predictions.append(predicted_label)
+
+                if predicted_label != int(label) and len(error_samples) < 5:
+                    error_samples.append({
+                        "prompt": text,
+                        "expected_answer": "positive" if int(label) == 1 else "negative",
+                        "model_response": model_response
+                    })
+            except Exception as e:
+                # 如果API出错，可以记为一个错误预测或跳过
+                predictions.append(-1) # -1 表示错误
+                if len(error_samples) < 5:
+                    error_samples.append({"prompt": text, "expected_answer": "positive" if int(label) == 1 else "negative", "model_response": f"API Error: {e}"})
+
+        # 过滤掉API出错的-1
+        valid_indices = [i for i, p in enumerate(predictions) if p != -1]
+        predictions = [predictions[i] for i in valid_indices]
+        ground_truth = [ground_truth[i] for i in valid_indices]
+
+        if not predictions:
+            return {"metrics": {"accuracy": 0, "precision": 0, "recall": 0, "f1_score": 0}}
+
+        accuracy = accuracy_score(ground_truth, predictions)
+        precision = precision_score(ground_truth, predictions, average='binary', zero_division=0)
+        recall = recall_score(ground_truth, predictions, average='binary', zero_division=0)
+        f1 = f1_score(ground_truth, predictions, average='binary', zero_division=0)
+
+        return {
+            "benchmark_type": "Sentiment Classification",
+            "metrics": {
+                "accuracy": round(accuracy * 100, 2),
+                "precision": round(precision * 100, 2),
+                "recall": round(recall * 100, 2),
+                "f1_score": round(f1 * 100, 2),
+            },
+            "total_prompts": len(prompts),
+            "evaluated_prompts": len(predictions),
+            "error_samples": error_samples,
+        }
 
     def post(self, request, *args, **kwargs):
-        # 从请求体中获取数据集文件名和模型名
         dataset_name = request.data.get('dataset_name')
         model_name = request.data.get('model_name')
+        user_api_key = request.data.get('api_key')
 
-        if not dataset_name:
-            return Response({"error": "未指定要测评的数据集"}, status=status.HTTP_400_BAD_REQUEST)
-        if not model_name:
-            return Response({"error": "未指定要测评的模型"}, status=status.HTTP_400_BAD_REQUEST)
+        if not dataset_name or not model_name:
+            return Response({"error": "必须提供数据集和模型名称"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 构建数据集文件的完整路径
         dataset_path = settings.BASE_DIR / 'dataset_files' / dataset_name
-        
         if not os.path.exists(dataset_path):
             return Response({"error": f"数据集文件 '{dataset_name}' 不存在"}, status=status.HTTP_404_NOT_FOUND)
 
-        results = []
         try:
-            # 从服务器本地路径打开文件进行读取
+            model_service = get_evaluation_model_service(model_name, api_key=user_api_key)
+            
             with open(dataset_path, mode='r', encoding='utf-8-sig') as f:
                 reader = csv.DictReader(f)
-                
-                if 'prompt' not in reader.fieldnames:
-                    return Response({"error": "CSV 文件缺少 'prompt' 列"}, status=status.HTTP_400_BAD_REQUEST)
-                for row in reader:
-                    prompt = row['prompt']
-                    try:
-                        response_content = get_model_service(model_name).evaluate(prompt=prompt, model_name=model_name)
-                        results.append({
-                            "prompt": prompt,
-                            "response": response_content,
-                            "status": "success"
-                        })
-                    except Exception as e:
-                        results.append({
-                            "prompt": prompt,
-                            "response": str(e),
-                            "status": "error"
-                        })
-        
-        except Exception as e:
-            return Response({"error": f"处理文件时出错: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                prompts = list(reader)
+                fieldnames = reader.fieldnames
 
-        return Response(results, status=status.HTTP_200_OK)
+            # --- 智能判断任务类型 ---
+            if 'question' in fieldnames and 'answer' in fieldnames:
+                # 判定为 GSM8K 类型
+                result = self._evaluate_gsm8k(model_service, prompts, model_name=model_name)
+            elif 'text' in fieldnames and 'label' in fieldnames:
+                # 判定为分类任务类型
+                result = self._evaluate_classification(model_service, prompts, model_name=model_name)
+            else:
+                return Response({"error": "数据集格式不被支持。需要 (question, answer) 或 (text, label) 列。"}, status=400)
+            
+            # 补充通用信息
+            result['model_name'] = model_name
+            result['dataset_name'] = dataset_name
+            
+            return Response(result, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return Response({"error": f"处理时发生严重错误: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
