@@ -29,7 +29,7 @@ const DatasetCard = ({ dataset, isSelected, onSelect }) => {
         border: isSelected ? '2px solid #1890ff' : '1px solid #d9d9d9',
         position: 'relative',
       }}
-      onClick={() => onSelect(dataset.id)}
+      onClick={() => onSelect(dataset)}
     >
       {isSelected && (
         <CheckCircleFilled 
@@ -65,14 +65,13 @@ const DatasetCard = ({ dataset, isSelected, onSelect }) => {
 
 export default function DatasetEvaluationPage() {
   const { models } = useMode();
-  const [availableDatasets, setAvailableDatasets] = useState([]); // 存储可用的数据集列表
-  const [selectedDataset, setSelectedDataset] = useState(null); // 存储用户选择的数据集
+  const [availableDatasets, setAvailableDatasets] = useState([]);
+  const [selectedDataset, setSelectedDataset] = useState(null); 
   const [selectedModel, setSelectedModel] = useState(null);
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [loadingDatasets, setLoadingDatasets] = useState(true); // 加载数据集列表的状态
+  const [loadingDatasets, setLoadingDatasets] = useState(true);
 
-  // 在组件加载时获取数据集列表
   useEffect(() => {
     const fetchDatasets = async () => {
       try {
@@ -101,14 +100,12 @@ export default function DatasetEvaluationPage() {
     setLoading(true);
     setResults([]);
 
-    // 准备要发送的 JSON 数据
     const payload = {
-      dataset_name: selectedDataset,
+      dataset_name: selectedDataset.filename,
       model_name: selectedModel,
     };
 
     try {
-      // 发送 application/json 请求
       const response = await request.post('/models/evaluate-dataset/', payload);
       setResults(response.data);
       message.success('测评完成！');
@@ -136,7 +133,6 @@ export default function DatasetEvaluationPage() {
     <div style={{ padding: '24px' }}>
       <Title level={2}>数据集批量测评</Title>
       
-      {/* 测评操作区域 */}
       <Card style={{ marginBottom: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <Text strong>选择模型:</Text>
@@ -152,10 +148,9 @@ export default function DatasetEvaluationPage() {
             开始测评
           </Button>
         </div>
-        {selectedDataset && <Alert message={`已选择数据集: ${selectedDataset}`} type="info" showIcon style={{ marginTop: 16 }}/>}
+        {selectedDataset && <Alert message={`已选择数据集: ${selectedDataset.id}`} type="info" showIcon style={{ marginTop: 16 }}/>}
       </Card>
 
-      {/* 数据集展示和选择区域 */}
       <Title level={3}>选择一个数据集</Title>
       {loadingDatasets ? (
         <div style={{ textAlign: 'center', padding: '50px' }}><Spin size="large" /></div>
@@ -165,7 +160,7 @@ export default function DatasetEvaluationPage() {
             <Col key={dataset.id} xs={24} sm={12} md={12} lg={8} xl={6}>
               <DatasetCard 
                 dataset={dataset} 
-                isSelected={selectedDataset === dataset.id}
+                isSelected={selectedDataset?.id === dataset.id}
                 onSelect={setSelectedDataset}
               />
             </Col>
@@ -173,7 +168,6 @@ export default function DatasetEvaluationPage() {
         </Row>
       )}
       
-      {/* 测评结果展示区域 */}
       {loading && <div style={{ textAlign: 'center', padding: '50px' }}><Spin size="large" /></div>}
       
       {results.length > 0 && (

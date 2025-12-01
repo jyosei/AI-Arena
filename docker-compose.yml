@@ -44,6 +44,8 @@ services:
         # 使用相对路径 /api/，让浏览器中的请求走 nginx 的 /api/ 代理到后端
         VITE_API_BASE: /api/
     ports: ["8000:80"]  # 主机 8000 映射到容器内 Nginx 监听的 80 端口
-    # volumes: ["./frontend:/app"]
     depends_on:
       - backend
+    # 添加 volumes 来挂载 Nginx 配置文件
+    #volumes:
+     # - ./frontend/nginx:/etc/nginx/conf.d

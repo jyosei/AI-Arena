@@ -14,6 +14,83 @@ import time
 import base64
 import os
 from django.conf import settings
+import csv 
+DATASET_METADATA = {
+    "test_small.csv": {
+        "id": "local/test-small",
+        "creator": "local",
+        "name": "Small Test Dataset",
+        "modality": "text",
+        "downloads": "1",
+        "likes": 0,
+    },
+    "PhysicalAI-Autonomous-Vehicles.csv": {
+        "id": "nvidia/PhysicalAI-Autonomous-Vehicles",
+        "creator": "nvidia",
+        "name": "PhysicalAI-Autonomous-Vehicles",
+        "modality": "robotics",
+        "downloads": "123k",
+        "likes": 403,
+    },
+    "LMSYS-Chat-GPT-5-Chat-Response.csv": {
+        "id": "ytz20/LMSYS-Chat-GPT-5-Chat-Response",
+        "creator": "ytz20",
+        "name": "LMSYS-Chat-GPT-5-Chat-Response",
+        "modality": "text",
+        "downloads": "705",
+        "likes": 55,
+    },
+    "agent-sft.csv": {
+        "id": "nex-agi/agent-sft",
+        "creator": "nex-agi",
+        "name": "agent-sft",
+        "modality": "synthetic",
+        "downloads": "357",
+        "likes": 47,
+    },
+    "SYNTH.csv": {
+        "id": "PleIAs/SYNTH",
+        "creator": "PleIAs",
+        "name": "SYNTH",
+        "modality": "synthetic",
+        "downloads": "47.9k",
+        "likes": 176,
+    },
+    "AICC.csv": {
+        "id": "opendatalab/AICC",
+        "creator": "opendatalab",
+        "name": "AICC (AI Challenger Corpus)",
+        "modality": "multimodal",
+        "downloads": "2.36k",
+        "likes": 31,
+    },
+    "sam-3d-body-dataset.csv": {
+        "id": "facebook/sam-3d-body-dataset",
+        "creator": "facebook",
+        "name": "sam-3d-body-dataset",
+        "modality": "image",
+        "downloads": "2.3k",
+        "likes": 26,
+    },
+    "omnilingual-asr-corpus.csv": {
+        "id": "facebook/omnilingual-asr-corpus",
+        "creator": "facebook",
+        "name": "omnilingual-asr-corpus",
+        "modality": "audio",
+        "downloads": "35.2k",
+        "likes": 157,
+    },
+    "gsm8k.csv": {
+        "id": "openai/gsm8k",
+        "creator": "openai",
+        "name": "gsm8k",
+        "modality": "text",
+        "downloads": "492k",
+        "likes": 985,
+    },
+}
+
+
 class RecordVoteView(APIView):
     """接收并记录一次对战的投票结果"""
     permission_classes = [AllowAny] # 允许任何人投票
@@ -545,79 +622,41 @@ class AnalyzeImageView(APIView):
         except Exception as e:
             return Response({"error": f"服务器内部错误: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 class DatasetListView(APIView):
-    # 允许任何人查看数据集列表
     permission_classes = [AllowAny]
 
     def get(self, request, *args, **kwargs):
-        # 使用硬编码的结构化数据，类似于 Hugging Face 的展示风格
-        # 模态 (modality) 可以是: 'text', 'image', 'text-to-image', 'audio', 'video', 'synthetic', 'robotics' 等
-        datasets_data = [
-            {
-                "id": "nvidia/PhysicalAI-Autonomous-Vehicles",
-                "creator": "nvidia",
-                "name": "PhysicalAI-Autonomous-Vehicles",
-                "modality": "robotics",
-                "downloads": "123k",
-                "likes": 403,
-            },
-            {
-                "id": "ytz20/LMSYS-Chat-GPT-5-Chat-Response",
-                "creator": "ytz20",
-                "name": "LMSYS-Chat-GPT-5-Chat-Response",
-                "modality": "text",
-                "downloads": "705",
-                "likes": 55,
-            },
-            {
-                "id": "nex-agi/agent-sft",
-                "creator": "nex-agi",
-                "name": "agent-sft",
-                "modality": "synthetic",
-                "downloads": "357",
-                "likes": 47,
-            },
-            {
-                "id": "PleIAs/SYNTH",
-                "creator": "PleIAs",
-                "name": "SYNTH",
-                "modality": "synthetic",
-                "downloads": "47.9k",
-                "likes": 176,
-            },
-            {
-                "id": "opendatalab/AICC",
-                "creator": "opendatalab",
-                "name": "AICC (AI Challenger Corpus)",
-                "modality": "multimodal",
-                "downloads": "2.36k",
-                "likes": 31,
-            },
-            {
-                "id": "facebook/sam-3d-body-dataset",
-                "creator": "facebook",
-                "name": "sam-3d-body-dataset",
-                "modality": "image",
-                "downloads": "2.3k",
-                "likes": 26,
-            },
-            {
-                "id": "facebook/omnilingual-asr-corpus",
-                "creator": "facebook",
-                "name": "omnilingual-asr-corpus",
-                "modality": "audio",
-                "downloads": "35.2k",
-                "likes": 157,
-            },
-            {
-                "id": "openai/gsm8k",
-                "creator": "openai",
-                "name": "gsm8k",
-                "modality": "text",
-                "downloads": "492k",
-                "likes": 985,
-            },
-        ]
-        return Response(datasets_data, status=status.HTTP_200_OK)
+        datasets_dir = settings.BASE_DIR / 'dataset_files'
+        
+        if not os.path.isdir(datasets_dir):
+            return Response({"error": "数据集目录未找到"}, status=status.HTTP_404_NOT_FOUND)
+
+        available_datasets = []
+        try:
+            for filename in os.listdir(datasets_dir):
+                if filename.endswith('.csv'):
+                    metadata = DATASET_METADATA.get(filename)
+                    if metadata:
+                        # 复制一份元数据，以免修改原始字典
+                        data_to_send = metadata.copy()
+                        # 关键：添加文件名，供前端使用
+                        data_to_send['filename'] = filename 
+                        available_datasets.append(data_to_send)
+                    else:
+                        # (可选) 为没有元数据的文件提供默认结构
+                        available_datasets.append({
+                            "id": f"local/{filename.replace('.csv', '')}",
+                            "creator": "local",
+                            "name": filename.replace('.csv', ''),
+                            "modality": "unknown",
+                            "downloads": "0",
+                            "likes": 0,
+                            "filename": filename, # <-- 同样在这里也加上
+                        })
+            
+            return Response(available_datasets, status=status.HTTP_200_OK)
+        
+        except Exception as e:
+            return Response({"error": f"无法读取数据集目录: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class EvaluateDatasetView(APIView):
     permission_classes = [IsAuthenticated]
@@ -635,7 +674,7 @@ class EvaluateDatasetView(APIView):
             return Response({"error": "未指定要测评的模型"}, status=status.HTTP_400_BAD_REQUEST)
 
         # 构建数据集文件的完整路径
-        dataset_path = settings.BASE_DIR / 'datasets' / dataset_name
+        dataset_path = settings.BASE_DIR / 'dataset_files' / dataset_name
         
         if not os.path.exists(dataset_path):
             return Response({"error": f"数据集文件 '{dataset_name}' 不存在"}, status=status.HTTP_404_NOT_FOUND)
