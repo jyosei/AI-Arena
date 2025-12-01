@@ -4,7 +4,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny # 导入 AllowA
 from rest_framework.parsers import FormParser
 from rest_framework import status
 from rest_framework.parsers import JSONParser, MultiPartParser
-from .services import get_model_service, ELORatingSystem
+from .services import get_chat_model_service, get_evaluation_model_service, ELORatingSystem
 from .models import BattleVote, AIModel
 from .models import ChatConversation
 from .models import ChatMessage
@@ -12,6 +12,94 @@ from .serializers import ChatConversationSerializer, ChatMessageSerializer, AIMo
 import random
 import time
 import base64
+import os
+from django.conf import settings
+import csv 
+import re
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+DATASET_METADATA = {
+    "test_math_small.csv": {
+        "id": "local/test-math-small",
+        "creator": "local",
+        "name": "Small Math Test",
+        "modality": "text",
+        "downloads": "1",
+        "likes": 0,
+    },
+    "test_sentiment_small.csv": {
+        "id": "local/test-sentiment-small",
+        "creator": "local",
+        "name": "Small Sentiment Test",
+        "modality": "text",
+        "downloads": "1",
+        "likes": 0,
+    },
+    "PhysicalAI-Autonomous-Vehicles.csv": {
+        "id": "nvidia/PhysicalAI-Autonomous-Vehicles",
+        "creator": "nvidia",
+        "name": "PhysicalAI-Autonomous-Vehicles",
+        "modality": "robotics",
+        "downloads": "123k",
+        "likes": 403,
+    },
+    "LMSYS-Chat-GPT-5-Chat-Response.csv": {
+        "id": "ytz20/LMSYS-Chat-GPT-5-Chat-Response",
+        "creator": "ytz20",
+        "name": "LMSYS-Chat-GPT-5-Chat-Response",
+        "modality": "text",
+        "downloads": "705",
+        "likes": 55,
+    },
+    "agent-sft.csv": {
+        "id": "nex-agi/agent-sft",
+        "creator": "nex-agi",
+        "name": "agent-sft",
+        "modality": "synthetic",
+        "downloads": "357",
+        "likes": 47,
+    },
+    "SYNTH.csv": {
+        "id": "PleIAs/SYNTH",
+        "creator": "PleIAs",
+        "name": "SYNTH",
+        "modality": "synthetic",
+        "downloads": "47.9k",
+        "likes": 176,
+    },
+    "AICC.csv": {
+        "id": "opendatalab/AICC",
+        "creator": "opendatalab",
+        "name": "AICC (AI Challenger Corpus)",
+        "modality": "multimodal",
+        "downloads": "2.36k",
+        "likes": 31,
+    },
+    "sam-3d-body-dataset.csv": {
+        "id": "facebook/sam-3d-body-dataset",
+        "creator": "facebook",
+        "name": "sam-3d-body-dataset",
+        "modality": "image",
+        "downloads": "2.3k",
+        "likes": 26,
+    },
+    "omnilingual-asr-corpus.csv": {
+        "id": "facebook/omnilingual-asr-corpus",
+        "creator": "facebook",
+        "name": "omnilingual-asr-corpus",
+        "modality": "audio",
+        "downloads": "35.2k",
+        "likes": 157,
+    },
+    "gsm8k.csv": {
+        "id": "openai/gsm8k",
+        "creator": "openai",
+        "name": "gsm8k",
+        "modality": "text",
+        "downloads": "492k",
+        "likes": 985,
+    },
+}
+
 
 class RecordVoteView(APIView):
     """接收并记录一次对战的投票结果"""
@@ -630,49 +718,204 @@ class AnalyzeImageView(APIView):
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             return Response({"error": f"服务器内部错误: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-class EvaluateDatasetView(APIView):
-    permission_classes = [IsAuthenticated]
-    parser_classes = [MultiPartParser, FormParser]
+class DatasetListView(APIView):
+    permission_classes = [AllowAny]
 
-    def post(self, request, *args, **kwargs):
-        dataset_file = request.FILES.get('dataset')
-        model_name = request.data.get('model_name')
+    def get(self, request, *args, **kwargs):
+        datasets_dir = settings.BASE_DIR / 'dataset_files'
+        
+        if not os.path.isdir(datasets_dir):
+            return Response({"error": "数据集目录未找到"}, status=status.HTTP_404_NOT_FOUND)
 
-        if not dataset_file:
-            return Response({"error": "未提供数据集文件"}, status=status.HTTP_400_BAD_REQUEST)
-        if not model_name:
-            return Response({"error": "未指定要测评的模型"}, status=status.HTTP_400_BAD_REQUEST)
-
-        results = []
+        available_datasets = []
         try:
-            # 使用 io.TextIOWrapper 以文本模式读取文件
-            # 使用 utf-8-sig 来处理可能存在的 BOM (Byte Order Mark)
-            decoded_file = io.TextIOWrapper(dataset_file, encoding='utf-8-sig')
-            reader = csv.DictReader(decoded_file)
+            for filename in os.listdir(datasets_dir):
+                if filename.endswith('.csv'):
+                    metadata = DATASET_METADATA.get(filename)
+                    if metadata:
+                        # 复制一份元数据，以免修改原始字典
+                        data_to_send = metadata.copy()
+                        # 关键：添加文件名，供前端使用
+                        data_to_send['filename'] = filename 
+                        available_datasets.append(data_to_send)
+                    else:
+                        # (可选) 为没有元数据的文件提供默认结构
+                        available_datasets.append({
+                            "id": f"local/{filename.replace('.csv', '')}",
+                            "creator": "local",
+                            "name": filename.replace('.csv', ''),
+                            "modality": "unknown",
+                            "downloads": "0",
+                            "likes": 0,
+                            "filename": filename, # <-- 同样在这里也加上
+                        })
             
-            if 'prompt' not in reader.fieldnames:
-                return Response({"error": "CSV 文件缺少 'prompt' 列"}, status=status.HTTP_400_BAD_REQUEST)
-
-            for row in reader:
-                prompt = row['prompt']
-                # 调用您现有的模型评估逻辑
-                # 注意：这里假设 evaluate_model_sync 是一个同步函数
-                # 如果模型调用是异步的，需要做相应调整
-                try:
-                    response_content = get_model_service(model_name).evaluate(prompt=prompt, model_name=model_name)
-                    results.append({
-                        "prompt": prompt,
-                        "response": response_content,
-                        "status": "success"
-                    })
-                except Exception as e:
-                    results.append({
-                        "prompt": prompt,
-                        "response": str(e),
-                        "status": "error"
-                    })
+            return Response(available_datasets, status=status.HTTP_200_OK)
         
         except Exception as e:
-            return Response({"error": f"处理文件时出错: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": f"无法读取数据集目录: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        return Response(results, status=status.HTTP_200_OK)
+# ... (在文件顶部添加这些导入)
+import re
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+class EvaluateDatasetView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def _extract_final_answer(self, text: str) -> str:
+        """从文本中提取 #### 后面的数字答案"""
+        match = re.search(r'####\s*([\d,.-]+)', text)
+        if match:
+            return match.group(1).replace(',', '')
+        
+        # 如果没有 ####，尝试从最后一行提取数字
+        lines = text.strip().split('\n')
+        last_line = lines[-1]
+        # 匹配可能包含数字的最后一行
+        match = re.findall(r'[\d,.-]+', last_line)
+        if match:
+            return match[-1].replace(',', '')
+        return ""
+
+    def _evaluate_gsm8k(self, model_service, prompts,model_name:str):
+        """处理 gsm8k 类型的数学推理任务"""
+        correct = 0
+        error_samples = []
+        
+        for row in prompts:
+            question = row.get('question')
+            true_answer_text = row.get('answer')
+            if not question or not true_answer_text:
+                continue
+
+            true_final_answer = self._extract_final_answer(true_answer_text)
+            
+            # 使用思维链 Prompt
+            prompt_to_model = f"Question: {question}\n\nLet's think step by step, and then write the final answer in the format '#### <number>'."
+            
+            try:
+                model_response = model_service.evaluate(prompt=prompt_to_model, model_name=model_name)
+                model_final_answer = self._extract_final_answer(model_response)
+
+                if model_final_answer and true_final_answer and model_final_answer == true_final_answer:
+                    correct += 1
+                else:
+                    if len(error_samples) < 5:
+                        error_samples.append({
+                            "prompt": question,
+                            "expected_answer": true_final_answer,
+                            "model_response": model_response
+                        })
+            except Exception as e:
+                if len(error_samples) < 5:
+                    error_samples.append({"prompt": question, "expected_answer": true_final_answer, "model_response": f"API Error: {e}"})
+
+        accuracy = (correct / len(prompts) * 100) if prompts else 0
+        return {
+            "benchmark_type": "Math Reasoning (GSM8K)",
+            "metrics": {"accuracy": round(accuracy, 2)},
+            "total_prompts": len(prompts),
+            "correct_answers": correct,
+            "error_samples": error_samples,
+        }
+
+    def _evaluate_classification(self, model_service, prompts,model_name:str):
+        """处理 rotten_tomatoes 类型的分类任务"""
+        predictions = []
+        ground_truth = []
+        error_samples = []
+
+        for row in prompts:
+            text = row.get('text')
+            label = row.get('label')
+            if not text or label is None:
+                continue
+
+            ground_truth.append(int(label))
+            
+            # 引导模型做选择题
+            prompt_to_model = f"Analyze the sentiment of the following movie review. Respond with only the word 'positive' or 'negative'.\n\nReview: '{text}'"
+            
+            try:
+                model_response = model_service.evaluate(prompt=prompt_to_model, model_name=model_name).lower()
+                
+                predicted_label = 1 if 'positive' in model_response else 0
+                predictions.append(predicted_label)
+
+                if predicted_label != int(label) and len(error_samples) < 5:
+                    error_samples.append({
+                        "prompt": text,
+                        "expected_answer": "positive" if int(label) == 1 else "negative",
+                        "model_response": model_response
+                    })
+            except Exception as e:
+                # 如果API出错，可以记为一个错误预测或跳过
+                predictions.append(-1) # -1 表示错误
+                if len(error_samples) < 5:
+                    error_samples.append({"prompt": text, "expected_answer": "positive" if int(label) == 1 else "negative", "model_response": f"API Error: {e}"})
+
+        # 过滤掉API出错的-1
+        valid_indices = [i for i, p in enumerate(predictions) if p != -1]
+        predictions = [predictions[i] for i in valid_indices]
+        ground_truth = [ground_truth[i] for i in valid_indices]
+
+        if not predictions:
+            return {"metrics": {"accuracy": 0, "precision": 0, "recall": 0, "f1_score": 0}}
+
+        accuracy = accuracy_score(ground_truth, predictions)
+        precision = precision_score(ground_truth, predictions, average='binary', zero_division=0)
+        recall = recall_score(ground_truth, predictions, average='binary', zero_division=0)
+        f1 = f1_score(ground_truth, predictions, average='binary', zero_division=0)
+
+        return {
+            "benchmark_type": "Sentiment Classification",
+            "metrics": {
+                "accuracy": round(accuracy * 100, 2),
+                "precision": round(precision * 100, 2),
+                "recall": round(recall * 100, 2),
+                "f1_score": round(f1 * 100, 2),
+            },
+            "total_prompts": len(prompts),
+            "evaluated_prompts": len(predictions),
+            "error_samples": error_samples,
+        }
+
+    def post(self, request, *args, **kwargs):
+        dataset_name = request.data.get('dataset_name')
+        model_name = request.data.get('model_name')
+        user_api_key = request.data.get('api_key')
+
+        if not dataset_name or not model_name:
+            return Response({"error": "必须提供数据集和模型名称"}, status=status.HTTP_400_BAD_REQUEST)
+
+        dataset_path = settings.BASE_DIR / 'dataset_files' / dataset_name
+        if not os.path.exists(dataset_path):
+            return Response({"error": f"数据集文件 '{dataset_name}' 不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            model_service = get_evaluation_model_service(model_name, api_key=user_api_key)
+            
+            with open(dataset_path, mode='r', encoding='utf-8-sig') as f:
+                reader = csv.DictReader(f)
+                prompts = list(reader)
+                fieldnames = reader.fieldnames
+
+            # --- 智能判断任务类型 ---
+            if 'question' in fieldnames and 'answer' in fieldnames:
+                # 判定为 GSM8K 类型
+                result = self._evaluate_gsm8k(model_service, prompts, model_name=model_name)
+            elif 'text' in fieldnames and 'label' in fieldnames:
+                # 判定为分类任务类型
+                result = self._evaluate_classification(model_service, prompts, model_name=model_name)
+            else:
+                return Response({"error": "数据集格式不被支持。需要 (question, answer) 或 (text, label) 列。"}, status=400)
+            
+            # 补充通用信息
+            result['model_name'] = model_name
+            result['dataset_name'] = dataset_name
+            
+            return Response(result, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return Response({"error": f"处理时发生严重错误: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

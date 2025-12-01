@@ -12,7 +12,6 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
@@ -52,7 +51,7 @@ class Migration(migrations.Migration):
 
         # 合并后的 ForumPost（同时包含旧字段与新字段）
         migrations.CreateModel(
-            name="ForumPost",
+            name='ForumComment',
             fields=[
                 ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
                 ("title", models.CharField(max_length=200)),
@@ -94,7 +93,7 @@ class Migration(migrations.Migration):
 
         # ForumComment（合并）
         migrations.CreateModel(
-            name="ForumComment",
+            name='ForumCommentImage',
             fields=[
                 ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
                 ("content", models.TextField()),
@@ -135,7 +134,7 @@ class Migration(migrations.Migration):
 
         # 旧的/兼容的 Like 模型（HEAD）
         migrations.CreateModel(
-            name="ForumPostLike",
+            name='ForumPost',
             fields=[
                 ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
@@ -143,21 +142,18 @@ class Migration(migrations.Migration):
                 ("user", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="forum_post_likes", to=settings.AUTH_USER_MODEL)),
             ],
             options={
-                "unique_together": {("post", "user")},
+                'ordering': ['-is_sticky', '-created_at'],
             },
         ),
 
         migrations.CreateModel(
-            name="ForumCommentLike",
+            name='ForumPostImage',
             fields=[
                 ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("comment", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="comment_likes", to="forum.forumcomment")),
                 ("user", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="forum_comment_likes", to=settings.AUTH_USER_MODEL)),
             ],
-            options={
-                "unique_together": {("comment", "user")},
-            },
         ),
 
         # reactions（shallcheer）

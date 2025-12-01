@@ -287,6 +287,11 @@ const AppLayout = () => {
               icon: <UploadOutlined />,
               label: <Link to="/evaluate-dataset" onClick={closeMobileSider}>上传数据集</Link>,
             },
+            { // <-- 这是新添加的项
+              key: '4',
+              icon: <MessageOutlined />,
+              label: <Link to="/evaluate-dataset">数据集上传</Link>,
+            },
           ]}
           // ---
         />
