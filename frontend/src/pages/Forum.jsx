@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useContext } from 'react';
+import React, { useState, useEffect, useCallback, useContext, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Card,
@@ -16,7 +16,8 @@ import {
   Modal,
   Form,
   message,
-  Upload
+  Empty,
+  Upload,
 } from 'antd';
 import {
   MessageOutlined,
@@ -26,52 +27,138 @@ import {
   PlusOutlined,
   EyeOutlined,
   LikeOutlined,
-  UploadOutlined
+  UploadOutlined,
 } from '@ant-design/icons';
-import { fetchForumPosts, createForumPost, toggleForumPostLike } from '../api/forum';
-import { resolveMediaUrl } from '../utils/media';
+
+import {
+  fetchForumPosts,
+  fetchForumCategories,
+  fetchForumTags,
+  createForumPost,
+  uploadForumAttachment,
+  deleteForumAttachment,
+  toggleForumPostLike,
+} from '../api/forum';
 import AuthContext from '../contexts/AuthContext.jsx';
+import { formatDateTime } from '../utils/time.js';
 
 const { Search } = Input;
-const { Option } = Select;
 const { Text, Title } = Typography;
-const { TextArea } = Input;
 
-const PAGE_SIZE = 10;
+const IconText = ({ icon, text }) => (
+  <Space>
+    {React.createElement(icon)}
+    {text}
+  </Space>
+);
 
-const categories = [
-  { value: 'all', label: '全部板块' },
-  { value: '技术交流', label: '技术交流' },
-  { value: '功能建议', label: '功能建议' },
-  { value: '作品分享', label: '作品分享' },
-  { value: '问题反馈', label: '问题反馈' }
-];
+const getTagMeta = (tag) => {
+  if (tag == null) return { key: '', label: '' };
+  if (typeof tag === 'string') return { key: tag, label: tag };
+  if (typeof tag === 'number') return { key: tag, label: String(tag) };
+  if (typeof tag === 'object') {
+    const key = tag.id ?? tag.slug ?? tag.name ?? JSON.stringify(tag);
+    const label = tag.name ?? tag.slug ?? (tag.id != null ? `标签 ${tag.id}` : '') ?? '';
+    return { key, label };
+  }
+  return { key: String(tag), label: String(tag) };
+};
+
+const getCategoryMeta = (category, labelMap = {}) => {
+  if (category == null) return { key: '', label: '' };
+  if (typeof category === 'object') {
+    const key = category.id ?? category.slug ?? category.name ?? JSON.stringify(category);
+    const fallback =
+      category.name ??
+      category.title ??
+      category.slug ??
+      (category.id != null ? labelMap[String(category.id)] : '');
+    const label = fallback || (category.id != null ? `板块 ${category.id}` : '');
+    return { key, label };
+  }
+  const key = String(category);
+  const label = labelMap[key] ?? key;
+  return { key, label };
+};
 
 // 发布新帖组件
-const PostForm = ({ visible, onCancel, onSubmit, submitting }) => {
+const PostForm = ({ visible, onCancel, onSuccess, categories, tagSuggestions }) => {
   const [form] = Form.useForm();
+  const [submitting, setSubmitting] = useState(false);
   const [fileList, setFileList] = useState([]);
+  const maxAttachments = 6;
 
-  useEffect(() => {
-    if (!visible) {
-      form.resetFields();
-      setFileList([]);
+  const beforeUpload = (file) => {
+    const isImage = (file.type || '').startsWith('image/');
+    if (!isImage) {
+      message.error('仅支持上传图片文件');
+      return Upload.LIST_IGNORE;
     }
-  }, [visible, form]);
-
-  const handleSubmit = async (values) => {
-    const files = fileList.map((f) => f.originFileObj).filter(Boolean);
-    await onSubmit({ ...values, images: files });
-    form.resetFields();
-    setFileList([]);
+    const isLt5M = file.size / 1024 / 1024 < 5;
+    if (!isLt5M) {
+      message.error('单张图片大小不能超过 5MB');
+      return Upload.LIST_IGNORE;
+    }
+    return true;
   };
 
-  const uploadProps = {
-    multiple: true,
-    fileList,
-    beforeUpload: () => false,
-    onChange: ({ fileList: next }) => setFileList(next.slice(0, 6)),
-    accept: 'image/*'
+  const handleUpload = async ({ file, onError, onSuccess: cbSuccess }) => {
+    setFileList((prev) => [
+      ...prev,
+      { uid: file.uid, name: file.name, status: 'uploading' },
+    ]);
+    try {
+      const { data } = await uploadForumAttachment(file);
+      setFileList((prev) =>
+        prev.map((item) =>
+          item.uid === file.uid ? { ...item, status: 'done', url: data.url, response: data } : item
+        )
+      );
+      cbSuccess(data, file);
+    } catch (error) {
+      setFileList((prev) => prev.filter((item) => item.uid !== file.uid));
+      onError(error);
+      message.error('图片上传失败，请稍后重试');
+    }
+  };
+
+  const handleRemove = async (file) => {
+    if (file.status === 'done' && file.response?.id) {
+      try {
+        await deleteForumAttachment(file.response.id);
+      } catch {}
+    }
+    setFileList((prev) => prev.filter((item) => item.uid !== file.uid));
+    return true;
+  };
+
+  const handleSubmit = async (values) => {
+    if (fileList.some((item) => item.status === 'uploading')) {
+      message.warning('请等待所有图片上传完成后再发布');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const attachmentIds = fileList.map((item) => item.response?.id).filter(Boolean);
+      // 后端创建帖子序列化器字段为 `category` (映射 category_obj_id)，原代码误用 category_id
+      const payload = {
+        title: values.title,
+        content: values.content,
+        tags: values.tags || [],
+        category: values.category ? Number(values.category) : null,
+      };
+      if (attachmentIds.length) payload.attachment_ids = attachmentIds;
+      const response = await createForumPost(payload);
+      message.success('帖子发布成功');
+      form.resetFields();
+      setFileList([]);
+      onSuccess(response.data);
+    } catch (error) {
+      const detail = error.response?.data?.detail;
+      message.error(detail || '发布失败，请稍后再试');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -85,65 +172,56 @@ const PostForm = ({ visible, onCancel, onSubmit, submitting }) => {
       }}
       onOk={() => form.submit()}
       confirmLoading={submitting}
-      width={700}
+      width={720}
       okText="发布"
       cancelText="取消"
+      destroyOnClose
     >
-      <Form
-        form={form}
-        layout="vertical"
-        onFinish={handleSubmit}
-      >
-        <Form.Item
-          name="category"
-          label="选择板块"
-          rules={[{ required: true, message: '请选择板块' }]}
-        >
+      <Form form={form} layout="vertical" onFinish={handleSubmit}>
+        <Form.Item name="category" label="选择板块" rules={[{ required: true, message: '请选择板块' }]}>
           <Select placeholder="请选择板块">
-            <Option value="技术交流">技术交流</Option>
-            <Option value="功能建议">功能建议</Option>
-            <Option value="作品分享">作品分享</Option>
-            <Option value="问题反馈">问题反馈</Option>
+            {categories.filter((cat) => cat.value !== 'all').map((cat) => (
+              <Select.Option key={cat.value} value={cat.value}>{cat.label}</Select.Option>
+            ))}
           </Select>
         </Form.Item>
 
-        <Form.Item
-          name="title"
-          label="帖子标题"
-          rules={[{ required: true, message: '请输入标题' }]}
-        >
-          <Input placeholder="请输入帖子标题" />
+        <Form.Item name="title" label="帖子标题" rules={[{ required: true, message: '请输入标题' }]}>
+          <Input placeholder="请输入帖子标题" maxLength={200} showCount />
         </Form.Item>
 
-        <Form.Item
-          name="content"
-          label="帖子内容"
-          rules={[{ required: true, message: '请输入内容' }]}
-        >
-          <TextArea 
-            rows={8} 
-            placeholder="请输入帖子内容..." 
-            showCount 
-            maxLength={5000}
-          />
+        <Form.Item name="content" label="帖子内容" rules={[{ required: true, message: '请输入内容' }]}>
+          <Input.TextArea rows={10} placeholder="请输入帖子内容..." showCount maxLength={10000} />
         </Form.Item>
 
-        <Form.Item
-          name="tags"
-          label="标签"
-        >
-          <Select mode="tags" placeholder="添加标签（可选）" style={{ width: '100%' }} />
-        </Form.Item>
-
-        <Form.Item label="附件图片（最多6张）">
-          <Upload {...uploadProps} listType="picture-card">
-            {fileList.length >= 6 ? null : (
+        <Form.Item label="图片附件">
+          <Upload
+            name="file"
+            listType="picture-card"
+            customRequest={handleUpload}
+            onRemove={handleRemove}
+            beforeUpload={beforeUpload}
+            fileList={fileList}
+            accept="image/*"
+            multiple
+          >
+            {fileList.length >= maxAttachments ? null : (
               <div>
-                <UploadOutlined />
+                <PlusOutlined />
                 <div style={{ marginTop: 8 }}>上传</div>
               </div>
             )}
           </Upload>
+          <Text type="secondary">支持 PNG/JPG/GIF，单张不超过 5MB，最多上传 6 张。</Text>
+        </Form.Item>
+
+        <Form.Item name="tags" label="标签">
+          <Select
+            mode="tags"
+            placeholder="添加标签（可选）"
+            style={{ width: '100%' }}
+            options={tagSuggestions.map((tag) => ({ value: tag, label: tag }))}
+          />
         </Form.Item>
       </Form>
     </Modal>
@@ -155,82 +233,113 @@ export default function Forum() {
   const { user } = useContext(AuthContext);
   const [loading, setLoading] = useState(false);
   const [posts, setPosts] = useState([]);
-  const [creatingPost, setCreatingPost] = useState(false);
   const [showPostForm, setShowPostForm] = useState(false);
-  const [searchParams, setSearchParams] = useState({
-    sort: 'latest',
-    category: 'all',
-    search: ''
-  });
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPosts, setTotalPosts] = useState(0);
+  const [searchParams, setSearchParams] = useState({ sort: 'latest', category: 'all', search: '' });
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
+  const [categoryOptions, setCategoryOptions] = useState([{ value: 'all', label: '全部板块' }]);
+  const [tagSuggestions, setTagSuggestions] = useState([]);
 
-  const loadPosts = useCallback(async (page = 1) => {
+  const categoryLabelMap = useMemo(() => {
+    const map = {};
+    categoryOptions.forEach((cat) => {
+      if (!cat || !cat.value || cat.value === 'all') return;
+      const valueKey = String(cat.value);
+      map[valueKey] = cat.label;
+    });
+    return map;
+  }, [categoryOptions]);
+
+  const fetchCategories = useCallback(async () => {
+    try {
+      const res = await fetchForumCategories();
+      const payload = Array.isArray(res.data) ? res.data : res.data?.results || [];
+      const options = payload.map((cat) => ({ value: String(cat.id), label: cat.name }));
+      setCategoryOptions([{ value: 'all', label: '全部板块' }, ...options]);
+      // 如果后端返回但没有任何分类（极少数场景），提供内置回退
+      if (options.length === 0) {
+        const fallback = [
+          { value: '1', label: '技术交流' },
+          { value: '2', label: '功能建议' },
+          { value: '3', label: '作品分享' },
+          { value: '4', label: '问题反馈' },
+        ];
+        setCategoryOptions([{ value: 'all', label: '全部板块' }, ...fallback]);
+      }
+    } catch (e) {
+      console.error('加载板块失败', e);
+      // 网络或接口失败时也使用回退，避免出现 No data
+      const fallback = [
+        { value: '1', label: '技术交流' },
+        { value: '2', label: '功能建议' },
+        { value: '3', label: '作品分享' },
+        { value: '4', label: '问题反馈' },
+      ];
+      setCategoryOptions([{ value: 'all', label: '全部板块' }, ...fallback]);
+    }
+  }, []);
+
+  const fetchTags = useCallback(async () => {
+    try {
+      const res = await fetchForumTags();
+      const payload = Array.isArray(res.data) ? res.data : res.data?.results || [];
+      setTagSuggestions(payload.map((tag) => tag.name || tag));
+    } catch {}
+  }, []);
+
+  const loadPosts = useCallback(async ({ paramsOverride, page } = {}) => {
+    const filters = paramsOverride || searchParams;
+    const currentPage = page || (paramsOverride ? 1 : pagination.current);
     setLoading(true);
     try {
-      const params = {
-        ...searchParams,
-        page,
-        page_size: PAGE_SIZE,
-      };
-      const res = await fetchForumPosts(params);
-      const data = res.data;
-      const items = Array.isArray(data) ? data : (data.results || []);
-      const total = data.count !== undefined ? data.count : items.length;
-      setPosts(items);
-      setCurrentPage(page);
-      setTotalPosts(total);
-    } catch (error) {
-      const detail = error.response?.data?.detail || '帖子加载失败，请稍后重试';
-      message.error(detail);
+      const requestParams = { page: currentPage, page_size: pagination.pageSize };
+      if (filters.category && filters.category !== 'all') requestParams.category = filters.category;
+      if (filters.sort) requestParams.ordering = filters.sort;
+      if (filters.search) requestParams.search = filters.search;
+
+      const res = await fetchForumPosts(requestParams);
+      const payload = res.data;
+      const items = Array.isArray(payload) ? payload : payload.results || [];
+      const total = payload.count ?? items.length;
+      const normalizedItems = items.map((item) => {
+        const categoryValue = item.category_obj || item.category || null;
+        return {
+          ...item,
+          category: categoryValue,
+          category_obj: categoryValue,
+        };
+      });
+      setPosts(normalizedItems);
+      setPagination((prev) => ({ ...prev, current: currentPage, total }));
+      if (paramsOverride) setSearchParams(paramsOverride);
+    } catch {
+      message.error('加载帖子失败，请稍后重试');
     } finally {
       setLoading(false);
     }
-  }, [searchParams]);
+  }, [pagination.current, pagination.pageSize, searchParams]);
 
   useEffect(() => {
-    loadPosts(currentPage);
-  }, [loadPosts, currentPage]);
+    fetchCategories();
+    fetchTags();
+    loadPosts();
+  }, [fetchCategories, fetchTags, loadPosts]);
 
-  const handleSearch = (value) => {
-    setCurrentPage(1);
-    setSearchParams((prev) => ({ ...prev, search: value }));
+  const handleSearch = async (value) => loadPosts({ paramsOverride: { ...searchParams, search: value }, page: 1 });
+  const handleSortChange = async (value) => loadPosts({ paramsOverride: { ...searchParams, sort: value }, page: 1 });
+  const handleCategoryChange = async (value) => loadPosts({ paramsOverride: { ...searchParams, category: value }, page: 1 });
+
+  const handleNewPostSuccess = async () => {
+    setShowPostForm(false);
+    await loadPosts({ page: 1 });
   };
 
-  const handleSortChange = (value) => {
-    setCurrentPage(1);
-    setSearchParams((prev) => ({ ...prev, sort: value }));
-  };
-
-  const handleCategoryChange = (value) => {
-    setCurrentPage(1);
-    setSearchParams((prev) => ({ ...prev, category: value }));
-  };
-
-  const handleCreatePost = async ({ title, content, category, tags = [], images = [] }) => {
+  const handleOpenPostForm = () => {
     if (!user) {
-      message.warning('请先登录后再发布新帖');
+      message.info('请先登录后再发帖');
+      navigate('/login', { state: { from: '/forum' } });
       return;
     }
-    setCreatingPost(true);
-    try {
-      const res = await createForumPost({ title, content, category, tags, images });
-      message.success('帖子发布成功');
-      setShowPostForm(false);
-      await loadPosts(1);
-      if (res?.data?.id) {
-        navigate(`/forum/post/${res.data.id}`);
-      }
-    } catch (error) {
-      const detail = error.response?.data?.detail || '发布失败，请稍后重试';
-      message.error(detail);
-    } finally {
-      setCreatingPost(false);
-    }
-  };
-
-  const handlePostClick = (postId) => {
-    navigate(`/forum/post/${postId}`);
+    setShowPostForm(true);
   };
 
   const handleToggleLike = async (post) => {
@@ -241,174 +350,149 @@ export default function Forum() {
     try {
       const res = await toggleForumPostLike(post.id);
       const { liked, likes_count } = res.data;
-      setPosts((prev) => prev.map((item) => (item.id === post.id ? {
-        ...item,
-        likes_count,
-        is_liked: liked,
-      } : item)));
-    } catch (error) {
+      setPosts((prev) =>
+        prev.map((item) => (item.id === post.id ? { ...item, likes_count, is_liked: liked } : item))
+      );
+    } catch {
       message.error('操作失败，请稍后再试');
     }
   };
 
-  const renderActions = (item) => ([
-    <Space key="list-author">
-      <UserOutlined />
-      {item.author?.username || '匿名用户'}
-    </Space>,
-    <Space key="list-comments">
-      <MessageOutlined />
-      {item.comments_count || 0}
-    </Space>,
-    <Space key="list-views">
-      <EyeOutlined />
-      {item.views || 0}
-    </Space>,
-    <Button
-      key="list-likes"
-      type="text"
-      icon={<LikeOutlined style={{ color: item.is_liked ? '#1677ff' : undefined }} />}
-      onClick={(e) => {
-        e.stopPropagation();
-        handleToggleLike(item);
-      }}
-      style={{ color: item.is_liked ? '#1677ff' : undefined }}
-    >
-      {item.likes_count || 0}
-    </Button>,
-    <Space key="list-activity">
-      <ClockCircleOutlined />
-      {item.last_activity ? new Date(item.last_activity).toLocaleString() : ''}
-    </Space>,
-  ]);
+  const paginationConfig = useMemo(() => {
+    if (!pagination.total || pagination.total <= pagination.pageSize) return false;
+    return {
+      current: pagination.current,
+      pageSize: pagination.pageSize,
+      total: pagination.total,
+      onChange: (pageNumber) => loadPosts({ page: pageNumber }),
+      showSizeChanger: false,
+    };
+  }, [pagination, loadPosts]);
+
+  const handlePostClick = (postId) => navigate(`/forum/post/${postId}`);
 
   return (
     <Card title="社区论坛">
-      {/* 控件区域 */}
       <Row justify="space-between" align="middle" style={{ marginBottom: 24 }}>
         <Col>
           <Space wrap size="middle">
-            <Select 
-              value={searchParams.category} 
-              onChange={handleCategoryChange}
-              style={{ width: 120 }}
-            >
-              {categories.map(cat => (
-                <Option key={cat.value} value={cat.value}>
-                  {cat.label}
-                </Option>
+            <Select value={searchParams.category} onChange={handleCategoryChange} style={{ width: 140 }}>
+              {categoryOptions.map((cat) => (
+                <Select.Option key={cat.value} value={cat.value}>{cat.label}</Select.Option>
               ))}
             </Select>
-            
-            <Select 
-              value={searchParams.sort} 
-              onChange={handleSortChange}
-              style={{ width: 180 }}
-            >
-              <Option value="latest">
-                <ClockCircleOutlined /> 最新回复
-              </Option>
-              <Option value="newest">
-                <PlusOutlined /> 最新发布
-              </Option>
-              <Option value="hot">
-                <FireOutlined /> 热门帖子
-              </Option>
+            <Select value={searchParams.sort} onChange={handleSortChange} style={{ width: 180 }}>
+              <Select.Option value="latest"><ClockCircleOutlined /> 最新回复</Select.Option>
+              <Select.Option value="newest"><PlusOutlined /> 最新发布</Select.Option>
+              <Select.Option value="hot"><FireOutlined /> 热门帖子</Select.Option>
             </Select>
-            
-            <Search
-              placeholder="搜索帖子标题或内容..."
-              onSearch={handleSearch}
-              style={{ width: 300 }}
-              allowClear
-            />
+            <Search placeholder="搜索帖子标题或内容..." onSearch={handleSearch} style={{ width: 320 }} allowClear />
           </Space>
         </Col>
         <Col>
-          <Button 
-            type="primary" 
-            size="large" 
-            icon={<PlusOutlined />}
-            onClick={() => {
-              if (!user) {
-                message.warning('请先登录后再发布新帖');
-                return;
-              }
-              setShowPostForm(true);
-            }}
-          >
+          <Button type="primary" size="large" icon={<PlusOutlined />} onClick={handleOpenPostForm}>
             发布新帖
           </Button>
         </Col>
       </Row>
 
-      {/* 帖子列表区域 */}
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '50px 0' }}>
-          <Spin size="large" tip="正在加载帖子..." />
-        </div>
+        <div style={{ textAlign: 'center', padding: '50px 0' }}><Spin size="large" tip="正在加载帖子..." /></div>
+      ) : posts.length === 0 ? (
+        <Empty description="暂无帖子" />
       ) : (
         <List
           itemLayout="vertical"
           size="large"
           dataSource={posts}
           rowKey={(item) => item.id}
-          pagination={{
-            current: currentPage,
-            total: totalPosts,
-            pageSize: PAGE_SIZE,
-            showSizeChanger: false,
-            onChange: (page) => setCurrentPage(page),
-          }}
-          renderItem={(item) => (
-            <List.Item
-              key={item.id}
-              style={{ cursor: 'pointer' }}
-              actions={renderActions(item)}
-              onClick={() => handlePostClick(item.id)}
-              extra={
+          pagination={paginationConfig}
+          renderItem={(item) => {
+            const categoryMeta = getCategoryMeta(item.category, categoryLabelMap);
+            return (
+              <List.Item
+                key={item.id}
+                actions={[
+                <IconText icon={UserOutlined} text={item.author?.username || '匿名用户'} key="author" />,
+                <IconText icon={MessageOutlined} text={item.comment_count ?? 0} key="comments" />,
+                <IconText icon={EyeOutlined} text={item.view_count ?? 0} key="views" />,
+                <Button
+                  key="like-btn"
+                  type="text"
+                  icon={<LikeOutlined style={{ color: item.is_liked ? '#1677ff' : undefined }} />}
+                  onClick={(e) => { e.stopPropagation(); handleToggleLike(item); }}
+                  style={{ color: item.is_liked ? '#1677ff' : undefined }}
+                >
+                  {item.likes_count ?? 0}
+                </Button>,
+                <IconText icon={ClockCircleOutlined} text={`最后活跃 ${formatDateTime(item.last_activity_at)}`} key="activity" />,
+                ]}
+                extra={
                 <Space direction="vertical" align="end">
-                  <Tag color={item.is_sticky ? 'red' : 'blue'}>
-                    {item.category}
-                  </Tag>
-                  <div>
-                    {(item.tags || []).map((tag) => (
-                      <Tag key={tag} color="default">{tag}</Tag>
-                    ))}
-                  </div>
+                  {item.thumbnail ? (
+                    <img
+                      src={item.thumbnail}
+                      alt="帖子预览图"
+                      style={{ width: 140, height: 100, objectFit: 'cover', borderRadius: 6, border: '1px solid #f0f0f0' }}
+                      onClick={(e) => { e.stopPropagation(); handlePostClick(item.id); }}
+                    />
+                  ) : null}
+                  {categoryMeta.label ? (
+                    <Space size={4}>
+                      <Text type="secondary">板块</Text>
+                      <Tag color="blue">{categoryMeta.label}</Tag>
+                    </Space>
+                  ) : null}
+                  {(item.tags || []).length > 0 && (
+                    <Space size={4} wrap>
+                      <Text type="secondary">标签</Text>
+                      {(item.tags || []).map((tag) => {
+                        const { key, label } = getTagMeta(tag);
+                        if (!label) return null;
+                        return <Tag key={key}>#{label}</Tag>;
+                      })}
+                    </Space>
+                  )}
                 </Space>
               }
-            >
+                onClick={() => handlePostClick(item.id)}
+                style={{ cursor: 'pointer' }}
+              >
               <List.Item.Meta
-                avatar={<Avatar src={resolveMediaUrl(item.author?.avatar)} icon={<UserOutlined />} />}
+                avatar={<Avatar src={item.author?.avatar} icon={<UserOutlined />} />}
                 title={
                   <Title level={5} style={{ marginBottom: 4 }}>
                     {item.is_sticky && <Tag color="red" style={{ marginRight: 8 }}>置顶</Tag>}
+                    {categoryMeta.label ? (
+                      <Tag color="geekblue" style={{ marginRight: 8 }}>{categoryMeta.label}</Tag>
+                    ) : null}
                     {item.title}
                   </Title>
                 }
                 description={
                   <div>
                     <Text type="secondary">
-                      由 {item.author?.username || '匿名用户'} 发布于 {item.created_at ? new Date(item.created_at).toLocaleString() : ''}
+                      由 {item.author?.username || '匿名用户'} 发布于 {formatDateTime(item.created_at)}
                     </Text>
                     <div style={{ marginTop: 8 }}>
-                      <Text type="secondary">{item.excerpt || ''}</Text>
+                      <Text type="secondary">{(item.excerpt || item.content || '').slice(0, 160)}...</Text>
                     </div>
+                    {/* 列表中统一用缩略图，不再铺展示多个附件 */}
                   </div>
                 }
               />
-            </List.Item>
-          )}
+              </List.Item>
+            );
+          }}
         />
       )}
 
-      {/* 发布新帖模态框 */}
       <PostForm
         visible={showPostForm}
         onCancel={() => setShowPostForm(false)}
-        onSubmit={handleCreatePost}
-        submitting={creatingPost}
+        onSuccess={handleNewPostSuccess}
+        categories={categoryOptions}
+        tagSuggestions={tagSuggestions}
       />
     </Card>
   );

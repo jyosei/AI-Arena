@@ -195,6 +195,14 @@ class EvaluateModelView(APIView):
         prompt = request.data.get("prompt", "") # 允许 prompt 为空
         image_file = request.FILES.get("image") # 3. 获取可选的图片文件
         conversation_id = request.data.get("conversation_id")
+        # 获取 save_user_message 参数，支持布尔值和字符串
+        save_user_message_raw = request.data.get("save_user_message", True)
+        if isinstance(save_user_message_raw, bool):
+            save_user_message = save_user_message_raw
+        elif isinstance(save_user_message_raw, str):
+            save_user_message = save_user_message_raw.lower() in ['true', '1', 'yes']
+        else:
+            save_user_message = True  # 默认保存
 
         # 4. 更新验证逻辑：prompt 和 image 不能同时为空
         if not model_name or (not prompt and not image_file):
@@ -219,12 +227,15 @@ class EvaluateModelView(APIView):
                 )
             
             # --- 保存用户消息（包含可选的图片） ---
-            ChatMessage.objects.create(
-                conversation=conversation,
-                role='user',
-                content=prompt,
-                image=image_file # 如果 image_file 为 None，Django 会正确处理
-            )
+            # 根据参数决定是否保存用户消息
+            if save_user_message:
+                ChatMessage.objects.create(
+                    conversation=conversation,
+                    role='user',
+                    is_user=True,
+                    content=prompt,
+                    image=image_file
+                )
             
             # --- 构建包含完整历史（包括历史图片）的消息体 ---
             history_messages = []
@@ -272,7 +283,9 @@ class EvaluateModelView(APIView):
             ChatMessage.objects.create(
                 conversation=conversation,
                 role='assistant',
-                content=response_text
+                is_user=False,
+                content=response_text,
+                model_name=model_name
             )
             
             return Response({
@@ -295,9 +308,37 @@ class BattleModelView(APIView):
         prompt = request.data.get("prompt")
         is_direct_chat = request.data.get("is_direct_chat", False)
         model_name = request.data.get("model_name")  # 用于 Direct Chat 模式
+        conversation_id = request.data.get("conversation_id")  # 获取会话ID
+        mode = request.data.get("mode", "battle")  # 新增：获取模式，默认为 battle
 
         if not prompt:
             return Response({"error": "prompt is required."}, status=400)
+
+        # 获取或创建会话
+        conversation = None
+        if conversation_id:
+            try:
+                conversation = ChatConversation.objects.get(id=conversation_id)
+            except ChatConversation.DoesNotExist:
+                return Response({"error": "Conversation not found."}, status=404)
+        
+        # 如果没有提供conversation_id且用户已登录，创建新会话
+        if not conversation and request.user.is_authenticated:
+            # 根据模式确定model_name用于会话
+            if is_direct_chat:
+                conv_model_name = model_name or model_a_name
+                actual_mode = 'direct-chat'
+            else:
+                conv_model_name = f"{model_a_name} vs {model_b_name}" if model_a_name and model_b_name else None
+                # 使用前端传来的 mode，可能是 'battle' 或 'side-by-side'
+                actual_mode = mode if mode in ['battle', 'side-by-side'] else 'battle'
+            
+            conversation = ChatConversation.objects.create(
+                user=request.user,
+                title=prompt[:50],
+                model_name=conv_model_name,
+                mode=actual_mode
+            )
 
         # Direct Chat 模式
         if is_direct_chat:
@@ -309,13 +350,32 @@ class BattleModelView(APIView):
                 model_service = get_model_service(model_name)
                 response_data = model_service.evaluate(prompt, model_name)
 
+                # 保存到数据库
+                if conversation:
+                    # 保存用户消息
+                    ChatMessage.objects.create(
+                        conversation=conversation,
+                        role='user',
+                        content=prompt,
+                        is_user=True
+                    )
+                    # 保存AI响应
+                    ChatMessage.objects.create(
+                        conversation=conversation,
+                        role='assistant',
+                        content=response_data,
+                        is_user=False,
+                        model_name=model_name
+                    )
+
                 return Response({
                     "prompt": prompt,
                     "results": [
                         {"model": model_name, "response": response_data}
                     ],
                     "is_anonymous": False,
-                    "is_direct_chat": True
+                    "is_direct_chat": True,
+                    "conversation_id": conversation.id if conversation else None
                 })
             except ValueError as e:
                 return Response({"error": str(e)}, status=400)
@@ -348,6 +408,32 @@ class BattleModelView(APIView):
             response_a_data = model_a_service.evaluate(prompt, model_a_name)
             response_b_data = model_b_service.evaluate(prompt, model_b_name)
 
+            # 保存到数据库
+            if conversation:
+                # 保存用户消息
+                ChatMessage.objects.create(
+                    conversation=conversation,
+                    role='user',
+                    content=prompt,
+                    is_user=True
+                )
+                # 保存模型A的响应
+                ChatMessage.objects.create(
+                    conversation=conversation,
+                    role='assistant',
+                    content=response_a_data,
+                    is_user=False,
+                    model_name=model_a_name
+                )
+                # 保存模型B的响应
+                ChatMessage.objects.create(
+                    conversation=conversation,
+                    role='assistant',
+                    content=response_b_data,
+                    is_user=False,
+                    model_name=model_b_name
+                )
+
             # 准备返回结果
             battle_results = [
                 {"model": model_a_name, "response": response_a_data},
@@ -362,7 +448,8 @@ class BattleModelView(APIView):
             return Response({
                 "prompt": prompt,
                 "results": battle_results,
-                "is_anonymous": is_anonymous
+                "is_anonymous": is_anonymous,
+                "conversation_id": conversation.id if conversation else None
             })
         except ValueError as e:
             return Response({"error": str(e)}, status=400)

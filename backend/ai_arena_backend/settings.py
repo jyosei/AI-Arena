@@ -30,7 +30,7 @@ INSTALLED_APPS = [
     'users', 
     'datasets',
     'models_manager',
-    'forum',  # 注册论坛应用，确保其迁移被加载
+    'forum', 
 ]
 
 MIDDLEWARE = [
@@ -72,34 +72,20 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql', # <-- 使用 MySQL 引擎
-        'NAME': os.environ.get('DB_NAME'),         # <-- 从环境变量读取数据库名
-        'USER': os.environ.get('DB_USER'),         # <-- 从环境变量读取用户名
-        'PASSWORD': os.environ.get('DB_PASSWORD'), # <-- 从环境变量读取密码
-        'HOST': os.environ.get('DB_HOST'),         # <-- 从环境变量读取主机 (即 'db')
-        'PORT': os.environ.get('DB_PORT'),         # <-- 从环境变量读取端口
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': os.environ.get('DB_NAME'),
+        'USER': os.environ.get('DB_USER'),
+        'PASSWORD': os.environ.get('DB_PASSWORD'),
+        'HOST': os.environ.get('DB_HOST'),
+        'PORT': os.environ.get('DB_PORT'),
         'OPTIONS': {
             'charset': 'utf8mb4',
         }
     }
 }
 
-# 如果 MySQL 关键环境变量缺失，自动回退到 SQLite 以便本地开发和迁移执行
-mysql_env_complete = all([
-    DATABASES['default']['NAME'],
-    DATABASES['default']['USER'],
-    DATABASES['default']['PASSWORD'],
-    DATABASES['default']['HOST'],
-    DATABASES['default']['PORT'],
-])
-
-if not mysql_env_complete:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
-        }
-    }
+# NOTE: SQLite fallback removed — this project uses MySQL. Ensure the following
+# environment variables are set: DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT.
 
 # 告诉 Django 使用你的自定义用户模型
 AUTH_USER_MODEL = 'users.User'
@@ -121,6 +107,19 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60), # 访问令牌有效期
     "REFRESH_TOKEN_LIFETIME": timedelta(days=30),    # 刷新令牌有效期
 }
+
+# 前端根地址（用于 OAuth 回调重定向）
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
+
+# GitHub OAuth 配置（替换原微信登录）
+GITHUB_CLIENT_ID = os.getenv('GITHUB_CLIENT_ID', 'your_github_client_id')
+GITHUB_CLIENT_SECRET = os.getenv('GITHUB_CLIENT_SECRET', 'your_github_client_secret')
+GITHUB_REDIRECT_URI = os.getenv(
+    'GITHUB_REDIRECT_URI', 
+    f"{FRONTEND_URL}/login/github/callback"
+)
+GITHUB_SCOPES = os.getenv('GITHUB_SCOPES', 'read:user user:email')
+
 # CORS 配置：允许通过环境变量控制
 # 开发时可以设置 CORS_ALLOW_ALL_ORIGINS=1 以允许所有来源（仅开发）
 CORS_ALLOW_ALL_ORIGINS = os.getenv('CORS_ALLOW_ALL_ORIGINS', '0') in ('1', 'true', 'True')
@@ -129,4 +128,18 @@ if not CORS_ALLOW_ALL_ORIGINS:
     cors_origins = os.getenv('CORS_ALLOWED_ORIGINS', '')
     if cors_origins:
         CORS_ALLOWED_ORIGINS = [o.strip() for o in cors_origins.split(',') if o.strip()]
+
+# CSRF 配置：信任的来源
+CSRF_TRUSTED_ORIGINS = ['http://localhost:8000', 'http://127.0.0.1:8000']
+# 允许从 nginx 代理通过
+CSRF_COOKIE_SECURE = False  # 开发环境使用 HTTP
+CSRF_COOKIE_HTTPONLY = False  # 允许 JavaScript 读取 CSRF cookie
+CSRF_USE_SESSIONS = False  # 不使用 session 存储 CSRF token
+
+
+STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 

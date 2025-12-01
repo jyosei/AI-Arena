@@ -7,7 +7,7 @@ import request from '../api/request';
 import { useChat } from '../contexts/ChatContext';
 import { useMode } from '../contexts/ModeContext';
 import AuthContext from '../contexts/AuthContext';
-import { evaluateModel, recordVote } from '../api/models';
+import { evaluateModel, recordVote, battleModels } from '../api/models';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -44,6 +44,25 @@ export default function ChatPage() {
   const conv = chatHistory.find(c => String(c.id) === String(id));
   const title = conv ? conv.title : '会话';
   const savedMode = conv?.mode || 'direct-chat';
+
+  // 从会话数据中解析模型名称（用于显示）
+  const displayLeftModel = React.useMemo(() => {
+    if (!conv?.model_name) return leftModel;
+    if ((savedMode === 'side-by-side' || savedMode === 'battle') && conv.model_name.includes(' vs ')) {
+      const [left] = conv.model_name.split(' vs ').map(s => s.trim());
+      return left || leftModel;
+    }
+    return conv.model_name || leftModel;
+  }, [conv?.model_name, savedMode, leftModel]);
+
+  const displayRightModel = React.useMemo(() => {
+    if (!conv?.model_name) return rightModel;
+    if ((savedMode === 'side-by-side' || savedMode === 'battle') && conv.model_name.includes(' vs ')) {
+      const [, right] = conv.model_name.split(' vs ').map(s => s.trim());
+      return right || rightModel;
+    }
+    return rightModel;
+  }, [conv?.model_name, savedMode, rightModel]);
 
   // 从 location.state 获取初始消息
   const initialPrompt = location.state?.initialPrompt;
@@ -144,35 +163,44 @@ export default function ChatPage() {
           const rightModelMessages = [];
           
           // 从 conv.model_name 解析左右模型名称
-          let leftModelName = leftModel;
-          let rightModelName = rightModel;
+          let leftModelName = displayLeftModel;
+          let rightModelName = displayRightModel;
           if (conv?.model_name && conv.model_name.includes(' vs ')) {
             [leftModelName, rightModelName] = conv.model_name.split(' vs ').map(s => s.trim());
           }
           
-          let aiMessageCount = 0; // 用于旧数据的交替分配
-          adapted.forEach(msg => {
+          console.log('Loading side-by-side messages:', {
+            leftModelName,
+            rightModelName,
+            totalMessages: adapted.length
+          });
+          
+          adapted.forEach((msg, index) => {
+            console.log(`Message ${index}:`, {
+              isUser: msg.isUser,
+              model_name: msg.model_name,
+              content: msg.content.substring(0, 30)
+            });
+            
             if (msg.isUser) {
               // 用户消息同时显示在两边
-              leftModelMessages.push(msg);
-              rightModelMessages.push(msg);
+              leftModelMessages.push({ ...msg, id: `${msg.id}-left` });
+              rightModelMessages.push({ ...msg, id: `${msg.id}-right` });
             } else {
               // AI 消息根据 model_name 分配
               if (msg.model_name === leftModelName) {
                 leftModelMessages.push(msg);
               } else if (msg.model_name === rightModelName) {
                 rightModelMessages.push(msg);
-              } else if (!msg.model_name) {
-                // 兼容旧数据：model_name 为 null 时，交替分配到左右两侧
-                // 假设每轮对话是：左模型回复、右模型回复
-                if (aiMessageCount % 2 === 0) {
-                  leftModelMessages.push(msg);
-                } else {
-                  rightModelMessages.push(msg);
-                }
-                aiMessageCount++;
+              } else {
+                console.warn('Message with unknown model_name:', msg.model_name, 'Expected:', leftModelName, 'or', rightModelName);
               }
             }
+          });
+          
+          console.log('Final message counts:', {
+            left: leftModelMessages.length,
+            right: rightModelMessages.length
           });
           
           setLeftMessages(leftModelMessages);
@@ -183,46 +211,62 @@ export default function ChatPage() {
           const leftModelMessages = [];
           const rightModelMessages = [];
           
-          // 从 conv.model_name 解析左右模型名称
-          let leftModelName = leftModel;
-          let rightModelName = rightModel;
+          console.log('Battle mode initial state:', {
+            convModelName: conv?.model_name,
+            displayLeftModel,
+            displayRightModel,
+            leftModel,
+            rightModel
+          });
+          
+          // 从 conv.model_name 解析左右模型名称（使用 displayLeftModel/displayRightModel）
+          let leftModelName = displayLeftModel;
+          let rightModelName = displayRightModel;
           if (conv?.model_name && conv.model_name.includes(' vs ')) {
             [leftModelName, rightModelName] = conv.model_name.split(' vs ').map(s => s.trim());
+          } else if (!leftModelName && !rightModelName) {
+            // 如果 conv.model_name 为 null，尝试从消息中推断模型名称
+            const aiMessages = adapted.filter(msg => !msg.isUser && msg.model_name);
+            if (aiMessages.length >= 2) {
+              const uniqueModels = [...new Set(aiMessages.map(m => m.model_name))];
+              leftModelName = uniqueModels[0];
+              rightModelName = uniqueModels[1] || uniqueModels[0];
+            }
           }
           
           console.log('Battle mode loading:', { 
-            convModelName: conv?.model_name, 
             leftModelName, 
             rightModelName,
             messageCount: adapted.length 
           });
           
-          let aiMessageCount = 0;
-          adapted.forEach(msg => {
+          adapted.forEach((msg, index) => {
+            console.log(`Battle Message ${index}:`, {
+              isUser: msg.isUser,
+              model_name: msg.model_name,
+              content: msg.content.substring(0, 30),
+              leftMatch: msg.model_name === leftModelName,
+              rightMatch: msg.model_name === rightModelName
+            });
+            
             if (msg.isUser) {
-              leftModelMessages.push(msg);
-              rightModelMessages.push(msg);
+              leftModelMessages.push({ ...msg, id: `${msg.id}-left` });
+              rightModelMessages.push({ ...msg, id: `${msg.id}-right` });
             } else {
-              console.log('Battle AI message:', { 
-                model_name: msg.model_name, 
-                content: msg.content.substring(0, 50),
-                leftMatch: msg.model_name === leftModelName,
-                rightMatch: msg.model_name === rightModelName
-              });
+              // AI 消息根据 model_name 分配
               if (msg.model_name === leftModelName) {
                 leftModelMessages.push(msg);
               } else if (msg.model_name === rightModelName) {
                 rightModelMessages.push(msg);
-              } else if (!msg.model_name) {
-                // 兼容旧数据
-                if (aiMessageCount % 2 === 0) {
-                  leftModelMessages.push(msg);
-                } else {
-                  rightModelMessages.push(msg);
-                }
-                aiMessageCount++;
+              } else {
+                console.warn('Battle message with unknown model_name:', msg.model_name, 'Expected:', leftModelName, 'or', rightModelName);
               }
             }
+          });
+          
+          console.log('Battle final message counts:', {
+            left: leftModelMessages.length,
+            right: rightModelMessages.length
           });
           
           setLeftMessages(leftModelMessages);
@@ -313,7 +357,7 @@ export default function ChatPage() {
       setMessages(prev => [...prev, userMessage]);
       try {
         // 调用 evaluateModel，后端应能处理图片生成任务
-        const res = await evaluateModel(model.name, currentPrompt, id, null); // 图片生成不上传图片
+        const res = await evaluateModel(model.name, currentPrompt, id, null, true); // 图片生成不上传图片，保存用户消息
         // 假设后端返回的 response 是图片 URL
         const aiMessage = { 
           id: Date.now() + 1, 
@@ -343,38 +387,15 @@ export default function ChatPage() {
       setDirectChatVoted(false);
       setMessages(prev => [...prev, userMessage]);
 
-      // 如果用户已登录，保存用户消息到后端
-      if (user && id) {
-        try {
-          await request.post('models/chat/message/', {
-            conversation_id: id,
-            content: currentPrompt,
-            is_user: true
-          });
-        } catch (err) {
-          console.error('Failed to save user message:', err);
-        }
-      }
+      // 不需要手动保存用户消息，evaluateModel 会自动保存
 
       try {
-        // --- 关键修改 5: 将图片文件传递给 API ---
-        const res = await evaluateModel(model.name, currentPrompt, id, currentImage);
-        const aiMessage = { id: Date.now() + 1, content: res.data.response, isUser: false };
+        // evaluateModel 会自动保存用户消息和AI回复
+        const res = await evaluateModel(model.name, currentPrompt, id, currentImage, true);
+        const aiMessage = { id: Date.now() + 1, content: res.data.response, isUser: false, model_name: model.name };
         setMessages(prev => [...prev, aiMessage]);
 
-        // 如果用户已登录，保存AI回复到后端
-        if (user && id) {
-          try {
-            await request.post('models/chat/message/', {
-              conversation_id: id,
-              content: res.data.response,
-              is_user: false,
-              model_name: model.name
-            });
-          } catch (err) {
-            console.error('Failed to save AI message:', err);
-          }
-        }
+        // 不需要手动保存AI消息，后端已自动保存
       } catch (err) {
         console.error('Evaluate failed:', err);
         const errMsg = { id: Date.now() + 1, content: `请求失败: ${err.response?.data?.error || err.message}`, isUser: false, isError: true };
@@ -397,46 +418,44 @@ export default function ChatPage() {
       setLeftMessages(prev => [...prev, userMessage]);
       setRightMessages(prev => [...prev, userMessage]);
 
-      // 保存用户消息到后端
-      if (user && id) {
-        try {
-          await request.post('models/chat/message/', {
-            conversation_id: id,
-            content: currentPrompt,
-            is_user: true
-          });
-        } catch (err) {
-          console.error('Failed to save user message:', err);
-        }
-      }
-
       try {
-        // 使用 URL 中的 id 作为 conversation_id，保持连续对话
-        const [leftResponse, rightResponse] = await Promise.all([
-          evaluateModel(leftModel, currentPrompt, id, currentImage).catch(err => ({ error: err })),
-          evaluateModel(rightModel, currentPrompt, id, currentImage).catch(err => ({ error: err }))
-        ]);
-
-        const processResponse = async (response, modelName, setMessagesCallback) => {
-          if (response.error) {
-            const errorMessage = { content: `调用模型出错: ${response.error.response?.data?.detail || response.error.message}`, isUser: false, isError: true };
-            setMessagesCallback(prev => [...prev, errorMessage]);
-          } else {
-            const aiMessage = { content: response.data.response, isUser: false };
-            setMessagesCallback(prev => [...prev, aiMessage]);
-            if (user && id) {
-              try {
-                await request.post('models/chat/message/', { conversation_id: id, content: response.data.response, is_user: false, model_name: modelName });
-              } catch (err) { console.error(`Failed to save ${modelName} AI message:`, err); }
-            }
+        // 使用统一的 battleModels API,mode 参数设置为 'side-by-side'
+        const response = await battleModels(leftModel, rightModel, currentPrompt, id, 'side-by-side');
+        
+        // 解析响应 - 后端返回 { prompt, results: [{model, response}, {model, response}], conversation_id }
+        const { results, conversation_id } = response.data;
+        
+        // 根据模型名称分配响应到左右两侧
+        results.forEach(result => {
+          const aiMessage = { 
+            id: Date.now() + Math.random(), 
+            content: result.response, 
+            isUser: false,
+            model_name: result.model
+          };
+          
+          if (result.model === leftModel) {
+            setLeftMessages(prev => [...prev, aiMessage]);
+          } else if (result.model === rightModel) {
+            setRightMessages(prev => [...prev, aiMessage]);
           }
+        });
+
+        // 如果这是新创建的会话,更新URL
+        if (!id && conversation_id) {
+          navigate(`/chat/${conversation_id}`, { replace: true });
+        }
+
+      } catch (err) {
+        console.error('Side-by-side battle failed:', err);
+        const errMsg = { 
+          id: Date.now(), 
+          content: `请求失败: ${err.response?.data?.error || err.message}`, 
+          isUser: false, 
+          isError: true 
         };
-
-        await processResponse(leftResponse, leftModel, setLeftMessages);
-        await processResponse(rightResponse, rightModel, setRightMessages);
-
-      } catch (error) {
-        setBattleError(`发生错误: ${error.message}`);
+        setLeftMessages(prev => [...prev, errMsg]);
+        setRightMessages(prev => [...prev, errMsg]);
       } finally {
         setLoading(false);
       }
@@ -471,19 +490,6 @@ export default function ChatPage() {
         
         setLeftModel(modelA);
         setRightModel(modelB);
-        
-        // 更新会话的 model_name 为 "modelA vs modelB"
-        if (user && id) {
-          try {
-            console.log('Updating conversation model_name:', `${modelA} vs ${modelB}`);
-            const response = await request.patch(`models/chat/conversation/${id}/`, {
-              model_name: `${modelA} vs ${modelB}`
-            });
-            console.log('Conversation updated successfully:', response.data);
-          } catch (err) {
-            console.error('Failed to update conversation model_name:', err);
-          }
-        }
       }
 
       setVoted(false);
@@ -492,46 +498,63 @@ export default function ChatPage() {
       setLeftMessages(prev => [...prev, userMessage]);
       setRightMessages(prev => [...prev, userMessage]);
 
-      // 保存用户消息到后端
-      if (user && id) {
-        try {
-          await request.post('models/chat/message/', {
-            conversation_id: id,
-            content: currentPrompt,
-            is_user: true
-          });
-        } catch (err) {
-          console.error('Failed to save user message:', err);
-        }
-      }
-
       try {
-        // --- 关键修改 6: 将图片文件传递给 API ---
-        const [leftResponse, rightResponse] = await Promise.all([
-          evaluateModel(modelA, currentPrompt, id, currentImage).catch(err => ({ error: err })),
-          evaluateModel(modelB, currentPrompt, id, currentImage).catch(err => ({ error: err }))
-        ]);
-
-        const processResponse = async (response, modelName, setMessagesCallback) => {
-          if (response.error) {
-            const errorMessage = { content: `调用模型出错: ${response.error.response?.data?.detail || response.error.message}`, isUser: false, isError: true };
-            setMessagesCallback(prev => [...prev, errorMessage]);
-          } else {
-            const aiMessage = { content: response.data.response, isUser: false };
-            setMessagesCallback(prev => [...prev, aiMessage]);
-            if (user && id) {
-              try {
-                await request.post('models/chat/message/', { conversation_id: id, content: response.data.response, is_user: false, model_name: modelName });
-              } catch (err) { console.error(`Failed to save ${modelName} AI message:`, err); }
+        // 使用统一的 battleModels API
+        const response = await battleModels(modelA, modelB, currentPrompt, id, 'battle');
+        
+        // 解析响应
+        const { results, conversation_id, is_anonymous } = response.data;
+        
+        // 如果是匿名对战,results 顺序已被打乱,需要显示但不透露模型名
+        // 如果不是匿名,按模型名分配
+        if (is_anonymous) {
+          // 匿名对战:不知道哪个是哪个,按顺序显示
+          const [result1, result2] = results;
+          setLeftMessages(prev => [...prev, { 
+            id: Date.now(), 
+            content: result1.response, 
+            isUser: false,
+            model_name: result1.model // 保存真实模型名,但界面不显示
+          }]);
+          setRightMessages(prev => [...prev, { 
+            id: Date.now() + 1, 
+            content: result2.response, 
+            isUser: false,
+            model_name: result2.model
+          }]);
+        } else {
+          // 非匿名:根据模型名分配
+          results.forEach(result => {
+            const aiMessage = { 
+              id: Date.now() + Math.random(), 
+              content: result.response, 
+              isUser: false,
+              model_name: result.model
+            };
+            
+            if (result.model === modelA) {
+              setLeftMessages(prev => [...prev, aiMessage]);
+            } else if (result.model === modelB) {
+              setRightMessages(prev => [...prev, aiMessage]);
             }
-          }
-        };
+          });
+        }
 
-        await processResponse(leftResponse, modelA, setLeftMessages);
-        await processResponse(rightResponse, modelB, setRightMessages);
+        // 如果这是新创建的会话,更新URL
+        if (!id && conversation_id) {
+          navigate(`/chat/${conversation_id}`, { replace: true });
+        }
 
       } catch (error) {
-        setBattleError(`发生错误: ${error.message}`);
+        setBattleError(`发生错误: ${error.response?.data?.error || error.message}`);
+        const errMsg = { 
+          id: Date.now(), 
+          content: `请求失败: ${error.response?.data?.error || error.message}`, 
+          isUser: false, 
+          isError: true 
+        };
+        setLeftMessages(prev => [...prev, errMsg]);
+        setRightMessages(prev => [...prev, errMsg]);
       } finally {
         setLoading(false);
       }
@@ -540,15 +563,18 @@ export default function ChatPage() {
   };
 
   const handleVote = async (winnerChoice) => {
-    if (!currentInput) {
-      antdMessage.error("无法找到用于投票的提示。");
+    // 从消息历史中找到最后一个用户消息作为 prompt
+    const lastUserMessage = leftMessages.filter(m => m.isUser).pop();
+
+    if (!lastUserMessage || !lastUserMessage.content) {
+      antdMessage.error("无法找到用于投票的原始问题。");
       return;
     }
 
     const voteData = {
       model_a: leftModel,
       model_b: rightModel,
-      prompt: currentInput,
+      prompt: lastUserMessage.content, // 使用从历史记录中找到的 prompt
       winner: winnerChoice,
     };
 
@@ -638,9 +664,9 @@ export default function ChatPage() {
         <h2 style={{ margin: 0 }}>{title}</h2>
         <div style={{ color: '#8c8c8c', marginTop: 4 }}>
           {isGeneratingImage && `模式: 生成图片 - ${model ? model.name : '未选择'}`}
-          {!isGeneratingImage && mode === 'battle' && '模式: Battle (盲测对战)'}
-          {!isGeneratingImage && mode === 'side-by-side' && `模式: Side by Side - ${leftModel || 'Model A'} vs ${rightModel || 'Model B'}`}
-          {!isGeneratingImage && mode === 'direct-chat' && `模式: Direct Chat - ${model ? model.name : '未选择'}`}
+          {!isGeneratingImage && savedMode === 'battle' && '模式: Battle (盲测对战)'}
+          {!isGeneratingImage && savedMode === 'side-by-side' && `模式: Side by Side - ${displayLeftModel || 'Model A'} vs ${displayRightModel || 'Model B'}`}
+          {!isGeneratingImage && savedMode === 'direct-chat' && `模式: Direct Chat - ${model ? model.name : '未选择'}`}
         </div>
       </div>
 
@@ -740,19 +766,19 @@ export default function ChatPage() {
         <div style={{ marginTop: 12, textAlign: 'center' }}>
           {battleError && <Alert message={battleError} type="error" closable onClose={() => setBattleError(null)} style={{ marginBottom: 8 }} />}
           <Title level={5}>哪个模型的回答更好？</Title>
-          <Space>
-            <Button onClick={() => handleVote(leftModel)} disabled={voted}>← 左边更好</Button>
-            <Button onClick={() => handleVote('tie')} disabled={voted}>不分上下</Button>
-            <Button onClick={() => handleVote('bad')} disabled={voted}>都很差</Button>
-            <Button onClick={() => handleVote(rightModel)} disabled={voted}>→ 右边更好</Button>
+          <Space wrap size={[8,8]} style={{ justifyContent: 'center' }}>
+            <Button style={{ minWidth: 120 }} onClick={() => handleVote(leftModel)} disabled={voted}>← 左边更好</Button>
+            <Button style={{ minWidth: 120 }} onClick={() => handleVote('tie')} disabled={voted}>不分上下</Button>
+            <Button style={{ minWidth: 120 }} onClick={() => handleVote('bad')} disabled={voted}>都很差</Button>
+            <Button style={{ minWidth: 120 }} onClick={() => handleVote(rightModel)} disabled={voted}>→ 右边更好</Button>
           </Space>
         </div>
       )}
       {mode === 'direct-chat' && messages.some(m => !m.isUser && !m.isError) && !voted &&(
         <div style={{ marginTop: 12, textAlign: 'center' }}>
-          <Space>
-            <Button onClick={() => handleDirectChatVote('good')} disabled={directChatVoted}>👍 Good</Button>
-            <Button onClick={() => handleDirectChatVote('bad')} disabled={directChatVoted}>👎 Bad</Button>
+          <Space wrap size={[8,8]} style={{ justifyContent: 'center' }}>
+            <Button style={{ minWidth: 120 }} onClick={() => handleDirectChatVote('good')} disabled={directChatVoted}>👍 Good</Button>
+            <Button style={{ minWidth: 120 }} onClick={() => handleDirectChatVote('bad')} disabled={directChatVoted}>👎 Bad</Button>
           </Space>
         </div>
       )}

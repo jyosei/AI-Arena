@@ -7,6 +7,11 @@ from .views import (
     NotificationMarkReadView,
     NotificationMarkAllReadView,
 )
+from .github_views import (
+    GitHubLoginURLView,
+    GitHubCallbackView,
+    GitHubCodeExchangeView,
+)
 
 urlpatterns = [
     path('register/', RegisterView.as_view(), name='register'),
@@ -15,4 +20,9 @@ urlpatterns = [
     path('notifications/', NotificationListView.as_view(), name='notifications'),
     path('notifications/<int:pk>/read/', NotificationMarkReadView.as_view(), name='notification-read'),
     path('notifications/mark-all-read/', NotificationMarkAllReadView.as_view(), name='notifications-mark-all-read'),
+
+    # GitHub 登录
+    path('github/login-url/', GitHubLoginURLView.as_view(), name='github-login-url'),
+    path('github/callback/', GitHubCallbackView.as_view(), name='github-callback'),
+    path('github/exchange/', GitHubCodeExchangeView.as_view(), name='github-code-exchange'),
 ]

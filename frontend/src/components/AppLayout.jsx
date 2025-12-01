@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layout, Menu, Dropdown, Button, Avatar, Space, Select, Typography, Form, Input, Modal, message, Tooltip } from 'antd';
+import { Layout, Menu, Dropdown, Button, Avatar, Space, Select, Typography, Form, Input, Modal, message, Tooltip, Radio, Divider } from 'antd';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useMode } from '../contexts/ModeContext';
 import { useChat } from '../contexts/ChatContext';
@@ -11,7 +11,9 @@ import {
   MessageOutlined, // <-- 确保这个图标已导入
   DownOutlined,
   DeleteOutlined,
-  CloseOutlined
+  CloseOutlined,
+  MenuOutlined,
+  UploadOutlined
 } from '@ant-design/icons';
 import{
     Swords,
@@ -19,6 +21,7 @@ import{
     SendHorizontal,
 }from 'lucide-react';
 import RegisterModal from './RegisterModal';
+import GitHubLogin from './GitHubLogin.jsx';
 import NotificationBell from './NotificationBell.jsx';
 import { useIntl } from 'react-intl';
 import AuthContext from '../contexts/AuthContext.jsx';
@@ -39,9 +42,16 @@ const AppLayout = () => {
   const { chatHistory, clearHistory, addChat, deleteChat } = useChat();
   const [showRegister, setShowRegister] = React.useState(false);
   const [showLogin, setShowLogin] = React.useState(false);
+  const [mobileSiderOpen, setMobileSiderOpen] = React.useState(false);
   const intl = useIntl();
   const { login, logout, user } = React.useContext(AuthContext);
   const isLoggedIn = !!user;
+  // 新建会话弹窗状态与临时选择
+  const [showNewChatModal, setShowNewChatModal] = React.useState(false);
+  const [creatingChat, setCreatingChat] = React.useState(false);
+  const [tempMode, setTempMode] = React.useState(mode);
+  const [tempLeftModel, setTempLeftModel] = React.useState(leftModel);
+  const [tempRightModel, setTempRightModel] = React.useState(rightModel);
   const userEmail = user?.email || user?.username || '';
   const navigateToUserCenter = React.useCallback(() => {
     navigate('/user-center');
@@ -60,6 +70,7 @@ const AppLayout = () => {
     '/': '1',
     '/leaderboard': '2',
     '/forum': '3',
+    '/evaluate-dataset': '4',
   };
   
   // 根据当前路径获取应高亮的 key
@@ -79,6 +90,10 @@ const AppLayout = () => {
     message.success('已登出');
   };
 
+  const closeMobileSider = () => {
+    setMobileSiderOpen(false);
+  };
+
   const handleDeleteChat = async (e, chatId) => {
     e.stopPropagation(); // 阻止事件冒泡，避免触发导航
     try {
@@ -94,16 +109,50 @@ const AppLayout = () => {
     }
   };
 
-  const handleNewChat = async () => {
+  const openNewChatModal = () => {
+    setTempMode(mode);
+    setTempLeftModel(leftModel || (models[0]?.name ?? null));
+    setTempRightModel(rightModel || (models[1]?.name ?? null));
+    setShowNewChatModal(true);
+  };
+
+  const handleConfirmNewChat = async () => {
+    // battle 模式不需要选择模型
+    if (tempMode !== 'battle' && !tempLeftModel) {
+      message.warning('请选择模型');
+      return;
+    }
+    // side-by-side 模式需要选择两个模型
+    if (tempMode === 'side-by-side' && !tempRightModel) {
+      message.warning('Side by side 模式需要选择两个模型');
+      return;
+    }
+    setCreatingChat(true);
     try {
-      const modelName = leftModel || (models && models.length > 0 ? models[0].name : null);
-      const newChatId = await addChat('新会话', modelName, mode);
+      setMode(tempMode);
+      setLeftModel(tempLeftModel);
+      if (tempMode === 'side-by-side') {
+        setRightModel(tempRightModel);
+      }
+      // 构造 model_name：side-by-side 需要 "modelA vs modelB" 格式
+      let modelNameForChat = tempLeftModel;
+      if (tempMode === 'side-by-side') {
+        modelNameForChat = `${tempLeftModel} vs ${tempRightModel}`;
+      } else if (tempMode === 'battle') {
+        // battle 模式可以传 null 或随机选择
+        modelNameForChat = null;
+      }
+      const newChatId = await addChat('新会话', modelNameForChat, tempMode);
       if (newChatId) {
         navigate(`/chat/${newChatId}`);
+        message.success('会话已创建');
       }
+      setShowNewChatModal(false);
     } catch (error) {
       console.error('Failed to create new chat:', error);
       message.error('创建新会话失败');
+    } finally {
+      setCreatingChat(false);
     }
   };
 
@@ -186,13 +235,24 @@ const AppLayout = () => {
         <Form.Item>
           <Button type="primary" htmlType="submit" block loading={loading}>{intl.formatMessage({ id: 'login.button', defaultMessage: '登录' })}</Button>
         </Form.Item>
+        <Divider plain style={{ margin: '12px 0' }}>或</Divider>
+        <GitHubLogin buttonText="使用 GitHub 登录" buttonProps={{ type: 'default', style: { borderRadius: 20 } }} />
       </Form>
     );
   };
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Sider width={260} style={{ background: '#f7f7f8', borderRight: '1px solid #e8e8e8' }}>
+      {/* 移动端遮罩 */}
+      <div 
+        className={`mobile-sider-mask ${mobileSiderOpen ? 'visible' : ''}`}
+        onClick={closeMobileSider}
+      />
+      <Sider 
+        width={260} 
+        style={{ background: '#f7f7f8', borderRight: '1px solid #e8e8e8' }}
+        className={mobileSiderOpen ? 'mobile-sider-open' : ''}
+      >
         <div style={{ padding: '16px', height: '64px', display: 'flex', alignItems: 'center' }}>
           <Link to="/" style={{ fontSize: '20px', fontWeight: 'bold', color: '#000' }}>
             AI Arena
@@ -209,18 +269,23 @@ const AppLayout = () => {
               key: '1',
               icon: <EditOutlined />,
               // 使用 onClick 处理新建会话
-              label: <span onClick={handleNewChat}>New Chat / Models</span>,
+              label: <span onClick={() => { openNewChatModal(); closeMobileSider(); }}>新对话</span>,
             },
             {
               key: '2',
               icon: <TrophyOutlined />,
               // 使用 Link 组件包裹，使其可以点击跳转
-              label: <Link to="/leaderboard">Leaderboard</Link>,
+              label: <Link to="/leaderboard" onClick={closeMobileSider}>排行榜</Link>,
             },
             { // <-- 这是新添加的项
               key: '3',
               icon: <MessageOutlined />,
-              label: <Link to="/forum">社区论坛</Link>,
+              label: <Link to="/forum" onClick={closeMobileSider}>社区论坛</Link>,
+            },
+            { // 上传数据集菜单项
+              key: '4',
+              icon: <UploadOutlined />,
+              label: <Link to="/evaluate-dataset" onClick={closeMobileSider}>上传数据集</Link>,
             },
             { // <-- 这是新添加的项
               key: '4',
@@ -265,7 +330,7 @@ const AppLayout = () => {
               暂无聊天记录
             </div>
           ) : (
-            <div style={{ maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}>
+            <div className="chat-history-container" style={{ maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}>
               {chatHistory.map(chat => (
                 <div 
                   key={chat.id} 
@@ -279,7 +344,7 @@ const AppLayout = () => {
                     background: location.pathname === `/chat/${chat.id}` ? '#f0f0f0' : 'transparent'
                   }}
                   className="chat-history-item"
-                  onClick={() => navigate(`/chat/${chat.id}`)}
+                  onClick={() => { navigate(`/chat/${chat.id}`); closeMobileSider(); }}
                   onMouseEnter={(e) => {
                     if (location.pathname !== `/chat/${chat.id}`) {
                       e.currentTarget.style.background = '#f5f5f5';
@@ -338,8 +403,22 @@ const AppLayout = () => {
       </Sider>
       <Layout>
         <Header style={{ background: '#fff', padding: '0 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
-          <div style={{ fontSize: '18px', fontWeight: 600, color: '#000' }}>
-            AI Arena
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <Button
+              type="text"
+              icon={<MenuOutlined />}
+              onClick={() => setMobileSiderOpen(!mobileSiderOpen)}
+              style={{ 
+                fontSize: '20px',
+                width: '40px',
+                height: '40px',
+                display: 'none'
+              }}
+              className="mobile-menu-btn"
+            />
+            <div style={{ fontSize: '18px', fontWeight: 600, color: '#000' }}>
+              AI Arena
+            </div>
           </div>
 
           {isLoggedIn ? (
@@ -364,9 +443,9 @@ const AppLayout = () => {
                   tabIndex={0}
                 />
               </Tooltip>
-              <span style={{ fontWeight: 500, fontSize: 16 }}>{userEmail}</span>
+              <span className="header-user-email" style={{ fontWeight: 500, fontSize: 16 }}>{userEmail}</span>
               <Button icon={<LogoutOutlined />} shape="round" type="default" style={{ borderRadius: 20, fontWeight: 500 }} onClick={handleLogout}>
-                退出登录
+                <span className="logout-btn-text">退出登录</span>
               </Button>
             </div>
           ) : (
@@ -402,6 +481,73 @@ const AppLayout = () => {
               <LoginForm />
             </div>
           </Modal>
+          <Modal
+            title={<div style={{ fontWeight: 600 }}>新建会话</div>}
+            open={showNewChatModal}
+            onCancel={() => setShowNewChatModal(false)}
+            onOk={handleConfirmNewChat}
+            okText={creatingChat ? '创建中...' : '开始会话'}
+            confirmLoading={creatingChat}
+            destroyOnClose
+          >
+            {models.length === 0 ? (
+              <div style={{ padding: '12px 0' }}>暂无可用模型，请稍后再试。</div>
+            ) : (
+              <Space direction="vertical" size="large" style={{ width: '100%' }}>
+                <div>
+                  <Typography.Text>选择模式：</Typography.Text>
+                  <Radio.Group
+                    value={tempMode}
+                    onChange={(e) => setTempMode(e.target.value)}
+                    style={{ marginTop: 8 }}
+                  >
+                    <Radio.Button value="battle">Battle</Radio.Button>
+                    <Radio.Button value="side-by-side">Side by side</Radio.Button>
+                    <Radio.Button value="direct-chat">Direct chat</Radio.Button>
+                  </Radio.Group>
+                </div>
+                {tempMode === 'battle' ? (
+                  <Typography.Text type="secondary">
+                    Battle 模式将随机匹配模型进行对战，无需手动选择。
+                  </Typography.Text>
+                ) : tempMode === 'side-by-side' ? (
+                  <Space size="middle" wrap>
+                    <Select
+                      showSearch
+                      placeholder="左侧模型"
+                      value={tempLeftModel}
+                      onChange={setTempLeftModel}
+                      style={{ width: 180 }}
+                      options={models.map(m => ({ label: m.name, value: m.name }))}
+                    />
+                    <Typography.Text strong>VS</Typography.Text>
+                    <Select
+                      showSearch
+                      placeholder="右侧模型"
+                      value={tempRightModel}
+                      onChange={setTempRightModel}
+                      style={{ width: 180 }}
+                      options={models.map(m => ({ label: m.name, value: m.name }))}
+                    />
+                  </Space>
+                ) : (
+                  <Select
+                    showSearch
+                    placeholder="选择模型"
+                    value={tempLeftModel}
+                    onChange={setTempLeftModel}
+                    style={{ width: 240 }}
+                    options={models.map(m => ({ label: m.name, value: m.name }))}
+                  />
+                )}
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  {tempMode === 'battle' 
+                    ? '点击"开始会话"进入 Battle 模式。' 
+                    : '根据模式选择一个或两个模型，确认后进入聊天界面。'}
+                </Typography.Text>
+              </Space>
+            )}
+          </Modal>
         </Header>
         <Content style={{ 
           margin: '24px', 
@@ -415,7 +561,7 @@ const AppLayout = () => {
         }}>
           {shouldShowModelSelectors && (
             <div style={{ marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid #f0f0f0' }}>
-              <Space size="large">
+              <Space size="large" className="model-selector-space">
                 <Dropdown overlay={menu}>
                   <Button size="large">
                     <Space align="center">
@@ -426,41 +572,41 @@ const AppLayout = () => {
                   </Button>
                 </Dropdown>
 
-                {mode === 'side-by-side' && (
-                  <>
-                    <Select
-                      showSearch
-                      placeholder="选择左侧模型"
-                      value={leftModel}
-                      onChange={setLeftModel}
-                      style={{ width: 180 }}
-                      options={modelOptions}
-                      filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
-                    />
-                    <Typography.Text strong>VS</Typography.Text>
-                    <Select
-                      showSearch
-                      placeholder="选择右侧模型"
-                      value={rightModel}
-                      onChange={setRightModel}
-                      style={{ width: 180 }}
-                      options={modelOptions}
-                      filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
-                    />
-                  </>
-                )}
-                {mode === 'direct-chat' && (
-                  <Select
-                    showSearch
-                    placeholder="选择一个模型"
-                    value={leftModel}
-                    onChange={setLeftModel}
-                    style={{ width: 180 }}
-                    options={modelOptions}
-                    filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
-                  />
-                )}
-              </Space>
+            {mode === 'side-by-side' && (
+              <>
+                <Select
+                  showSearch
+                  placeholder="选择左侧模型"
+                  value={leftModel}
+                  onChange={setLeftModel}
+                  style={{ width: 180 }}
+                  options={modelOptions}
+                  filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+                />
+                <Typography.Text strong>VS</Typography.Text>
+                <Select
+                  showSearch
+                  placeholder="选择右侧模型"
+                  value={rightModel}
+                  onChange={setRightModel}
+                  style={{ width: 180 }}
+                  options={modelOptions}
+                  filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+                />
+              </>
+            )}
+            {mode === 'direct-chat' && (
+              <Select
+                showSearch
+                placeholder="选择一个模型"
+                value={leftModel}
+                onChange={setLeftModel}
+                style={{ width: 180 }}
+                options={modelOptions}
+                filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+              />
+            )}
+          </Space>
             </div>
           )}
           <Outlet />
