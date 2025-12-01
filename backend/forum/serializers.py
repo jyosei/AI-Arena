@@ -480,6 +480,7 @@ class ForumPostCreateSerializer(serializers.ModelSerializer):
         required=False,
         allow_empty=True,
     )
+    # 统一格式：使用 `category` 作为对外字段，内部映射到 category_obj_id
     category = serializers.IntegerField(source='category_obj_id', required=False, allow_null=True)
     attachment_ids = serializers.ListField(
         child=serializers.IntegerField(),
@@ -494,6 +495,13 @@ class ForumPostCreateSerializer(serializers.ModelSerializer):
 
     def to_internal_value(self, data):
         data = data.copy()
+        # 兼容旧前端/其他客户端使用 category_id 或 legacy_category
+        if 'category' not in data:
+            if 'category_id' in data:
+                data['category'] = data.get('category_id')
+            elif 'legacy_category' in data and not data.get('category_obj_id'):
+                # 若仅传 legacy_category 字段，保持兼容：稍后在 create 使用
+                pass
         tags = data.get("tags", [])
         if isinstance(tags, str):
             try:
@@ -514,10 +522,16 @@ class ForumPostCreateSerializer(serializers.ModelSerializer):
         return cleaned[:10]
 
     def create(self, validated_data):
+        # 若 legacy_category 由外部传入但没有结构化分类，放入模型 legacy_category 字段
+        legacy_category = None
+        request = self.context.get('request')
+        original = getattr(request, 'data', {}) if request else {}
+        if 'legacy_category' in original and not validated_data.get('category_obj_id'):
+            legacy_category = original.get('legacy_category')
         tags_data = validated_data.pop('tags', [])
         attachment_ids = validated_data.pop('attachment_ids', [])
         # author 由 perform_create 传入,不在这里设置
-        post = ForumPost.objects.create(**validated_data)
+        post = ForumPost.objects.create(**validated_data, legacy_category=legacy_category)
         
         # 处理标签
         if tags_data:
