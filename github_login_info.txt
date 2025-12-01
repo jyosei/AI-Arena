@@ -1,2 +1,0 @@
-Client ID = 'Ov23li8J7zm7OnqPEL02'
-Client Secrets = '8eb5be5e9ddd980a53a3cbe83320cb5921c7be8c'
