@@ -395,6 +395,14 @@ class BattleModelView(APIView):
             chosen_models = random.sample(available_models, 2)
             model_a_name, model_b_name = chosen_models[0], chosen_models[1]
 
+            # 如果已创建会话但尚未设置具体模型名，则在匿名对战确定模型后进行回填
+            if conversation and not conversation.model_name:
+                try:
+                    conversation.model_name = f"{model_a_name} vs {model_b_name}"
+                    conversation.save(update_fields=["model_name"])
+                except Exception as _:
+                    pass
+
         # 场景2：指定对战 (Side-by-Side)
         # 如果前端提供了 model_a 和 model_b，则代码会自然地执行到这里
         # 无需额外处理

@@ -191,6 +191,19 @@ export default function ChatPage() {
           if (conv?.model_name && conv.model_name.includes(' vs ')) {
             [leftModelName, rightModelName] = conv.model_name.split(' vs ').map(s => s.trim());
           }
+
+          // 如果保存的模型名与历史AI消息不一致，则从历史里推断
+          const aiModels = [...new Set(adapted.filter(m => !m.isUser && m.model_name).map(m => m.model_name))];
+          const isValid = (name) => !!name && aiModels.includes(name);
+          if (!isValid(leftModelName) || !isValid(rightModelName)) {
+            if (aiModels.length >= 2) {
+              leftModelName = aiModels[0];
+              rightModelName = aiModels[1];
+            } else if (aiModels.length === 1) {
+              leftModelName = aiModels[0];
+              rightModelName = aiModels[0];
+            }
+          }
           
           console.log('Loading side-by-side messages:', {
             leftModelName,
@@ -247,13 +260,19 @@ export default function ChatPage() {
           let rightModelName = displayRightModel;
           if (conv?.model_name && conv.model_name.includes(' vs ')) {
             [leftModelName, rightModelName] = conv.model_name.split(' vs ').map(s => s.trim());
-          } else if (!leftModelName && !rightModelName) {
-            // 如果 conv.model_name 为 null，尝试从消息中推断模型名称
-            const aiMessages = adapted.filter(msg => !msg.isUser && msg.model_name);
-            if (aiMessages.length >= 2) {
-              const uniqueModels = [...new Set(aiMessages.map(m => m.model_name))];
+          }
+
+          // 关键：根据历史 AI 消息推断或校正左右模型名
+          const aiMsgs = adapted.filter(msg => !msg.isUser && msg.model_name);
+          const uniqueModels = [...new Set(aiMsgs.map(m => m.model_name))];
+          const isValidBattle = (name) => !!name && uniqueModels.includes(name);
+          if (!isValidBattle(leftModelName) || !isValidBattle(rightModelName)) {
+            if (uniqueModels.length >= 2) {
               leftModelName = uniqueModels[0];
-              rightModelName = uniqueModels[1] || uniqueModels[0];
+              rightModelName = uniqueModels[1];
+            } else if (uniqueModels.length === 1) {
+              leftModelName = uniqueModels[0];
+              rightModelName = uniqueModels[0];
             }
           }
           
@@ -508,7 +527,7 @@ export default function ChatPage() {
       let modelB = rightModel;
       
       // 如果还没有选择模型，随机选择
-      if (!leftModel || !rightModel) {
+      if (1) {
         // 过滤掉图片和视频模型
         const requiredCapability = currentImage ? 'vision' : 'chat';
         const filteredModels = models.filter(m => m.capabilities.includes(requiredCapability));
