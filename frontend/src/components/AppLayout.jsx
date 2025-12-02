@@ -268,8 +268,9 @@ const AppLayout = () => {
             {
               key: '1',
               icon: <EditOutlined />,
-              // 使用 onClick 处理新建会话
-              label: <span onClick={() => { openNewChatModal(); closeMobileSider(); }}>新对话</span>,
+              // 将点击行为绑定到整块菜单项
+              onClick: () => { openNewChatModal(); closeMobileSider(); },
+              label: '新建会话',
             },
             {
               key: '2',
@@ -286,12 +287,7 @@ const AppLayout = () => {
               key: '4',
               icon: <UploadOutlined />,
               label: <Link to="/evaluate-dataset" onClick={closeMobileSider}>上传数据集</Link>,
-            },
-            { // <-- 这是新添加的项
-              key: '4',
-              icon: <MessageOutlined />,
-              label: <Link to="/evaluate-dataset">数据集上传</Link>,
-            },
+            }
           ]}
           // ---
         />
