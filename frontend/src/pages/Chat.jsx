@@ -64,8 +64,11 @@ export default function ChatPage() {
     return rightModel;
   }, [conv?.model_name, savedMode, rightModel]);
 
-  // 从 location.state 获取初始消息
+  // 从 location.state 获取初始消息与图片
   const initialPrompt = location.state?.initialPrompt;
+  const initialImage = location.state?.initialImage;
+  const autoSentRef = useRef(false);
+  const [shouldAutoSend, setShouldAutoSend] = useState(false);
   const iconButtonStyle = {
     width: '40px',
     height: '40px',
@@ -126,6 +129,26 @@ export default function ChatPage() {
   }, [isGeneratingImage, leftModel, conv?.model_name, textModels, imageModels]);
 
   const model = models.find(m => m.name === modelName) || null;
+
+  // 确认模型准备就绪后再自动发送，避免过早发送导致失败
+  const modelReady = useMemo(() => {
+    if (mode === 'direct-chat') {
+      if (isGeneratingImage) {
+        return !!model && model.capabilities?.includes('image_generation');
+      }
+      return !!model;
+    }
+    if (mode === 'side-by-side') {
+      return !!leftModel && !!rightModel;
+    }
+    if (mode === 'battle') {
+      // 如果已经选择了左右模型则认为就绪；否则至少需要具备两个可聊天模型
+      if (leftModel && rightModel) return true;
+      const chatCapable = models.filter(m => m.capabilities?.includes('chat'));
+      return chatCapable.length >= 2;
+    }
+    return false;
+  }, [mode, model, leftModel, rightModel, models, isGeneratingImage]);
 
   // 注意：不要在模式切换时清空消息，因为用户可能想保留当前会话的历史
 
@@ -287,15 +310,32 @@ export default function ChatPage() {
     loadMessages();
   }, [id, user, savedMode, leftModel, rightModel, conv?.model_name]);
 
-  // 处理从首页传来的初始消息
+  // 处理从首页传来的初始消息与图片，并自动发送一次
+  // 第一步：接收首页带来的初始输入，存到本地状态，并设置 shouldAutoSend
   useEffect(() => {
-    if (initialPrompt && !loadingHistory && !loading) {
-      // 自动填充输入框
-      setInputValue(initialPrompt);
-      // 清除 location.state 避免重复发送
+    if ((initialPrompt || initialImage) && !autoSentRef.current) {
+      if (initialPrompt) setInputValue(initialPrompt);
+      if (initialImage) setUploadedImage(initialImage);
+      autoSentRef.current = true;
+      setShouldAutoSend(true);
+      // 立刻清空路由 state，防止后退/刷新重复触发
       navigate(location.pathname, { replace: true, state: {} });
     }
-  }, [initialPrompt, loadingHistory, loading, navigate]);
+  }, [initialPrompt, initialImage, navigate]);
+
+  // 第二步：当模型就绪、历史加载完成，且标记为 shouldAutoSend 时触发一次发送
+  useEffect(() => {
+    if (
+      shouldAutoSend &&
+      !loadingHistory &&
+      !loading &&
+      modelReady &&
+      (inputValue.trim() || uploadedImage)
+    ) {
+      setShouldAutoSend(false);
+      handleSend();
+    }
+  }, [shouldAutoSend, loadingHistory, loading, modelReady, inputValue, uploadedImage]);
 
   // --- 关键修改 2: 添加图片选择和移除的处理函数 ---
   const handleImageUpload = (event) => {

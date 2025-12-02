@@ -209,7 +209,7 @@ class EvaluateModelView(APIView):
             return Response({"error": "model_name 和 (prompt 或 image) 是必需的。"}, status=400)
 
         try:
-            model_service = get_model_service(model_name)
+            model_service = get_chat_model_service(model_name)
             
             # 获取或创建 conversation
             if conversation_id:
@@ -347,7 +347,7 @@ class BattleModelView(APIView):
             try:
                 # 使用 model_name 或 model_a_name（为了兼容性）
                 model_name = model_name or model_a_name
-                model_service = get_model_service(model_name)
+                model_service = get_chat_model_service(model_name)
                 response_data = model_service.evaluate(prompt, model_name)
 
                 # 保存到数据库
@@ -401,8 +401,8 @@ class BattleModelView(APIView):
 
         try:
             # 获取两个模型对应的服务实例
-            model_a_service = get_model_service(model_a_name)
-            model_b_service = get_model_service(model_b_name)
+            model_a_service = get_chat_model_service(model_a_name)
+            model_b_service = get_chat_model_service(model_b_name)
 
             # 调用各自的 evaluate 方法 (后续可优化为并行)
             response_a_data = model_a_service.evaluate(prompt, model_a_name)
@@ -665,7 +665,7 @@ class AnalyzeImageView(APIView):
 
         try:
             # --- 1. 获取模型服务 (现在是统一的方式) ---
-            model_service = get_model_service(model_name)
+            model_service = get_chat_model_service(model_name)
 
             # --- 2. 获取或创建对话 ---
             if conversation_id:
