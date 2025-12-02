@@ -702,7 +702,7 @@ export default function ForumPost() {
   const categoryMeta = getCategoryMeta(post.category || post.category_obj);
 
   return (
-    <div>
+    <div className="container">
       {/* 分享弹窗 */}
       <ShareModal
         visible={shareModalVisible}
@@ -746,7 +746,7 @@ export default function ForumPost() {
         </Col>
       </Row>
 
-      <Card>
+      <Card bordered>
         <div style={{ marginBottom: 16 }}>
           <Space size="middle" wrap>
             {categoryMeta.label && (
@@ -788,7 +788,7 @@ export default function ForumPost() {
           </Space>
         </div>
 
-        <Paragraph style={{ fontSize: '16px', lineHeight: '1.8', whiteSpace: 'pre-line' }}>{post.content}</Paragraph>
+        <div className="post-content" style={{ whiteSpace: 'pre-line' }}>{post.content}</div>
 
         {post.attachments?.length ? (
           <Image.PreviewGroup>
@@ -816,7 +816,7 @@ export default function ForumPost() {
               const showCollapseButton = comment.indent === 0 && comment.maxDepth >= 3;
               const indentStyle = {
                 marginLeft: comment.indent * 40,
-                borderLeft: comment.indent > 0 ? '2px solid #f0f0f0' : 'none',
+                borderLeft: comment.indent > 0 ? '2px solid var(--border)' : 'none',
                 paddingLeft: comment.indent > 0 ? 16 : 0,
                 transition: 'all 0.3s ease',
               };
@@ -998,7 +998,7 @@ export default function ForumPost() {
                           height: 80,
                           borderRadius: 8,
                           overflow: 'hidden',
-                          border: '1px solid #f0f0f0',
+                          border: '1px solid var(--border)',
                           background: '#fafafa',
                           display: 'flex',
                           alignItems: 'center',

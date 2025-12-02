@@ -50,6 +50,36 @@ html, body {
   padding: 0 var(--space-5);
 }
 
+/* 用户中心栅格：移动端单列，桌面双列 */
+.user-center-grid {
+  display: grid;
+  grid-template-columns: 1fr; /* 默认单列（移动端） */
+  gap: var(--space-6);
+}
+@media (min-width: 992px) { /* lg 断点及以上 */
+  .user-center-grid {
+    grid-template-columns: 1fr 1fr; /* 桌面双列 */
+  }
+}
+
+/* 回退：移除用户中心面板与 Tabs 强制宽度规则，恢复默认行为 */
+
+/* 用户中心列表卡片悬浮仅在桌面启用，移动端保持初始样式 */
+.card-hover { }
+@media (min-width: 992px) {
+  .card-hover {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px;
+    transition: background .2s ease, box-shadow .2s ease;
+    box-shadow: var(--shadow-sm);
+  }
+  .card-hover:hover {
+    background: #fafafa;
+    box-shadow: var(--shadow-md);
+  }
+}
+
 /* Ant Design 主题微调：按钮、输入、选择器、卡片、头部等 */
 .ant-layout {
   background: var(--bg);
@@ -116,6 +146,43 @@ html, body {
 .ant-card, .ant-list, .ant-modal-content {
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
+}
+
+/* 富文本（帖子正文等） */
+.post-content {
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.85;
+}
+.post-content h1, .post-content h2, .post-content h3,
+.post-content h4, .post-content h5, .post-content h6 {
+  color: var(--text);
+  margin: 1.2em 0 .6em;
+  line-height: 1.25;
+}
+.post-content p { margin: .8em 0; }
+.post-content ul, .post-content ol { margin: .8em 0 .8em 1.2em; }
+.post-content li { margin: .25em 0; }
+.post-content a { color: var(--primary); text-decoration: underline; }
+.post-content img { max-width: 100%; border-radius: 8px; }
+.post-content blockquote {
+  margin: 1em 0;
+  padding: .6em 1em;
+  background: #fafafa;
+  border-left: 4px solid var(--border);
+  border-radius: 6px;
+}
+.post-content pre {
+  background: #0f1115;
+  color: #e5e7eb;
+  padding: 12px 14px;
+  border-radius: 8px;
+  overflow: auto;
+}
+.post-content code { 
+  background: #f5f5f7; 
+  padding: 2px 6px; 
+  border-radius: 6px; 
 }
 
 /* 气泡（聊天） */
@@ -363,4 +430,10 @@ html, body {
   .ant-image {
     max-width: 100% !important;
   }
+
+  /* 帖子正文在移动端的阅读优化 */
+  .post-content img { max-width: 100%; height: auto; margin: 8px 0; }
+  .post-content pre { font-size: 13px; padding: 10px 12px; }
+  .post-content code { font-size: 13px; }
+  .post-content h1, .post-content h2 { margin: 1em 0 .5em; }
 }

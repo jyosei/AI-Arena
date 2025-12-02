@@ -178,7 +178,7 @@ const PostForm = ({ visible, onCancel, onSuccess, categories, tagSuggestions }) 
     >
       <Form form={form} layout="vertical" onFinish={handleSubmit}>
         <Form.Item name="category" label="选择板块" rules={[{ required: true, message: '请选择板块' }]}>
-          <Select placeholder="请选择板块">
+          <Select placeholder="请选择板块" size="large">
             {categories.filter((cat) => cat.value !== 'all').map((cat) => (
               <Select.Option key={cat.value} value={cat.value}>{cat.label}</Select.Option>
             ))}
@@ -186,7 +186,7 @@ const PostForm = ({ visible, onCancel, onSuccess, categories, tagSuggestions }) 
         </Form.Item>
 
         <Form.Item name="title" label="帖子标题" rules={[{ required: true, message: '请输入标题' }]}>
-          <Input placeholder="请输入帖子标题" maxLength={200} showCount />
+          <Input placeholder="请输入帖子标题" maxLength={200} showCount size="large" />
         </Form.Item>
 
         <Form.Item name="content" label="帖子内容" rules={[{ required: true, message: '请输入内容' }]}>
@@ -219,6 +219,7 @@ const PostForm = ({ visible, onCancel, onSuccess, categories, tagSuggestions }) 
             mode="tags"
             placeholder="添加标签（可选）"
             style={{ width: '100%' }}
+            size="large"
             options={tagSuggestions.map((tag) => ({ value: tag, label: tag }))}
           />
         </Form.Item>

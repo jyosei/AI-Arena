@@ -63,17 +63,14 @@ export default function Leaderboard() {
             <Select.Option value="f1">F1</Select.Option>
           </Select>
         </div>
-        {loading ? (
-          <Spin />
-        ) : (
-          <Table
-            dataSource={rows}
-            columns={columns}
-            rowKey={(r) => r.id}
-            size="middle"
-            scroll={{ x: 800 }}
-          />
-        )}
+        <Table
+          dataSource={rows}
+          columns={columns}
+          rowKey={(r) => r.id}
+          size="middle"
+          scroll={{ x: 800 }}
+          loading={loading}
+        />
       </Card>
     </div>
   );
