@@ -687,7 +687,7 @@ export default function ChatPage() {
                   <List.Item style={{ border: 'none', padding: '8px 0' }}>
                     <div style={{ display: 'flex', alignItems: 'flex-start', width: '100%', flexDirection: message.isUser ? 'row-reverse' : 'row' }}>
                       <Avatar icon={message.isUser ? <UserOutlined /> : <RobotOutlined />} style={{ backgroundColor: message.isUser ? '#000' : '#595959', margin: message.isUser ? '0 0 0 12px' : '0 12px 0 0' }} />
-                      <div style={{ background: message.isUser ? '#000' : '#f5f5f5', color: message.isUser ? '#fff' : '#000', padding: '8px 12px', borderRadius: 12, maxWidth: '70%', overflowX: 'auto' }}>
+                      <div className={`bubble ${message.isError ? 'bubble--error' : (message.isUser ? 'bubble--user' : 'bubble--ai')}`}>
                         {renderMessageContent(message)}
                       </div>
                     </div>
@@ -720,7 +720,7 @@ export default function ChatPage() {
                     {leftMessages.map((msg, index) => (
                       <div key={index} style={{ display: 'flex', justifyContent: msg.isUser ? 'flex-end' : 'flex-start', marginBottom: 12 }}>
                         {!msg.isUser && <Avatar icon={<RobotOutlined />} style={{ backgroundColor: '#595959', marginRight: 8 }} />}
-                        <div style={{ background: msg.isUser ? '#000' : (msg.isError ? '#ffebee' : '#f5f5f5'), color: msg.isUser ? 'white' : (msg.isError ? '#c62828' : 'black'), padding: '8px 12px', borderRadius: '8px', maxWidth: '80%', wordBreak: 'break-word', overflowX: 'auto' }}>
+                        <div className={`bubble ${msg.isError ? 'bubble--error' : (msg.isUser ? 'bubble--user' : 'bubble--ai')}`} style={{ maxWidth: '80%' }}>
                           {renderMessageContent(msg)}
                         </div>
                         {msg.isUser && <Avatar icon={<UserOutlined />} style={{ backgroundColor: '#000', marginLeft: 8 }} />}
@@ -742,7 +742,7 @@ export default function ChatPage() {
                     {rightMessages.map((msg, index) => (
                       <div key={index} style={{ display: 'flex', justifyContent: msg.isUser ? 'flex-end' : 'flex-start', marginBottom: 12 }}>
                         {!msg.isUser && <Avatar icon={<RobotOutlined />} style={{ backgroundColor: '#595959', marginRight: 8 }} />}
-                        <div style={{ background: msg.isUser ? '#000' : (msg.isError ? '#ffebee' : '#f5f5f5'), color: msg.isUser ? 'white' : (msg.isError ? '#c62828' : 'black'), padding: '8px 12px', borderRadius: '8px', maxWidth: '80%', wordBreak: 'break-word', overflowX: 'auto' }}>
+                        <div className={`bubble ${msg.isError ? 'bubble--error' : (msg.isUser ? 'bubble--user' : 'bubble--ai')}`} style={{ maxWidth: '80%' }}>
                           {renderMessageContent(msg)}
                         </div>
                         {msg.isUser && <Avatar icon={<UserOutlined />} style={{ backgroundColor: '#000', marginLeft: 8 }} />}
