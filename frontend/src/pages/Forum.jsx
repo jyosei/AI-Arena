@@ -351,7 +351,8 @@ export default function Forum() {
   const handlePostClick = (postId) => navigate(`/forum/post/${postId}`);
 
   return (
-    <Card title="社区论坛">
+    <div className="container">
+    <Card title="社区论坛" bordered>
       <Row justify="space-between" align="middle" style={{ marginBottom: 24 }}>
         <Col>
           <Space wrap size="middle">
@@ -412,7 +413,7 @@ export default function Forum() {
                     <img
                       src={item.thumbnail}
                       alt="帖子预览图"
-                      style={{ width: 140, height: 100, objectFit: 'cover', borderRadius: 6, border: '1px solid #f0f0f0' }}
+                      style={{ width: 140, height: 100, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }}
                       onClick={(e) => { e.stopPropagation(); handlePostClick(item.id); }}
                     />
                   ) : null}
@@ -435,7 +436,16 @@ export default function Forum() {
                 </Space>
               }
                 onClick={() => handlePostClick(item.id)}
-                style={{ cursor: 'pointer' }}
+                style={{
+                  cursor: 'pointer',
+                  border: '1px solid var(--border)',
+                  borderRadius: '12px',
+                  padding: '16px',
+                  transition: 'background .2s ease, box-shadow .2s ease',
+                  boxShadow: 'var(--shadow-sm)'
+                }}
+                onMouseEnter={(e)=>{ e.currentTarget.style.background = '#fafafa'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
+                onMouseLeave={(e)=>{ e.currentTarget.style.background = 'transparent'; e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; }}
               >
               <List.Item.Meta
                 avatar={<Avatar src={item.author?.avatar} icon={<UserOutlined />} />}
@@ -465,7 +475,7 @@ export default function Forum() {
           }}
         />
       )}
-
+      
       <PostForm
         visible={showPostForm}
         onCancel={() => setShowPostForm(false)}
@@ -474,5 +484,6 @@ export default function Forum() {
         tagSuggestions={tagSuggestions}
       />
     </Card>
+    </div>
   );
 }

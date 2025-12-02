@@ -228,7 +228,11 @@ export default function UserCenter() {
   // 通知功能已迁出到顶部铃铛组件,此页不再包含通知模块
 
   if (!user) {
-    return <Card>请先登录后再访问用户中心。</Card>;
+    return (
+      <div className="container">
+        <Card bordered>请先登录后再访问用户中心。</Card>
+      </div>
+    );
   }
 
   const tabItems = [
@@ -350,8 +354,10 @@ export default function UserCenter() {
   ];
 
   return (
-    <Card title="用户中心">
-      <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems} />
-    </Card>
+    <div className="container">
+      <Card title="用户中心" bordered>
+        <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems} />
+      </Card>
+    </div>
   );
 }
