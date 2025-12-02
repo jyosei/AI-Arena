@@ -209,7 +209,7 @@ class EvaluateModelView(APIView):
             return Response({"error": "model_name 和 (prompt 或 image) 是必需的。"}, status=400)
 
         try:
-            model_service = get_model_service(model_name)
+            model_service = get_chat_model_service(model_name)
             
             # 获取或创建 conversation
             if conversation_id:
@@ -347,7 +347,7 @@ class BattleModelView(APIView):
             try:
                 # 使用 model_name 或 model_a_name（为了兼容性）
                 model_name = model_name or model_a_name
-                model_service = get_model_service(model_name)
+                model_service = get_chat_model_service(model_name)
                 response_data = model_service.evaluate(prompt, model_name)
 
                 # 保存到数据库
@@ -395,14 +395,22 @@ class BattleModelView(APIView):
             chosen_models = random.sample(available_models, 2)
             model_a_name, model_b_name = chosen_models[0], chosen_models[1]
 
+            # 如果已创建会话但尚未设置具体模型名，则在匿名对战确定模型后进行回填
+            if conversation and not conversation.model_name:
+                try:
+                    conversation.model_name = f"{model_a_name} vs {model_b_name}"
+                    conversation.save(update_fields=["model_name"])
+                except Exception as _:
+                    pass
+
         # 场景2：指定对战 (Side-by-Side)
         # 如果前端提供了 model_a 和 model_b，则代码会自然地执行到这里
         # 无需额外处理
 
         try:
             # 获取两个模型对应的服务实例
-            model_a_service = get_model_service(model_a_name)
-            model_b_service = get_model_service(model_b_name)
+            model_a_service = get_chat_model_service(model_a_name)
+            model_b_service = get_chat_model_service(model_b_name)
 
             # 调用各自的 evaluate 方法 (后续可优化为并行)
             response_a_data = model_a_service.evaluate(prompt, model_a_name)
@@ -665,7 +673,7 @@ class AnalyzeImageView(APIView):
 
         try:
             # --- 1. 获取模型服务 (现在是统一的方式) ---
-            model_service = get_model_service(model_name)
+            model_service = get_chat_model_service(model_name)
 
             # --- 2. 获取或创建对话 ---
             if conversation_id:
