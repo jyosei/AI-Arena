@@ -44,7 +44,7 @@ def get_evaluation_model_service(model_name: str, api_key: str) -> BaseEvaluatio
         # 官方地址
         "gpt-": "https://jeniya.cn/v1",
         "glm-": "https://jeniya.cn/v1",
-        "deepseek-": "https://jeniya.cn/v1",
+        "deepseek-": "https://api.deepseek.com",
         # ... 在这里添加其他模型的官方 base_url ...
 
         # --- 您的国内代理地址 ---

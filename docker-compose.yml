@@ -1,4 +1,3 @@
-version: "3.9"
 volumes:
   db_data:
 
@@ -17,8 +16,8 @@ services:
 
   backend:
     build: ./backend
-    # 不再需要对外暴露端口，因为它只和 frontend 通信
-    #ports: ["8000:8000"] 
+    # 不再需要对外暴露端口，因为它只与 frontend 通信
+    #ports: ["8000:8000"]
     depends_on: [db]
     volumes: ["./backend:/app"]
     environment:
@@ -28,24 +27,54 @@ services:
       DB_HOST: 'db'
       DB_PORT: '3306'
       # 在这里添加您的 API Key
-      OPENAI_API_KEY: 'sk-ser2cEa4NSlALdseJwob4oube3Trg0NOLwvXEH7yUAeYy9k9' 
+      OPENAI_API_KEY: 'sk-ser2cEa4NSlALdseJwob4oube3Trg0NOLwvXEH7yUAeYy9k9'
+      # GitHub OAuth 配置 (将占位值替换成你的实际应用配置)
+      GITHUB_CLIENT_ID: 'Ov23li8J7zm7OnqPEL02'
+      GITHUB_CLIENT_SECRET: '8eb5be5e9ddd980a53a3cbe83320cb5921c7be8c'
+      # GitHub OAuth 回调必须指向后端 API 路由
+      # 确保 GitHub OAuth App 的回调设置与此一致
+      GITHUB_REDIRECT_URI: 'http://localhost:8000/api/users/github/callback/'
+      FRONTEND_URL: 'http://localhost:8000'
     # 关键修改：
     # 1. 使用 bash -c 来确保脚本由 bash 执行
     # 2. 确保 wait-for-db.sh 脚本在本地 ./backend 文件夹中存在
     command: >
-      bash -c "sed -i 's/\r$//' wait-for-db.sh &&
+      bash -c "dos2unix wait-for-db.sh 2>/dev/null || sed -i 's/\r$//' wait-for-db.sh &&
+               chmod +x wait-for-db.sh &&
                ./wait-for-db.sh db python manage.py migrate &&
-               python manage.py runserver 0.0.0.0:8000"
+               python manage.py runserver 0.0.0.0:8000 --noreload"
 
-  frontend: # <-- 🌟 确保这里有正确的缩进，使其成为 services 的子项
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports: ["3000:3000"]
+    depends_on: [db]
+    volumes: 
+      - ./src:/app/src
+      - ./package.json:/app/package.json
+      - ./tsconfig.json:/app/tsconfig.json
+      - ./.env:/app/.env
+    environment:
+      DB_HOST: 'db'
+      DB_PORT: '3306'
+      DB_USER: 'root'
+      DB_PASSWORD: '123456'
+      DB_NAME: 'aiarena'
+      JWT_SECRET: 'your_jwt_secret_key_change_this_in_production'
+      JWT_EXPIRES_IN: '7d'
+      NODE_ENV: 'development'
+      PORT: '3000'
+    command: sh -c "npm install && npm run dev"
+
+  frontend:
     build:
       context: ./frontend
       args:
-        # 使用相对路径 /api/，让浏览器中的请求走 nginx 的 /api/ 代理到后端
         VITE_API_BASE: /api/
-    ports: ["8000:80"]  # 主机 8000 映射到容器内 Nginx 监听的 80 端口
+        VITE_PUBLIC_ORIGIN: http://localhost:8000
+    ports:
+      - "8000:80"
     depends_on:
       - backend
-    # 添加 volumes 来挂载 Nginx 配置文件
-    #volumes:
-     # - ./frontend/nginx:/etc/nginx/conf.d
+      - api
