@@ -227,6 +227,11 @@ const AppLayout = () => {
               icon: <MessageOutlined />,
               label: <Link to="/evaluate-dataset">数据集上传</Link>,
             },
+            { // <-- 这是新添加的项
+              key: '5',
+              icon: <MessageOutlined />,
+              label: <Link to="/benchmark-leaderboard">客观排行榜</Link>,
+            },
           ]}
           // ---
         />

@@ -78,6 +78,7 @@ function App() {
                     )}
                   />
                   <Route path="/evaluate-dataset" element={<DatasetEvaluationPage />} />
+                  <Route path="benchmark-leaderboard" element={<BenchmarkLeaderboard />} /> 
                 </Route>
                 <Route path="/login" element={<Login />} />
               </Routes>
