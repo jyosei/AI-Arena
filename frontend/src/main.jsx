@@ -89,6 +89,7 @@ function App() {
                   {/* 保留 shallcheer 的用户面板 */}
                   <Route path="/user" element={<UserPanel />} />
                   <Route path="/evaluate-dataset" element={<DatasetEvaluationPage />} />
+                  <Route path="benchmark-leaderboard" element={<BenchmarkLeaderboard />} /> 
                 </Route>
               </Routes>
             </DialogProvider>
