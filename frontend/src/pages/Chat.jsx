@@ -40,6 +40,8 @@ export default function ChatPage() {
   const { chatHistory } = useChat();
   const { mode, setMode, models, leftModel, rightModel, setLeftModel, setRightModel } = useMode();
   const { user } = React.useContext(AuthContext);
+  // Direct Chat 独立模型选择，避免影响 battle/side-by-side 的左右模型
+  const [directModel, setDirectModel] = useState(null);
 
   const conv = chatHistory.find(c => String(c.id) === String(id));
   const title = conv ? conv.title : '会话';
@@ -91,8 +93,8 @@ export default function ChatPage() {
         if (left) setLeftModel(left);
         if (right) setRightModel(right);
       } else if (savedMode === 'direct-chat') {
-        // Direct Chat 模式：只设置左侧模型
-        setLeftModel(conv.model_name);
+        // Direct Chat 模式：不影响全局 leftModel，使用局部 directModel
+        setDirectModel(conv.model_name);
       }
     }
   }, [id, savedMode, conv?.model_name, mode, setMode, setLeftModel, setRightModel]);
@@ -121,12 +123,16 @@ export default function ChatPage() {
   const savedModelName = conv?.model_name;
   const modelName = useMemo(() => {
     if (isGeneratingImage) {
-      // 如果是生成图片模式，从图片模型中选择
-      return leftModel && imageModels.some(m => m.name === leftModel) ? leftModel : imageModels[0]?.name;
+      // 生成图片模式使用 directModel，避免污染全局 leftModel
+      return directModel && imageModels.some(m => m.name === directModel) ? directModel : imageModels[0]?.name;
     }
-    // 否则，使用现有逻辑
+    if (mode === 'direct-chat') {
+      // Direct Chat 优先会话保存的模型，其次本地 directModel，再次默认文本模型
+      return conv?.model_name || directModel || textModels[0]?.name;
+    }
+    // 其他模式保持全局左右模型
     return conv?.model_name || leftModel || textModels[0]?.name;
-  }, [isGeneratingImage, leftModel, conv?.model_name, textModels, imageModels]);
+  }, [isGeneratingImage, mode, directModel, leftModel, conv?.model_name, textModels, imageModels]);
 
   const model = models.find(m => m.name === modelName) || null;
 
@@ -375,7 +381,7 @@ export default function ChatPage() {
         // 进入生成图片模式
         setUploadedImage(null); // 清除已上传的图片
         if (imageModels.length > 0) {
-          setLeftModel(imageModels[0].name); // 自动选择第一个图片模型
+          setDirectModel(imageModels[0].name); // 自动选择第一个图片模型（本地）
         } else {
           antdMessage.warning('没有可用的图片生成模型。');
           return false; // 阻止切换
@@ -383,7 +389,7 @@ export default function ChatPage() {
       } else {
         // 退出生成图片模式，恢复到默认文本模型
         if (textModels.length > 0) {
-          setLeftModel(textModels[0].name);
+          setDirectModel(textModels[0].name);
         }
       }
       return nextState;
@@ -527,7 +533,7 @@ export default function ChatPage() {
       let modelB = rightModel;
       
       // 如果还没有选择模型，随机选择
-      if (1) {
+      if (!modelA || !modelB) {
         // 过滤掉图片和视频模型
         const requiredCapability = currentImage ? 'vision' : 'chat';
         const filteredModels = models.filter(m => m.capabilities.includes(requiredCapability));
@@ -671,13 +677,13 @@ export default function ChatPage() {
     let winnerValue;
     if (choice === 'good') {
       // 用户觉得好：direct-chat 模式将当前模型作为胜者
-      winnerValue = leftModel;
+      winnerValue = directModel || model?.name || leftModel;
     } else {
       // 用户觉得不好：统一传递 'bad'，后端映射为 'both_bad'
       winnerValue = 'bad';
     }
     const voteData = {
-      model_a: leftModel,
+      model_a: directModel || model?.name || leftModel,
       model_b: null,
       prompt: lastUserMessage.content,
       winner: winnerValue,
