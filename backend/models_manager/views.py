@@ -107,7 +107,7 @@ class RecordVoteView(APIView):
 
     def post(self, request, *args, **kwargs):
         model_a = request.data.get('model_a')
-        model_b = request.data.get('model_b') # 可能是 null
+        model_b = request.data.get('model_b') # 可能是 null/空字符串
         prompt = request.data.get('prompt')
         winner = request.data.get('winner')
 
@@ -115,34 +115,70 @@ class RecordVoteView(APIView):
         if not all([model_a, prompt, winner]):
             return Response({'error': 'Missing required fields: model_a, prompt, winner'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 验证 winner 的值是否有效
-        # 允许 model_b 为 None 的情况
+        # 验证 winner 的值是否有效，并兼容前端的 'bad'/'good' 语义
+        # 允许 model_b 为 None 的情况（direct-chat 模式）
         valid_winners = [model_a]
         if model_b:
             valid_winners.append(model_b)
-        
+
         # 添加所有可能的投票选项
-        valid_winners.extend(['tie', 'both_bad'])
+        valid_winners.extend(['tie', 'both_bad', 'bad', 'good'])
 
         if winner not in valid_winners:
             return Response({'error': f'Invalid winner. Must be one of {valid_winners}'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # 将前端语义映射到后端存储：
+        # - 'bad' 统一存储为 'both_bad'
+        # - direct-chat 模式下的 'good' 映射为 model_a
+        if winner == 'bad':
+            winner_to_store = 'both_bad'
+        elif winner == 'good' and not model_b:
+            winner_to_store = model_a
+        else:
+            winner_to_store = winner
+
         # 创建并保存投票记录
+        # 确保 CharField 不接收 None，使用空字符串作为占位
+        safe_model_b = model_b or ""
         BattleVote.objects.create(
             model_a=model_a,
-            model_b=model_b,  # 可以为 null
+            model_b=safe_model_b,  # CharField 使用空字符串代表缺失
             prompt=prompt,
-            winner=winner,
+            winner=winner_to_store,
             voter=request.user if request.user.is_authenticated else None
         )
 
         # 如果是 battle 模式（model_b 存在），更新 ELO 评分
-        if model_b and winner in [model_a, model_b, 'tie', 'both_bad']:
+        if safe_model_b and winner_to_store in [model_a, safe_model_b, 'tie', 'both_bad']:
             try:
-                ELORatingSystem.process_battle(model_a, model_b, winner)
+                ELORatingSystem.process_battle(model_a, safe_model_b, winner_to_store)
             except Exception as e:
                 # 记录错误但不影响投票记录的保存
                 print(f"Error updating ELO ratings: {e}")
+
+        # 如果是 direct-chat 模式（model_b 缺失），更新单模型的统计以反映到排行榜
+        # 规则：
+        # - winner_to_store == model_a 视为一次“好评”，wins +1，total_battles +1
+        # - winner_to_store == 'tie'：改为“皆胜”策略，wins +1，total_battles +1
+        # - winner_to_store == 'both_bad'：记为“皆负”，losses +1，total_battles +1
+        # - 其他值忽略（不应出现），避免误更新
+        if not safe_model_b:
+            try:
+                from .models import AIModel
+                model, _ = AIModel.objects.get_or_create(name=model_a, defaults={"display_name": model_a})
+                model.total_battles += 1
+                if winner_to_store == model_a:
+                    model.wins += 1
+                elif winner_to_store == 'tie':
+                    model.wins += 1
+                elif winner_to_store == 'both_bad':
+                    model.losses += 1
+                else:
+                    # 非预期值，不更新 wins/losses/ties
+                    pass
+                model.save()
+            except Exception as e:
+                print(f"Error updating single-model stats: {e}")
 
         return Response(status=status.HTTP_200_OK)
 # 新增：模型列表视图

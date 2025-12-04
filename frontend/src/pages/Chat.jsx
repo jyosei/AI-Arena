@@ -630,9 +630,21 @@ export default function ChatPage() {
       return;
     }
 
+    // 在匿名 battle 模式下，leftModel/rightModel 可能未设置；
+    // 使用左右侧最新 AI 消息的真实 model_name 作为提交的模型名。
+    const lastLeftAi = [...leftMessages].reverse().find(m => !m.isUser && !m.isError && m.model_name);
+    const lastRightAi = [...rightMessages].reverse().find(m => !m.isUser && !m.isError && m.model_name);
+    const modelAName = lastLeftAi?.model_name || leftModel;
+    const modelBName = lastRightAi?.model_name || rightModel;
+
+    if (!modelAName || !modelBName) {
+      antdMessage.error('无法确定参与对战的模型名称。请重新开始对战。');
+      return;
+    }
+
     const voteData = {
-      model_a: leftModel,
-      model_b: rightModel,
+      model_a: modelAName,
+      model_b: modelBName,
       prompt: lastUserMessage.content, // 使用从历史记录中找到的 prompt
       winner: winnerChoice,
     };
@@ -658,18 +670,17 @@ export default function ChatPage() {
     }
     let winnerValue;
     if (choice === 'good') {
-      // 如果用户觉得好，那么获胜者就是当前模型
+      // 用户觉得好：direct-chat 模式将当前模型作为胜者
       winnerValue = leftModel;
     } else {
-      // 如果用户觉得不好，可以传递 'bad' 或者模型名称，这里我们统一为 'bad'
-      // 后端需要能处理 'bad' 这种特殊情况
+      // 用户觉得不好：统一传递 'bad'，后端映射为 'both_bad'
       winnerValue = 'bad';
     }
     const voteData = {
       model_a: leftModel,
       model_b: null,
       prompt: lastUserMessage.content,
-      winner: choice,
+      winner: winnerValue,
     };
 
     try {
@@ -833,7 +844,7 @@ export default function ChatPage() {
           </Space>
         </div>
       )}
-      {mode === 'direct-chat' && messages.some(m => !m.isUser && !m.isError) && !voted &&(
+      {mode === 'direct-chat' && messages.some(m => !m.isUser && !m.isError) && !directChatVoted &&(
         <div style={{ marginTop: 12, textAlign: 'center' }}>
           <Space wrap size={[8,8]} style={{ justifyContent: 'center' }}>
             <Button style={{ minWidth: 120 }} onClick={() => handleDirectChatVote('good')} disabled={directChatVoted}>👍 Good</Button>
