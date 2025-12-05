@@ -145,10 +145,11 @@ export default function UserCenter() {
         <List
           itemLayout="vertical"
           dataSource={posts}
+          grid={{ gutter: 16, xs: 1, sm: 1, md: 2, lg: 2, xl: 3, xxl: 4 }}
           renderItem={(item) => (
             <List.Item
               key={item.id}
-              style={{ cursor: 'pointer' }}
+              className="card-hover"
               onClick={() => navigate(`/forum/post/${item.id}`)}
               actions={[
                 <Space key="comments"><MessageOutlined /> {item.comments_count || 0}</Space>,
@@ -159,7 +160,7 @@ export default function UserCenter() {
               extra={
                 item.thumbnail ? (
                   <img
-                    src={item.thumbnail}
+                    src={resolveMediaUrl(item.thumbnail)}
                     alt="帖子预览图"
                     style={{ width: 120, height: 86, objectFit: 'cover', borderRadius: 6, border: '1px solid #f0f0f0' }}
                     onClick={(e) => { e.stopPropagation(); navigate(`/forum/post/${item.id}`); }}
@@ -175,7 +176,6 @@ export default function UserCenter() {
                     <Typography.Text type="secondary">
                       由 {item.author?.username || '匿名'} 发布于 {formatDateTime(item.created_at)}
                     </Typography.Text>
-                    {/* 兼容不同后端字段：category 或 category_obj */}
                     {item.category_obj?.name ? (
                       <Tag color="blue">{item.category_obj.name}</Tag>
                     ) : item.category ? (
@@ -200,10 +200,11 @@ export default function UserCenter() {
         <List
           itemLayout="vertical"
           dataSource={comments}
+          grid={{ gutter: 16, xs: 1, sm: 1, md: 2, lg: 2, xl: 3, xxl: 4 }}
           renderItem={(item) => (
             <List.Item
               key={item.id}
-              style={{ cursor: 'pointer' }}
+              className="card-hover"
               onClick={() => navigate(`/forum/post/${item.post}#comment-${item.id}`)}
               actions={[
                 <Space key="likes"><LikeOutlined /> {item.likes_count || 0}</Space>,
@@ -228,7 +229,11 @@ export default function UserCenter() {
   // 通知功能已迁出到顶部铃铛组件,此页不再包含通知模块
 
   if (!user) {
-    return <Card>请先登录后再访问用户中心。</Card>;
+    return (
+      <div className="container">
+        <Card bordered>请先登录后再访问用户中心。</Card>
+      </div>
+    );
   }
 
   const tabItems = [
@@ -236,88 +241,97 @@ export default function UserCenter() {
       key: 'profile',
       label: '个人资料',
       children: (
-        <Space direction="vertical" style={{ width: '100%' }} size="large">
-          <Card title="编辑资料" bordered>
-            <Form layout="vertical" form={profileForm} onFinish={handleProfileSubmit}>
-              <Form.Item label="用户名" name="username" rules={[{ required: true, message: '请输入用户名' }, { min: 3, message: '至少3个字符' }]}>
-                <Input maxLength={32} />
-              </Form.Item>
-              <Form.Item label="简介" name="description">
-                <Input.TextArea rows={3} maxLength={300} showCount />
-              </Form.Item>
-              <Form.Item label="外部头像URL" name="avatar" tooltip="如果填写将使用外链头像，上传文件将覆盖此设置">
-                <Input placeholder="https://example.com/avatar.png" />
-              </Form.Item>
-              <Form.Item
-                label="上传新头像"
-                name="avatar_file"
-                valuePropName="fileList"
-                getValueFromEvent={(e) => {
-                  if (Array.isArray(e)) return e;
-                  return e && e.fileList ? e.fileList.slice(-1) : [];
-                }}
-              >
-                <Dragger
-                  multiple={false}
-                  maxCount={1}
-                  beforeUpload={() => false}
-                  accept="image/png,image/jpeg,image/jpg,image/webp"
-                >
-                  <p className="ant-upload-drag-icon">
-                    <InboxOutlined />
-                  </p>
-                  <p className="ant-upload-text">点击或拖拽图片到此处上传</p>
-                  <p className="ant-upload-hint">仅支持常见图片格式，大小建议 &lt; 2MB</p>
-                </Dragger>
-              </Form.Item>
-              <Form.Item>
-                <Button type="primary" htmlType="submit" loading={savingProfile}>保存资料</Button>
-              </Form.Item>
-            </Form>
-          </Card>
+        <div style={{ width: '100%' }}>
+          {/* 单列（移动端）/ 双列（桌面端）由 .user-center-grid 控制 */}
+          <div className="user-center-grid">
+            <div>
+                <Card title="编辑资料" bordered>
+                  <Form layout="vertical" form={profileForm} onFinish={handleProfileSubmit}>
+                    <Form.Item label="用户名" name="username" rules={[{ required: true, message: '请输入用户名' }, { min: 3, message: '至少3个字符' }]}>
+                      <Input maxLength={32} />
+                    </Form.Item>
+                    <Form.Item label="简介" name="description">
+                      <Input.TextArea rows={3} maxLength={300} showCount />
+                    </Form.Item>
+                    <Form.Item label="外部头像URL" name="avatar" tooltip="如果填写将使用外链头像，上传文件将覆盖此设置">
+                      <Input placeholder="https://example.com/avatar.png" />
+                    </Form.Item>
+                    <Form.Item
+                      label="上传新头像"
+                      name="avatar_file"
+                      valuePropName="fileList"
+                      getValueFromEvent={(e) => {
+                        if (Array.isArray(e)) return e;
+                        return e && e.fileList ? e.fileList.slice(-1) : [];
+                      }}
+                    >
+                      <Dragger
+                        multiple={false}
+                        maxCount={1}
+                        beforeUpload={() => false}
+                        accept="image/png,image/jpeg,image/jpg,image/webp"
+                      >
+                        <p className="ant-upload-drag-icon">
+                          <InboxOutlined />
+                        </p>
+                        <p className="ant-upload-text">点击或拖拽图片到此处上传</p>
+                        <p className="ant-upload-hint">仅支持常见图片格式，大小建议 &lt; 2MB</p>
+                      </Dragger>
+                    </Form.Item>
+                    <Form.Item>
+                      <Button type="primary" htmlType="submit" loading={savingProfile}>保存资料</Button>
+                    </Form.Item>
+                  </Form>
+              </Card>
+            </div>
+            <div>
+              <Card title="修改密码" bordered>
+                  <Form layout="vertical" form={pwdForm} onFinish={handlePasswordSubmit}>
+                    <Form.Item label="当前密码" name="current_password" rules={[{ required: true, message: '请输入当前密码' }]}>
+                      <Input.Password />
+                    </Form.Item>
+                    <Form.Item label="新密码" name="new_password" rules={[{ required: true, message: '请输入新密码' }, { min: 6, message: '至少6个字符' }]}>
+                      <Input.Password />
+                    </Form.Item>
+                    <Form.Item label="确认新密码" name="confirm" dependencies={["new_password"]} rules={[{ required: true, message: '请确认新密码' }, ({ getFieldValue }) => ({ validator(_, value) { if (!value || getFieldValue('new_password') === value) { return Promise.resolve(); } return Promise.reject(new Error('两次输入不一致')); } })]}>
+                      <Input.Password />
+                    </Form.Item>
+                    <Form.Item>
+                      <Button type="primary" htmlType="submit" loading={changingPwd}>修改密码</Button>
+                    </Form.Item>
+                  </Form>
+              </Card>
+            </div>
 
-          <Card title="修改密码" bordered>
-            <Form layout="vertical" form={pwdForm} onFinish={handlePasswordSubmit}>
-              <Form.Item label="当前密码" name="current_password" rules={[{ required: true, message: '请输入当前密码' }]}>
-                <Input.Password />
-              </Form.Item>
-              <Form.Item label="新密码" name="new_password" rules={[{ required: true, message: '请输入新密码' }, { min: 6, message: '至少6个字符' }]}>
-                <Input.Password />
-              </Form.Item>
-              <Form.Item label="确认新密码" name="confirm" dependencies={["new_password"]} rules={[{ required: true, message: '请确认新密码' }, ({ getFieldValue }) => ({ validator(_, value) { if (!value || getFieldValue('new_password') === value) { return Promise.resolve(); } return Promise.reject(new Error('两次输入不一致')); } })]}>
-                <Input.Password />
-              </Form.Item>
-              <Form.Item>
-                <Button type="primary" htmlType="submit" loading={changingPwd}>修改密码</Button>
-              </Form.Item>
-            </Form>
-          </Card>
-
-          <Card bordered>
-            <Space direction="vertical" style={{ width: '100%' }}>
-              <Typography.Text type="secondary">安全操作</Typography.Text>
-              <Popconfirm title="确认退出登录？" okText="确认" cancelText="取消" onConfirm={() => { logout(); message.success('已退出'); }}>
-                <Button danger>退出登录</Button>
-              </Popconfirm>
-            </Space>
-          </Card>
-        </Space>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <Card bordered>
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  <Typography.Text type="secondary">安全操作</Typography.Text>
+                  <Popconfirm title="确认退出登录？" okText="确认" cancelText="取消" onConfirm={() => { logout(); message.success('已退出'); navigate('/'); }}>
+                    <Button danger>退出登录</Button>
+                  </Popconfirm>
+                </Space>
+              </Card>
+            </div>
+          </div>
+        </div>
       ),
     },
     {
       key: 'favorites',
       label: '我的收藏',
-      children: renderPostList(favoritePosts, loadingFavorites),
+      children: (<div style={{ width: '100%' }}>{renderPostList(favoritePosts, loadingFavorites)}</div>),
     },
     {
       key: 'history',
       label: '浏览历史',
-      children: renderPostList(historyPosts, loadingHistory),
+      children: (<div style={{ width: '100%' }}>{renderPostList(historyPosts, loadingHistory)}</div>),
     },
     {
       key: 'likes',
       label: '我赞过的',
       children: (
+        <div style={{ width: '100%' }}>
         <Space direction="vertical" style={{ width: '100%' }} size="large">
           {likedPosts.length > 0 && (
             <div>
@@ -340,18 +354,21 @@ export default function UserCenter() {
             </div>
           )}
         </Space>
+        </div>
       ),
     },
     {
       key: 'comments',
       label: '我的评论',
-      children: renderCommentList(myComments, loadingComments, true),
+      children: (<div style={{ width: '100%' }}>{renderCommentList(myComments, loadingComments, true)}</div>),
     },
   ];
 
   return (
-    <Card title="用户中心">
-      <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems} />
-    </Card>
+    <div className="container">
+      <Card title="用户中心" bordered>
+        <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems} />
+      </Card>
+    </div>
   );
 }

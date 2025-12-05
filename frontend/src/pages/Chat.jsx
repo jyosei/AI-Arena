@@ -64,8 +64,11 @@ export default function ChatPage() {
     return rightModel;
   }, [conv?.model_name, savedMode, rightModel]);
 
-  // 从 location.state 获取初始消息
+  // 从 location.state 获取初始消息与图片
   const initialPrompt = location.state?.initialPrompt;
+  const initialImage = location.state?.initialImage;
+  const autoSentRef = useRef(false);
+  const [shouldAutoSend, setShouldAutoSend] = useState(false);
   const iconButtonStyle = {
     width: '40px',
     height: '40px',
@@ -127,6 +130,26 @@ export default function ChatPage() {
 
   const model = models.find(m => m.name === modelName) || null;
 
+  // 确认模型准备就绪后再自动发送，避免过早发送导致失败
+  const modelReady = useMemo(() => {
+    if (mode === 'direct-chat') {
+      if (isGeneratingImage) {
+        return !!model && model.capabilities?.includes('image_generation');
+      }
+      return !!model;
+    }
+    if (mode === 'side-by-side') {
+      return !!leftModel && !!rightModel;
+    }
+    if (mode === 'battle') {
+      // 如果已经选择了左右模型则认为就绪；否则至少需要具备两个可聊天模型
+      if (leftModel && rightModel) return true;
+      const chatCapable = models.filter(m => m.capabilities?.includes('chat'));
+      return chatCapable.length >= 2;
+    }
+    return false;
+  }, [mode, model, leftModel, rightModel, models, isGeneratingImage]);
+
   // 注意：不要在模式切换时清空消息，因为用户可能想保留当前会话的历史
 
   useEffect(() => {
@@ -167,6 +190,19 @@ export default function ChatPage() {
           let rightModelName = displayRightModel;
           if (conv?.model_name && conv.model_name.includes(' vs ')) {
             [leftModelName, rightModelName] = conv.model_name.split(' vs ').map(s => s.trim());
+          }
+
+          // 如果保存的模型名与历史AI消息不一致，则从历史里推断
+          const aiModels = [...new Set(adapted.filter(m => !m.isUser && m.model_name).map(m => m.model_name))];
+          const isValid = (name) => !!name && aiModels.includes(name);
+          if (!isValid(leftModelName) || !isValid(rightModelName)) {
+            if (aiModels.length >= 2) {
+              leftModelName = aiModels[0];
+              rightModelName = aiModels[1];
+            } else if (aiModels.length === 1) {
+              leftModelName = aiModels[0];
+              rightModelName = aiModels[0];
+            }
           }
           
           console.log('Loading side-by-side messages:', {
@@ -224,13 +260,19 @@ export default function ChatPage() {
           let rightModelName = displayRightModel;
           if (conv?.model_name && conv.model_name.includes(' vs ')) {
             [leftModelName, rightModelName] = conv.model_name.split(' vs ').map(s => s.trim());
-          } else if (!leftModelName && !rightModelName) {
-            // 如果 conv.model_name 为 null，尝试从消息中推断模型名称
-            const aiMessages = adapted.filter(msg => !msg.isUser && msg.model_name);
-            if (aiMessages.length >= 2) {
-              const uniqueModels = [...new Set(aiMessages.map(m => m.model_name))];
+          }
+
+          // 关键：根据历史 AI 消息推断或校正左右模型名
+          const aiMsgs = adapted.filter(msg => !msg.isUser && msg.model_name);
+          const uniqueModels = [...new Set(aiMsgs.map(m => m.model_name))];
+          const isValidBattle = (name) => !!name && uniqueModels.includes(name);
+          if (!isValidBattle(leftModelName) || !isValidBattle(rightModelName)) {
+            if (uniqueModels.length >= 2) {
               leftModelName = uniqueModels[0];
-              rightModelName = uniqueModels[1] || uniqueModels[0];
+              rightModelName = uniqueModels[1];
+            } else if (uniqueModels.length === 1) {
+              leftModelName = uniqueModels[0];
+              rightModelName = uniqueModels[0];
             }
           }
           
@@ -287,15 +329,32 @@ export default function ChatPage() {
     loadMessages();
   }, [id, user, savedMode, leftModel, rightModel, conv?.model_name]);
 
-  // 处理从首页传来的初始消息
+  // 处理从首页传来的初始消息与图片，并自动发送一次
+  // 第一步：接收首页带来的初始输入，存到本地状态，并设置 shouldAutoSend
   useEffect(() => {
-    if (initialPrompt && !loadingHistory && !loading) {
-      // 自动填充输入框
-      setInputValue(initialPrompt);
-      // 清除 location.state 避免重复发送
+    if ((initialPrompt || initialImage) && !autoSentRef.current) {
+      if (initialPrompt) setInputValue(initialPrompt);
+      if (initialImage) setUploadedImage(initialImage);
+      autoSentRef.current = true;
+      setShouldAutoSend(true);
+      // 立刻清空路由 state，防止后退/刷新重复触发
       navigate(location.pathname, { replace: true, state: {} });
     }
-  }, [initialPrompt, loadingHistory, loading, navigate]);
+  }, [initialPrompt, initialImage, navigate]);
+
+  // 第二步：当模型就绪、历史加载完成，且标记为 shouldAutoSend 时触发一次发送
+  useEffect(() => {
+    if (
+      shouldAutoSend &&
+      !loadingHistory &&
+      !loading &&
+      modelReady &&
+      (inputValue.trim() || uploadedImage)
+    ) {
+      setShouldAutoSend(false);
+      handleSend();
+    }
+  }, [shouldAutoSend, loadingHistory, loading, modelReady, inputValue, uploadedImage]);
 
   // --- 关键修改 2: 添加图片选择和移除的处理函数 ---
   const handleImageUpload = (event) => {
@@ -468,7 +527,7 @@ export default function ChatPage() {
       let modelB = rightModel;
       
       // 如果还没有选择模型，随机选择
-      if (!leftModel || !rightModel) {
+      if (1) {
         // 过滤掉图片和视频模型
         const requiredCapability = currentImage ? 'vision' : 'chat';
         const filteredModels = models.filter(m => m.capabilities.includes(requiredCapability));
@@ -688,7 +747,7 @@ export default function ChatPage() {
                   <List.Item style={{ border: 'none', padding: '8px 0' }}>
                     <div style={{ display: 'flex', alignItems: 'flex-start', width: '100%', flexDirection: message.isUser ? 'row-reverse' : 'row' }}>
                       <Avatar icon={message.isUser ? <UserOutlined /> : <RobotOutlined />} style={{ backgroundColor: message.isUser ? '#000' : '#595959', margin: message.isUser ? '0 0 0 12px' : '0 12px 0 0' }} />
-                      <div style={{ background: message.isUser ? '#000' : '#f5f5f5', color: message.isUser ? '#fff' : '#000', padding: '8px 12px', borderRadius: 12, maxWidth: '70%', overflowX: 'auto' }}>
+                      <div className={`bubble ${message.isError ? 'bubble--error' : (message.isUser ? 'bubble--user' : 'bubble--ai')}`}>
                         {renderMessageContent(message)}
                       </div>
                     </div>
@@ -721,7 +780,7 @@ export default function ChatPage() {
                     {leftMessages.map((msg, index) => (
                       <div key={index} style={{ display: 'flex', justifyContent: msg.isUser ? 'flex-end' : 'flex-start', marginBottom: 12 }}>
                         {!msg.isUser && <Avatar icon={<RobotOutlined />} style={{ backgroundColor: '#595959', marginRight: 8 }} />}
-                        <div style={{ background: msg.isUser ? '#000' : (msg.isError ? '#ffebee' : '#f5f5f5'), color: msg.isUser ? 'white' : (msg.isError ? '#c62828' : 'black'), padding: '8px 12px', borderRadius: '8px', maxWidth: '80%', wordBreak: 'break-word', overflowX: 'auto' }}>
+                        <div className={`bubble ${msg.isError ? 'bubble--error' : (msg.isUser ? 'bubble--user' : 'bubble--ai')}`} style={{ maxWidth: '80%' }}>
                           {renderMessageContent(msg)}
                         </div>
                         {msg.isUser && <Avatar icon={<UserOutlined />} style={{ backgroundColor: '#000', marginLeft: 8 }} />}
@@ -743,7 +802,7 @@ export default function ChatPage() {
                     {rightMessages.map((msg, index) => (
                       <div key={index} style={{ display: 'flex', justifyContent: msg.isUser ? 'flex-end' : 'flex-start', marginBottom: 12 }}>
                         {!msg.isUser && <Avatar icon={<RobotOutlined />} style={{ backgroundColor: '#595959', marginRight: 8 }} />}
-                        <div style={{ background: msg.isUser ? '#000' : (msg.isError ? '#ffebee' : '#f5f5f5'), color: msg.isUser ? 'white' : (msg.isError ? '#c62828' : 'black'), padding: '8px 12px', borderRadius: '8px', maxWidth: '80%', wordBreak: 'break-word', overflowX: 'auto' }}>
+                        <div className={`bubble ${msg.isError ? 'bubble--error' : (msg.isUser ? 'bubble--user' : 'bubble--ai')}`} style={{ maxWidth: '80%' }}>
                           {renderMessageContent(msg)}
                         </div>
                         {msg.isUser && <Avatar icon={<UserOutlined />} style={{ backgroundColor: '#000', marginLeft: 8 }} />}
