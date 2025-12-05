@@ -4,15 +4,25 @@ from rest_framework.permissions import IsAuthenticated, AllowAny # 导入 AllowA
 from rest_framework.parsers import FormParser
 from rest_framework import status
 from rest_framework.parsers import JSONParser, MultiPartParser
+from django.http import StreamingHttpResponse
+from django.utils import timezone
+from django.db import transaction
+from django.shortcuts import get_object_or_404
 from .services import get_chat_model_service, get_evaluation_model_service, ELORatingSystem
-from .models import BattleVote, AIModel
-from .models import ChatConversation
-from .models import ChatMessage
+from .models import (
+    BattleVote,
+    AIModel,
+    ChatConversation,
+    ChatMessage,
+    DatasetEvaluationResult,
+    DatasetEvaluationSample,
+)
 from .serializers import ChatConversationSerializer, ChatMessageSerializer, AIModelSerializer
 import random
 import time
 import base64
 import os
+import json
 from django.conf import settings
 import csv 
 import re
@@ -209,7 +219,7 @@ class EvaluateModelView(APIView):
             return Response({"error": "model_name 和 (prompt 或 image) 是必需的。"}, status=400)
 
         try:
-            model_service = get_model_service(model_name)
+            model_service = get_chat_model_service(model_name)
             
             # 获取或创建 conversation
             if conversation_id:
@@ -347,7 +357,7 @@ class BattleModelView(APIView):
             try:
                 # 使用 model_name 或 model_a_name（为了兼容性）
                 model_name = model_name or model_a_name
-                model_service = get_model_service(model_name)
+                model_service = get_chat_model_service(model_name)
                 response_data = model_service.evaluate(prompt, model_name)
 
                 # 保存到数据库
@@ -401,8 +411,8 @@ class BattleModelView(APIView):
 
         try:
             # 获取两个模型对应的服务实例
-            model_a_service = get_model_service(model_a_name)
-            model_b_service = get_model_service(model_b_name)
+            model_a_service = get_chat_model_service(model_a_name)
+            model_b_service = get_chat_model_service(model_b_name)
 
             # 调用各自的 evaluate 方法 (后续可优化为并行)
             response_a_data = model_a_service.evaluate(prompt, model_a_name)
@@ -665,7 +675,7 @@ class AnalyzeImageView(APIView):
 
         try:
             # --- 1. 获取模型服务 (现在是统一的方式) ---
-            model_service = get_model_service(model_name)
+            model_service = get_chat_model_service(model_name)
 
             # --- 2. 获取或创建对话 ---
             if conversation_id:
@@ -761,6 +771,9 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 class EvaluateDatasetView(APIView):
     permission_classes = [IsAuthenticated]
 
+    def _json_line(self, payload: dict) -> bytes:
+        return (json.dumps(payload, ensure_ascii=True) + "\n").encode('utf-8')
+
     def _extract_final_answer(self, text: str) -> str:
         """从文本中提取 #### 后面的数字答案"""
         match = re.search(r'####\s*([\d,.-]+)', text)
@@ -776,95 +789,196 @@ class EvaluateDatasetView(APIView):
             return match[-1].replace(',', '')
         return ""
 
-    def _evaluate_gsm8k(self, model_service, prompts,model_name:str):
+    def _evaluate_gsm8k(self, model_service, prompts, model_name: str):
         """处理 gsm8k 类型的数学推理任务"""
         correct = 0
+        evaluated = 0
         error_samples = []
-        
-        for row in prompts:
+        samples = []
+        started_at = time.perf_counter()
+
+        for idx, row in enumerate(prompts, start=1):
             question = row.get('question')
             true_answer_text = row.get('answer')
             if not question or not true_answer_text:
+                samples.append({
+                    "index": idx,
+                    "prompt": question or "",
+                    "expected_answer": "",
+                    "model_response": "",
+                    "is_correct": None,
+                    "included_in_metrics": False,
+                    "skipped": True,
+                    "sample_time": None,
+                    "message": "缺少 question 或 answer 字段",
+                })
                 continue
 
             true_final_answer = self._extract_final_answer(true_answer_text)
-            
-            # 使用思维链 Prompt
-            prompt_to_model = f"Question: {question}\n\nLet's think step by step, and then write the final answer in the format '#### <number>'."
-            
+
+            prompt_to_model = (
+                "Question: "
+                + question
+                + "\n\nLet's think step by step, and then write the final answer in the format '#### <number>'."
+            )
+
+            sample_started = time.perf_counter()
+            model_response = ""
+            sample_error = None
             try:
                 model_response = model_service.evaluate(prompt=prompt_to_model, model_name=model_name)
-                model_final_answer = self._extract_final_answer(model_response)
+            except Exception as exc:
+                sample_error = f"API Error: {exc}"
+                model_response = sample_error
 
-                if model_final_answer and true_final_answer and model_final_answer == true_final_answer:
-                    correct += 1
-                else:
-                    if len(error_samples) < 5:
-                        error_samples.append({
-                            "prompt": question,
-                            "expected_answer": true_final_answer,
-                            "model_response": model_response
-                        })
-            except Exception as e:
-                if len(error_samples) < 5:
-                    error_samples.append({"prompt": question, "expected_answer": true_final_answer, "model_response": f"API Error: {e}"})
+            sample_time = round(time.perf_counter() - sample_started, 3)
+            model_final_answer = self._extract_final_answer(model_response)
+            is_correct = bool(
+                model_final_answer and true_final_answer and model_final_answer == true_final_answer
+            ) if sample_error is None else None
+            included_in_metrics = sample_error is None
 
-        accuracy = (correct / len(prompts) * 100) if prompts else 0
+            if included_in_metrics:
+                evaluated += 1
+
+            if is_correct:
+                correct += 1
+            elif len(error_samples) < 5:
+                error_samples.append({
+                    "prompt": question,
+                    "expected_answer": true_final_answer,
+                    "model_response": model_response,
+                })
+
+            samples.append({
+                "index": idx,
+                "prompt": question,
+                "expected_answer": true_final_answer,
+                "model_response": model_response,
+                "is_correct": is_correct,
+                "included_in_metrics": included_in_metrics,
+                "skipped": False,
+                "sample_time": sample_time,
+                "message": sample_error or "",
+            })
+
+        total_elapsed = round(time.perf_counter() - started_at, 3)
+        accuracy = (correct / evaluated * 100) if evaluated else 0
         return {
             "benchmark_type": "Math Reasoning (GSM8K)",
             "metrics": {"accuracy": round(accuracy, 2)},
             "total_prompts": len(prompts),
+            "evaluated_prompts": evaluated,
             "correct_answers": correct,
             "error_samples": error_samples,
+            "elapsed_seconds": total_elapsed,
+            "samples": samples,
         }
 
-    def _evaluate_classification(self, model_service, prompts,model_name:str):
+    def _evaluate_classification(self, model_service, prompts, model_name: str):
         """处理 rotten_tomatoes 类型的分类任务"""
         predictions = []
         ground_truth = []
         error_samples = []
+        samples = []
+        started_at = time.perf_counter()
 
-        for row in prompts:
+        for idx, row in enumerate(prompts, start=1):
             text = row.get('text')
             label = row.get('label')
-            if not text or label is None:
+            if text is None or label is None:
+                samples.append({
+                    "index": idx,
+                    "prompt": text or "",
+                    "expected_answer": "",
+                    "model_response": "",
+                    "is_correct": None,
+                    "included_in_metrics": False,
+                    "skipped": True,
+                    "sample_time": None,
+                    "message": "缺少 text 或 label 字段",
+                })
                 continue
 
-            ground_truth.append(int(label))
-            
-            # 引导模型做选择题
-            prompt_to_model = f"Analyze the sentiment of the following movie review. Respond with only the word 'positive' or 'negative'.\n\nReview: '{text}'"
-            
+            try:
+                label_int = int(label)
+            except (ValueError, TypeError):
+                samples.append({
+                    "index": idx,
+                    "prompt": text,
+                    "expected_answer": str(label),
+                    "model_response": "",
+                    "is_correct": None,
+                    "included_in_metrics": False,
+                    "skipped": True,
+                    "sample_time": None,
+                    "message": "label 无法解析为整数",
+                })
+                continue
+
+            prompt_to_model = (
+                "Analyze the sentiment of the following movie review. Respond with only the word 'positive' or 'negative'.\n\nReview: '"
+                + text
+                + "'"
+            )
+
+            sample_started = time.perf_counter()
+            predicted_label = None
+            model_response = ""
+            sample_error = None
             try:
                 model_response = model_service.evaluate(prompt=prompt_to_model, model_name=model_name).lower()
-                
                 predicted_label = 1 if 'positive' in model_response else 0
-                predictions.append(predicted_label)
+            except Exception as exc:
+                sample_error = f"API Error: {exc}"
+                model_response = sample_error
 
-                if predicted_label != int(label) and len(error_samples) < 5:
+            sample_time = round(time.perf_counter() - sample_started, 3)
+
+            included_in_metrics = predicted_label is not None
+            is_correct = None
+
+            if included_in_metrics:
+                ground_truth.append(label_int)
+                predictions.append(predicted_label)
+                is_correct = predicted_label == label_int
+                if not is_correct and len(error_samples) < 5:
                     error_samples.append({
                         "prompt": text,
-                        "expected_answer": "positive" if int(label) == 1 else "negative",
-                        "model_response": model_response
+                        "expected_answer": "positive" if label_int == 1 else "negative",
+                        "model_response": model_response,
                     })
-            except Exception as e:
-                # 如果API出错，可以记为一个错误预测或跳过
-                predictions.append(-1) # -1 表示错误
+            else:
                 if len(error_samples) < 5:
-                    error_samples.append({"prompt": text, "expected_answer": "positive" if int(label) == 1 else "negative", "model_response": f"API Error: {e}"})
+                    error_samples.append({
+                        "prompt": text,
+                        "expected_answer": "positive" if label_int == 1 else "negative",
+                        "model_response": model_response,
+                    })
 
-        # 过滤掉API出错的-1
-        valid_indices = [i for i, p in enumerate(predictions) if p != -1]
-        predictions = [predictions[i] for i in valid_indices]
-        ground_truth = [ground_truth[i] for i in valid_indices]
+            samples.append({
+                "index": idx,
+                "prompt": text,
+                "expected_answer": "positive" if label_int == 1 else "negative",
+                "model_response": model_response,
+                "is_correct": is_correct,
+                "included_in_metrics": included_in_metrics,
+                "skipped": False,
+                "sample_time": sample_time,
+                "message": sample_error or "",
+            })
 
-        if not predictions:
-            return {"metrics": {"accuracy": 0, "precision": 0, "recall": 0, "f1_score": 0}}
+        total_elapsed = round(time.perf_counter() - started_at, 3)
 
-        accuracy = accuracy_score(ground_truth, predictions)
-        precision = precision_score(ground_truth, predictions, average='binary', zero_division=0)
-        recall = recall_score(ground_truth, predictions, average='binary', zero_division=0)
-        f1 = f1_score(ground_truth, predictions, average='binary', zero_division=0)
+        if ground_truth and predictions:
+            accuracy = accuracy_score(ground_truth, predictions)
+            precision = precision_score(ground_truth, predictions, average='binary', zero_division=0)
+            recall = recall_score(ground_truth, predictions, average='binary', zero_division=0)
+            f1 = f1_score(ground_truth, predictions, average='binary', zero_division=0)
+        else:
+            accuracy = precision = recall = f1 = 0
+
+        evaluated_prompts = len(predictions)
 
         return {
             "benchmark_type": "Sentiment Classification",
@@ -875,9 +989,71 @@ class EvaluateDatasetView(APIView):
                 "f1_score": round(f1 * 100, 2),
             },
             "total_prompts": len(prompts),
-            "evaluated_prompts": len(predictions),
+            "evaluated_prompts": evaluated_prompts,
+            "correct_answers": int(sum(1 for p, g in zip(predictions, ground_truth) if p == g)),
             "error_samples": error_samples,
+            "elapsed_seconds": total_elapsed,
+            "samples": samples,
         }
+
+    def _persist_evaluation(self, request, dataset_name, model_name, evaluation_mode, summary, samples):
+        user = request.user if request.user.is_authenticated else None
+        completed_at = timezone.now()
+        base_extra = summary.get('extra')
+        extra_payload = {'source': 'sync'}
+        if isinstance(base_extra, dict):
+            extra_payload.update(base_extra)
+
+        with transaction.atomic():
+            evaluation_record = DatasetEvaluationResult.objects.create(
+                user=user,
+                dataset_name=dataset_name,
+                model_name=model_name,
+                evaluation_mode=evaluation_mode,
+                benchmark_type=summary.get('benchmark_type', ''),
+                total_prompts=summary.get('total_prompts') or len(samples),
+                evaluated_prompts=summary.get('evaluated_prompts', 0),
+                correct_answers=summary.get('correct_answers', 0),
+                metrics=summary.get('metrics', {}),
+                error_samples=summary.get('error_samples', []),
+                elapsed_seconds=summary.get('elapsed_seconds', 0),
+                status='completed',
+                extra=extra_payload,
+                completed_at=completed_at,
+            )
+
+            sample_objects = []
+            for sample in samples:
+                sample_objects.append(
+                    DatasetEvaluationSample(
+                        result=evaluation_record,
+                        index=sample.get('index') or len(sample_objects) + 1,
+                        prompt=sample.get('prompt', ''),
+                        expected_answer=sample.get('expected_answer', ''),
+                        model_response=sample.get('model_response', ''),
+                        is_correct=sample.get('is_correct'),
+                        included_in_metrics=sample.get('included_in_metrics', True),
+                        skipped=sample.get('skipped', False),
+                        sample_time=sample.get('sample_time'),
+                        message=sample.get('message', ''),
+                        extra={k: v for k, v in sample.items() if k not in {
+                            'index',
+                            'prompt',
+                            'expected_answer',
+                            'model_response',
+                            'is_correct',
+                            'included_in_metrics',
+                            'skipped',
+                            'sample_time',
+                            'message',
+                        }},
+                    )
+                )
+
+            if sample_objects:
+                DatasetEvaluationSample.objects.bulk_create(sample_objects)
+
+        return evaluation_record
 
     def post(self, request, *args, **kwargs):
         dataset_name = request.data.get('dataset_name')
@@ -902,9 +1078,11 @@ class EvaluateDatasetView(APIView):
             # --- 智能判断任务类型 ---
             if 'question' in fieldnames and 'answer' in fieldnames:
                 # 判定为 GSM8K 类型
+                evaluation_mode = 'gsm8k'
                 result = self._evaluate_gsm8k(model_service, prompts, model_name=model_name)
             elif 'text' in fieldnames and 'label' in fieldnames:
                 # 判定为分类任务类型
+                evaluation_mode = 'classification'
                 result = self._evaluate_classification(model_service, prompts, model_name=model_name)
             else:
                 return Response({"error": "数据集格式不被支持。需要 (question, answer) 或 (text, label) 列。"}, status=400)
@@ -912,6 +1090,17 @@ class EvaluateDatasetView(APIView):
             # 补充通用信息
             result['model_name'] = model_name
             result['dataset_name'] = dataset_name
+            samples = result.pop('samples', [])
+
+            evaluation_record = self._persist_evaluation(
+                request=request,
+                dataset_name=dataset_name,
+                model_name=model_name,
+                evaluation_mode=evaluation_mode,
+                summary=result,
+                samples=samples,
+            )
+            result['evaluation_id'] = evaluation_record.id
             
             return Response(result, status=status.HTTP_200_OK)
 
@@ -919,3 +1108,593 @@ class EvaluateDatasetView(APIView):
             import traceback
             traceback.print_exc()
             return Response({"error": f"处理时发生严重错误: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class EvaluateDatasetStreamView(EvaluateDatasetView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        dataset_name = request.data.get('dataset_name')
+        model_name = request.data.get('model_name')
+        user_api_key = request.data.get('api_key')
+
+        if not dataset_name or not model_name:
+            return Response({"error": "必须提供数据集和模型名称"}, status=status.HTTP_400_BAD_REQUEST)
+
+        dataset_path = settings.BASE_DIR / 'dataset_files' / dataset_name
+        if not os.path.exists(dataset_path):
+            return Response({"error": f"数据集文件 '{dataset_name}' 不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            model_service = get_evaluation_model_service(model_name, api_key=user_api_key)
+        except Exception as exc:
+            return Response({"error": f"无法初始化模型服务: {exc}"}, status=status.HTTP_400_BAD_REQUEST)
+
+        with open(dataset_path, mode='r', encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f)
+            prompts = list(reader)
+            fieldnames = reader.fieldnames or []
+
+        if not prompts:
+            return Response({"error": "数据集中没有可用的样本"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if 'question' in fieldnames and 'answer' in fieldnames:
+            evaluation_mode = 'gsm8k'
+        elif 'text' in fieldnames and 'label' in fieldnames:
+            evaluation_mode = 'classification'
+        else:
+            return Response({"error": "数据集格式不被支持。需要 (question, answer) 或 (text, label) 列。"}, status=status.HTTP_400_BAD_REQUEST)
+
+        total_prompts = len(prompts)
+        benchmark_type = 'Math Reasoning (GSM8K)' if evaluation_mode == 'gsm8k' else 'Sentiment Classification'
+        evaluation_record = DatasetEvaluationResult.objects.create(
+            user=request.user if request.user.is_authenticated else None,
+            dataset_name=dataset_name,
+            model_name=model_name,
+            evaluation_mode=evaluation_mode,
+            benchmark_type=benchmark_type,
+            total_prompts=total_prompts,
+            status='running',
+            extra={'source': 'stream'},
+        )
+
+        def stream():
+            start_time = time.perf_counter()
+            yield self._json_line({
+                "type": "init",
+                "dataset_name": dataset_name,
+                "model_name": model_name,
+                "total": total_prompts,
+                "started_at": time.time(),
+                "evaluation_id": evaluation_record.id,
+            })
+
+            try:
+                if evaluation_mode == 'gsm8k':
+                    yield from self._stream_gsm8k(
+                        model_service,
+                        prompts,
+                        model_name,
+                        dataset_name,
+                        total_prompts,
+                        start_time,
+                        evaluation_record,
+                    )
+                else:
+                    yield from self._stream_classification(
+                        model_service,
+                        prompts,
+                        model_name,
+                        dataset_name,
+                        total_prompts,
+                        start_time,
+                        evaluation_record,
+                    )
+            except Exception as exc:
+                evaluation_record.status = 'failed'
+                evaluation_record.extra = {
+                    **(evaluation_record.extra or {}),
+                    'error': str(exc),
+                }
+                evaluation_record.elapsed_seconds = round(time.perf_counter() - start_time, 3)
+                evaluation_record.completed_at = timezone.now()
+                evaluation_record.save(update_fields=['status', 'extra', 'elapsed_seconds', 'completed_at'])
+                yield self._json_line({
+                    "type": "error",
+                    "message": f"处理时发生严重错误: {exc}"
+                })
+
+        response = StreamingHttpResponse(stream(), content_type='application/x-ndjson')
+        response['Cache-Control'] = 'no-cache'
+        response['X-Accel-Buffering'] = 'no'
+        return response
+
+    def _stream_gsm8k(self, model_service, prompts, model_name, dataset_name, total_prompts, start_time, evaluation_record):
+        correct = 0
+        evaluated = 0
+        processed = 0
+        error_samples = []
+        batch = []
+
+        def flush_batch():
+            nonlocal batch
+            if batch:
+                DatasetEvaluationSample.objects.bulk_create(batch)
+                batch = []
+
+        for row in prompts:
+            processed += 1
+            question = row.get('question')
+            true_answer_text = row.get('answer')
+            if not question or not true_answer_text:
+                batch.append(
+                    DatasetEvaluationSample(
+                        result=evaluation_record,
+                        index=processed,
+                        prompt=question or "",
+                        expected_answer="",
+                        model_response="",
+                        is_correct=None,
+                        included_in_metrics=False,
+                        skipped=True,
+                        sample_time=None,
+                        message="缺少 question 或 answer 字段",
+                    )
+                )
+                if len(batch) >= 50:
+                    flush_batch()
+                yield self._json_line({
+                    "type": "progress",
+                    "index": processed,
+                    "total": total_prompts,
+                    "skipped": True,
+                    "message": "缺少 question 或 answer 字段",
+                    "elapsed": round(time.perf_counter() - start_time, 3)
+                })
+                continue
+
+            true_final_answer = self._extract_final_answer(true_answer_text)
+            prompt_to_model = "Question: " + question + "\n\nLet's think step by step, and then write the final answer in the format '#### <number>'."
+
+            sample_started = time.perf_counter()
+            sample_error = None
+            try:
+                model_response = model_service.evaluate(prompt=prompt_to_model, model_name=model_name)
+            except Exception as exc:
+                sample_error = f"API Error: {exc}"
+                model_response = sample_error
+
+            model_final_answer = self._extract_final_answer(model_response)
+            is_correct = bool(
+                model_final_answer and true_final_answer and model_final_answer == true_final_answer
+            ) if sample_error is None else None
+            included_in_metrics = sample_error is None
+
+            if included_in_metrics:
+                evaluated += 1
+                if is_correct:
+                    correct += 1
+                elif len(error_samples) < 5:
+                    error_samples.append({
+                        "prompt": question,
+                        "expected_answer": true_final_answer,
+                        "model_response": model_response
+                    })
+            elif len(error_samples) < 5 and sample_error:
+                error_samples.append({
+                    "prompt": question,
+                    "expected_answer": true_final_answer,
+                    "model_response": model_response
+                })
+
+            sample_time = round(time.perf_counter() - sample_started, 3)
+            running_accuracy = round((correct / evaluated) * 100, 2) if evaluated else 0.0
+
+            batch.append(
+                DatasetEvaluationSample(
+                    result=evaluation_record,
+                    index=processed,
+                    prompt=question,
+                    expected_answer=true_final_answer,
+                    model_response=model_response,
+                    is_correct=is_correct,
+                    included_in_metrics=included_in_metrics,
+                    skipped=False,
+                    sample_time=sample_time,
+                    message=sample_error or "",
+                )
+            )
+            if len(batch) >= 50:
+                flush_batch()
+
+            yield self._json_line({
+                "type": "progress",
+                "index": processed,
+                "total": total_prompts,
+                "prompt": question,
+                "expected_answer": true_final_answer,
+                "model_response": model_response,
+                "is_correct": is_correct,
+                "sample_time": sample_time,
+                "elapsed": round(time.perf_counter() - start_time, 3),
+                "included_in_metrics": included_in_metrics,
+                "message": sample_error or "",
+                "running_metrics": {"accuracy": running_accuracy}
+            })
+
+        flush_batch()
+        total_elapsed = round(time.perf_counter() - start_time, 3)
+        summary = {
+            "benchmark_type": "Math Reasoning (GSM8K)",
+            "metrics": {"accuracy": round((correct / evaluated) * 100, 2) if evaluated else 0.0},
+            "total_prompts": total_prompts,
+            "evaluated_prompts": evaluated,
+            "correct_answers": correct,
+            "error_samples": error_samples,
+            "model_name": model_name,
+            "dataset_name": dataset_name,
+            "elapsed_seconds": total_elapsed,
+        }
+
+        evaluation_record.evaluated_prompts = evaluated
+        evaluation_record.correct_answers = correct
+        evaluation_record.metrics = summary['metrics']
+        evaluation_record.error_samples = error_samples
+        evaluation_record.elapsed_seconds = total_elapsed
+        evaluation_record.status = 'completed'
+        evaluation_record.completed_at = timezone.now()
+        evaluation_record.save(update_fields=[
+            'evaluated_prompts',
+            'correct_answers',
+            'metrics',
+            'error_samples',
+            'elapsed_seconds',
+            'status',
+            'completed_at',
+        ])
+
+        summary['evaluation_id'] = evaluation_record.id
+
+        yield self._json_line({
+            "type": "summary",
+            "result": summary
+        })
+
+
+class DatasetEvaluationListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        qs = DatasetEvaluationResult.objects.all()
+        if not request.user.is_staff:
+            qs = qs.filter(user=request.user)
+
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+
+        mode_filter = request.query_params.get('mode')
+        if mode_filter:
+            qs = qs.filter(evaluation_mode=mode_filter)
+
+        dataset_filter = request.query_params.get('dataset')
+        if dataset_filter:
+            qs = qs.filter(dataset_name=dataset_filter)
+
+        model_filter = request.query_params.get('model')
+        if model_filter:
+            qs = qs.filter(model_name=model_filter)
+
+        try:
+            limit = int(request.query_params.get('limit', 20))
+        except (TypeError, ValueError):
+            limit = 20
+
+        try:
+            offset = int(request.query_params.get('offset', 0))
+        except (TypeError, ValueError):
+            offset = 0
+
+        total_count = qs.count()
+        qs = qs.order_by('-created_at')[offset:offset + limit]
+
+        records = []
+        for record in qs:
+            records.append({
+                "id": record.id,
+                "dataset_name": record.dataset_name,
+                "model_name": record.model_name,
+                "evaluation_mode": record.evaluation_mode,
+                "benchmark_type": record.benchmark_type,
+                "status": record.status,
+                "total_prompts": record.total_prompts,
+                "evaluated_prompts": record.evaluated_prompts,
+                "correct_answers": record.correct_answers,
+                "metrics": record.metrics,
+                "elapsed_seconds": record.elapsed_seconds,
+                "created_at": record.created_at,
+                "completed_at": record.completed_at,
+            })
+
+        return Response({
+            "count": total_count,
+            "limit": limit,
+            "offset": offset,
+            "results": records,
+        })
+
+
+class DatasetEvaluationDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, evaluation_id, *args, **kwargs):
+        evaluation = get_object_or_404(DatasetEvaluationResult, pk=evaluation_id)
+
+        if not request.user.is_staff and evaluation.user_id != request.user.id:
+            return Response({"error": "无权访问该测评记录"}, status=status.HTTP_403_FORBIDDEN)
+
+        errors_only = request.query_params.get('errors_only', 'false').lower() in {'true', '1', 'yes'}
+
+        try:
+            limit = int(request.query_params.get('limit', 50))
+        except (TypeError, ValueError):
+            limit = 50
+
+        try:
+            offset = int(request.query_params.get('offset', 0))
+        except (TypeError, ValueError):
+            offset = 0
+
+        samples_qs = evaluation.samples.all()
+        if errors_only:
+            samples_qs = samples_qs.filter(skipped=False, included_in_metrics=True).exclude(is_correct=True)
+
+        total_samples = samples_qs.count()
+        samples_slice = samples_qs[offset:offset + limit]
+
+        samples_data = []
+        for sample in samples_slice:
+            samples_data.append({
+                "index": sample.index,
+                "prompt": sample.prompt,
+                "expected_answer": sample.expected_answer,
+                "model_response": sample.model_response,
+                "is_correct": sample.is_correct,
+                "included_in_metrics": sample.included_in_metrics,
+                "skipped": sample.skipped,
+                "sample_time": sample.sample_time,
+                "message": sample.message,
+            })
+
+        payload = {
+            "id": evaluation.id,
+            "dataset_name": evaluation.dataset_name,
+            "model_name": evaluation.model_name,
+            "evaluation_mode": evaluation.evaluation_mode,
+            "benchmark_type": evaluation.benchmark_type,
+            "status": evaluation.status,
+            "total_prompts": evaluation.total_prompts,
+            "evaluated_prompts": evaluation.evaluated_prompts,
+            "correct_answers": evaluation.correct_answers,
+            "metrics": evaluation.metrics,
+            "error_samples": evaluation.error_samples,
+            "elapsed_seconds": evaluation.elapsed_seconds,
+            "created_at": evaluation.created_at,
+            "completed_at": evaluation.completed_at,
+            "samples": samples_data,
+            "pagination": {
+                "total": total_samples,
+                "limit": limit,
+                "offset": offset,
+                "errors_only": errors_only,
+            },
+        }
+
+        return Response(payload)
+
+    def _stream_classification(self, model_service, prompts, model_name, dataset_name, total_prompts, start_time, evaluation_record):
+        processed = 0
+        evaluated = 0
+        tp = fp = tn = fn = 0
+        error_samples = []
+        batch = []
+
+        def flush_batch():
+            nonlocal batch
+            if batch:
+                DatasetEvaluationSample.objects.bulk_create(batch)
+                batch = []
+
+        for row in prompts:
+            processed += 1
+            text = row.get('text')
+            label = row.get('label')
+            if text is None or label is None:
+                batch.append(
+                    DatasetEvaluationSample(
+                        result=evaluation_record,
+                        index=processed,
+                        prompt=text or "",
+                        expected_answer="",
+                        model_response="",
+                        is_correct=None,
+                        included_in_metrics=False,
+                        skipped=True,
+                        sample_time=None,
+                        message="缺少 text 或 label 字段",
+                    )
+                )
+                if len(batch) >= 50:
+                    flush_batch()
+                yield self._json_line({
+                    "type": "progress",
+                    "index": processed,
+                    "total": total_prompts,
+                    "skipped": True,
+                    "message": "缺少 text 或 label 字段",
+                    "elapsed": round(time.perf_counter() - start_time, 3)
+                })
+                continue
+
+            try:
+                label_int = int(label)
+            except (ValueError, TypeError):
+                batch.append(
+                    DatasetEvaluationSample(
+                        result=evaluation_record,
+                        index=processed,
+                        prompt=text or "",
+                        expected_answer=str(label),
+                        model_response="",
+                        is_correct=None,
+                        included_in_metrics=False,
+                        skipped=True,
+                        sample_time=None,
+                        message="label 无法解析为整数",
+                    )
+                )
+                if len(batch) >= 50:
+                    flush_batch()
+                yield self._json_line({
+                    "type": "progress",
+                    "index": processed,
+                    "total": total_prompts,
+                    "skipped": True,
+                    "message": "label 无法解析为整数",
+                    "elapsed": round(time.perf_counter() - start_time, 3)
+                })
+                continue
+
+            prompt_to_model = "Analyze the sentiment of the following movie review. Respond with only the word 'positive' or 'negative'.\n\nReview: '" + text + "'"
+
+            sample_started = time.perf_counter()
+            predicted_label = None
+            sample_error = None
+            try:
+                model_response = model_service.evaluate(prompt=prompt_to_model, model_name=model_name).lower()
+                predicted_label = 1 if 'positive' in model_response else 0
+            except Exception as exc:
+                sample_error = f"API Error: {exc}"
+                model_response = sample_error
+
+            sample_time = round(time.perf_counter() - sample_started, 3)
+
+            included_in_metrics = predicted_label is not None
+            is_correct = None
+            if included_in_metrics:
+                evaluated += 1
+                if predicted_label == 1 and label_int == 1:
+                    tp += 1
+                elif predicted_label == 1 and label_int == 0:
+                    fp += 1
+                elif predicted_label == 0 and label_int == 0:
+                    tn += 1
+                elif predicted_label == 0 and label_int == 1:
+                    fn += 1
+
+                is_correct = predicted_label == label_int
+                if not is_correct and len(error_samples) < 5:
+                    error_samples.append({
+                        "prompt": text,
+                        "expected_answer": "positive" if label_int == 1 else "negative",
+                        "model_response": model_response
+                    })
+            else:
+                if len(error_samples) < 5:
+                    error_samples.append({
+                        "prompt": text,
+                        "expected_answer": "positive" if label_int == 1 else "negative",
+                        "model_response": model_response
+                    })
+
+            accuracy = ((tp + tn) / evaluated * 100) if evaluated else 0.0
+            precision = (tp / (tp + fp) * 100) if (tp + fp) else 0.0
+            recall = (tp / (tp + fn) * 100) if (tp + fn) else 0.0
+            f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
+
+             # store sample
+            batch.append(
+                DatasetEvaluationSample(
+                    result=evaluation_record,
+                    index=processed,
+                    prompt=text,
+                    expected_answer="positive" if label_int == 1 else "negative",
+                    model_response=model_response,
+                    is_correct=is_correct if included_in_metrics else None,
+                    included_in_metrics=included_in_metrics,
+                    skipped=False,
+                    sample_time=sample_time,
+                    message=sample_error or ("" if included_in_metrics else "模型响应无效"),
+                )
+            )
+            if len(batch) >= 50:
+                flush_batch()
+
+            yield self._json_line({
+                "type": "progress",
+                "index": processed,
+                "total": total_prompts,
+                "prompt": text,
+                "expected_answer": "positive" if label_int == 1 else "negative",
+                "model_response": model_response,
+                "is_correct": is_correct,
+                "sample_time": sample_time,
+                "elapsed": round(time.perf_counter() - start_time, 3),
+                "included_in_metrics": included_in_metrics,
+                "message": sample_error or ("" if included_in_metrics else "模型响应无效"),
+                "running_metrics": {
+                    "accuracy": round(accuracy, 2),
+                    "precision": round(precision, 2),
+                    "recall": round(recall, 2),
+                    "f1_score": round(f1, 2),
+                }
+            })
+
+        flush_batch()
+        total_elapsed = round(time.perf_counter() - start_time, 3)
+
+        final_accuracy = ((tp + tn) / evaluated * 100) if evaluated else 0.0
+        final_precision = (tp / (tp + fp) * 100) if (tp + fp) else 0.0
+        final_recall = (tp / (tp + fn) * 100) if (tp + fn) else 0.0
+        final_f1 = (2 * final_precision * final_recall / (final_precision + final_recall)) if (final_precision + final_recall) else 0.0
+
+        summary = {
+            "benchmark_type": "Sentiment Classification",
+            "metrics": {
+                "accuracy": round(final_accuracy, 2),
+                "precision": round(final_precision, 2),
+                "recall": round(final_recall, 2),
+                "f1_score": round(final_f1, 2),
+            },
+            "total_prompts": total_prompts,
+            "evaluated_prompts": evaluated,
+            "correct_answers": int(tp + tn),
+            "error_samples": error_samples,
+            "model_name": model_name,
+            "dataset_name": dataset_name,
+            "elapsed_seconds": total_elapsed,
+        }
+
+        evaluation_record.evaluated_prompts = evaluated
+        evaluation_record.correct_answers = int((tp + tn))
+        evaluation_record.metrics = summary['metrics']
+        evaluation_record.error_samples = error_samples
+        evaluation_record.elapsed_seconds = total_elapsed
+        evaluation_record.status = 'completed'
+        evaluation_record.completed_at = timezone.now()
+        evaluation_record.save(update_fields=[
+            'evaluated_prompts',
+            'correct_answers',
+            'metrics',
+            'error_samples',
+            'elapsed_seconds',
+            'status',
+            'completed_at',
+        ])
+
+        summary['evaluation_id'] = evaluation_record.id
+
+        yield self._json_line({
+            "type": "summary",
+            "result": summary
+        })

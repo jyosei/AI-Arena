@@ -13,7 +13,8 @@ import {
   DeleteOutlined,
   CloseOutlined,
   MenuOutlined,
-  UploadOutlined
+  UploadOutlined,
+  HistoryOutlined,
 } from '@ant-design/icons';
 import{
     Swords,
@@ -71,6 +72,7 @@ const AppLayout = () => {
     '/leaderboard': '2',
     '/forum': '3',
     '/evaluate-dataset': '4',
+    '/evaluate-dataset/history': '5',
   };
   
   // 根据当前路径获取应高亮的 key
@@ -285,12 +287,12 @@ const AppLayout = () => {
             { // 上传数据集菜单项
               key: '4',
               icon: <UploadOutlined />,
-              label: <Link to="/evaluate-dataset" onClick={closeMobileSider}>上传数据集</Link>,
+              label: <Link to="/evaluate-dataset" onClick={closeMobileSider}>数据集测评</Link>,
             },
-            { // <-- 这是新添加的项
-              key: '4',
-              icon: <MessageOutlined />,
-              label: <Link to="/evaluate-dataset">数据集上传</Link>,
+            {
+              key: '5',
+              icon: <HistoryOutlined />,
+              label: <Link to="/evaluate-dataset/history" onClick={closeMobileSider}>测评历史</Link>,
             },
           ]}
           // ---
