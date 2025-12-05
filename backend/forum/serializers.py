@@ -274,6 +274,7 @@ class ForumPostListSerializer(serializers.ModelSerializer):
     comment_count = serializers.SerializerMethodField()  # 兼容前端单数命名
     likes_count = serializers.IntegerField(read_only=True)
     like_count = serializers.SerializerMethodField()  # 兼容前端单数命名
+    share_count = serializers.IntegerField(read_only=True)
     last_activity_at = serializers.DateTimeField(read_only=True)  # 从模型字段读取
     excerpt = serializers.SerializerMethodField()
     favorites_count = serializers.IntegerField(read_only=True)
@@ -295,6 +296,7 @@ class ForumPostListSerializer(serializers.ModelSerializer):
             "comment_count",  # 兼容
             "likes_count",
             "like_count",  # 兼容
+            "share_count",
             "favorites_count",
             "author",
             "excerpt",
@@ -377,6 +379,7 @@ class ForumPostDetailSerializer(serializers.ModelSerializer):
     like_count = serializers.SerializerMethodField()  # 兼容前端
     comments_count = serializers.IntegerField(read_only=True)
     comment_count = serializers.SerializerMethodField()  # 兼容前端
+    share_count = serializers.IntegerField(read_only=True)
     is_liked = serializers.SerializerMethodField()
     favorites_count = serializers.IntegerField(read_only=True)
     is_favorited = serializers.SerializerMethodField()
@@ -400,6 +403,7 @@ class ForumPostDetailSerializer(serializers.ModelSerializer):
             "like_count",  # 兼容
             "comments_count",
             "comment_count",  # 兼容
+            "share_count",
             "is_liked",
             "favorites_count",
             "is_favorited",
@@ -520,6 +524,13 @@ class ForumPostCreateSerializer(serializers.ModelSerializer):
     def validate_tags(self, value):
         cleaned = [tag.strip() for tag in value if tag.strip()]
         return cleaned[:10]
+
+    def validate_category(self, value):
+        if value is None:
+            return value
+        if not ForumCategory.objects.filter(pk=value).exists():
+            raise serializers.ValidationError("所选板块不存在，请刷新页面后重试。")
+        return value
 
     def create(self, validated_data):
         # 若 legacy_category 由外部传入但没有结构化分类，放入模型 legacy_category 字段

@@ -1,3 +1,30 @@
+.forum-post-page {
+  width: 100%;
+}
+
+.forum-post-card {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+
+.forum-post-card .ant-card-body {
+  padding: 32px;
+}
+
+@media (max-width: 960px) {
+  .forum-post-card .ant-card-body {
+    padding: 24px;
+  }
+}
+
+@media (max-width: 640px) {
+  .forum-post-card {
+    box-shadow: none;
+  }
+  .forum-post-card .ant-card-body {
+    padding: 16px;
+  }
+}
 :root {
   /* 色板 */
   --bg: #f6f7fb;
@@ -96,9 +123,31 @@ html, body {
 
 /* Content 容器内的卡片化效果 */
 .ant-layout-content {
+  background: transparent;
+}
+
+.app-content-shell {
+  max-width: 1200px;
+  margin: 0 auto;
   background: var(--panel);
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
+  padding: 32px;
+  min-height: calc(100vh - 64px - 48px - 32px);
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.app-content-toolbar {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 16px;
+}
+
+.app-content-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 /* 按钮 */
@@ -234,7 +283,7 @@ html, body {
 }
 
 /* 移动端响应式样式 */
-@media (max-width: 768px) {
+@media (max-width: 640px) {
   /* 隐藏侧边栏，通过汉堡菜单控制 */
   .ant-layout-sider {
     position: fixed !important;
@@ -414,9 +463,15 @@ html, body {
   }
 
   /* Chat页面优化 */
-  .ant-layout-content > div {
-    width: 100% !important;
-    max-width: 100% !important;
+  .app-content-shell {
+    padding: 20px;
+    min-height: unset;
+    box-shadow: none;
+  }
+
+  .app-content-toolbar {
+    border-bottom: none;
+    padding-bottom: 8px;
   }
 
   /* 标题和模式信息区域 */

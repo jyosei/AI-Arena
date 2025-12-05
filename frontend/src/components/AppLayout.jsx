@@ -74,6 +74,10 @@ const AppLayout = () => {
   let currentKey = '1'; // 默认
   if (location.pathname.startsWith('/chat/')) {
     currentKey = '1';
+  } else if (location.pathname === '/forum') {
+    currentKey = '3';
+  } else if (location.pathname.startsWith('/forum/')) {
+    currentKey = '3';
   } else {
     currentKey = pathKeyMap[location.pathname] || '1';
   }
@@ -438,16 +442,13 @@ const AppLayout = () => {
         </Header>
         <Content style={{ 
           margin: '24px', 
-          background: '#fff', 
-          padding: '24px', 
-          borderRadius: '8px',
-          height: 'calc(100vh - 64px - 48px)', // 减去 Header 高度和 margin
-          overflowY: 'auto',
-          display: 'flex',
-          flexDirection: 'column'
+          padding: '0 0 32px',
+          minHeight: 'calc(100vh - 64px - 48px)',
+          background: 'transparent'
         }}>
-          {shouldShowModelSelectors && (
-            <div style={{ marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid #f0f0f0' }}>
+          <div className="app-content-shell">
+            {shouldShowModelSelectors && (
+              <div className="app-content-toolbar">
               <Space size="large" className="model-selector-space">
                 <Dropdown overlay={menu}>
                   <Button size="large">
@@ -459,44 +460,47 @@ const AppLayout = () => {
                   </Button>
                 </Dropdown>
 
-            {mode === 'side-by-side' && (
-              <>
-                <Select
-                  showSearch
-                  placeholder="选择左侧模型"
-                  value={leftModel}
-                  onChange={setLeftModel}
-                  style={{ width: 180 }}
-                  options={modelOptions}
-                  filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
-                />
-                <Typography.Text strong>VS</Typography.Text>
-                <Select
-                  showSearch
-                  placeholder="选择右侧模型"
-                  value={rightModel}
-                  onChange={setRightModel}
-                  style={{ width: 180 }}
-                  options={modelOptions}
-                  filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
-                />
-              </>
+                {mode === 'side-by-side' && (
+                  <>
+                    <Select
+                      showSearch
+                      placeholder="选择左侧模型"
+                      value={leftModel}
+                      onChange={setLeftModel}
+                      style={{ width: 180 }}
+                      options={modelOptions}
+                      filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+                    />
+                    <Typography.Text strong>VS</Typography.Text>
+                    <Select
+                      showSearch
+                      placeholder="选择右侧模型"
+                      value={rightModel}
+                      onChange={setRightModel}
+                      style={{ width: 180 }}
+                      options={modelOptions}
+                      filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+                    />
+                  </>
+                )}
+                {mode === 'direct-chat' && (
+                  <Select
+                    showSearch
+                    placeholder="选择一个模型"
+                    value={leftModel}
+                    onChange={setLeftModel}
+                    style={{ width: 180 }}
+                    options={modelOptions}
+                    filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+                  />
+                )}
+              </Space>
+              </div>
             )}
-            {mode === 'direct-chat' && (
-              <Select
-                showSearch
-                placeholder="选择一个模型"
-                value={leftModel}
-                onChange={setLeftModel}
-                style={{ width: 180 }}
-                options={modelOptions}
-                filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
-              />
-            )}
-          </Space>
+            <div className="app-content-body">
+              <Outlet />
             </div>
-          )}
-          <Outlet />
+          </div>
         </Content>
       </Layout>
     </Layout>

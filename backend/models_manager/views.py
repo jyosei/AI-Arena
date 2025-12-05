@@ -249,26 +249,35 @@ class EvaluateModelView(APIView):
             
             # --- 构建包含完整历史（包括历史图片）的消息体 ---
             history_messages = []
-            for msg in conversation.messages.order_by('created_at'):
+            history_queryset = list(conversation.messages.order_by('created_at'))
+            if len(history_queryset) > 8:
+                history_queryset = history_queryset[-8:]
+
+            for msg in history_queryset:
                 if msg.role == 'user':
-                    user_content = [{"type": "text", "text": msg.content}]
                     if msg.image:
-                        msg.image.open('rb')
-                        image_data = msg.image.read()
-                        base64_image = base64.b64encode(image_data).decode('utf-8')
-                        # 动态获取 mime_type
-                        try:
-                            import magic
-                            mime_type = magic.from_buffer(image_data, mime=True)
-                        except (ImportError, NameError):
-                            mime_type = 'image/jpeg' # 回退方案
-                        
-                        image_url = f"data:{mime_type};base64,{base64_image}"
-                        user_content.append({"type": "image_url", "image_url": {"url": image_url}})
-                        msg.image.close()
-                    history_messages.append({"role": "user", "content": user_content})
-                else: # assistant
-                    history_messages.append({"role": "assistant", "content": msg.content})
+                        # 避免在历史消息中重复携带体积巨大的 Base64 图片数据
+                        history_messages.append({
+                            "role": "user",
+                            "content": [{
+                                "type": "text",
+                                "text": (msg.content or "") + "\n[用户之前发送了一张图片，已省略]"
+                            }]
+                        })
+                    else:
+                        history_messages.append({
+                            "role": "user",
+                            "content": msg.content
+                        })
+                else:  # assistant
+                    content = msg.content or ""
+                    if isinstance(content, str) and (len(content) > 4000 or content.startswith("data:")):
+                        history_messages.append({
+                            "role": "assistant",
+                            "content": "[上一次的图片结果已生成，请在历史消息中查看。]"
+                        })
+                    else:
+                        history_messages.append({"role": "assistant", "content": content})
 
             # --- 关键修改：转换当前上传的图片 ---
             current_image_base64 = None
@@ -288,6 +297,16 @@ class EvaluateModelView(APIView):
                 image_base64=current_image_base64, # <--- 使用 image_base64
                 mime_type=current_mime_type        # <--- 使用 mime_type
             )
+
+            if isinstance(response_text, (dict, list)):
+                response_text = json.dumps(response_text, ensure_ascii=False)
+            elif response_text is None:
+                response_text = ""
+            else:
+                response_text = str(response_text)
+
+            if not response_text:
+                response_text = "[模型未返回任何内容]"
             
             # --- 保存 AI 响应 ---
             ChatMessage.objects.create(

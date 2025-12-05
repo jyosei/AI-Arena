@@ -117,7 +117,7 @@ class AIModel(models.Model):
 class BattleVote(models.Model):
     """存储一次模型对战的投票结果"""
     model_a = models.CharField(max_length=100, help_text="模型A的名称")
-    model_b = models.CharField(max_length=100, help_text="模型B的名称")
+    model_b = models.CharField(max_length=100, null=True, blank=True, help_text="模型B的名称")
     prompt = models.TextField(help_text="用户输入的提示")
     
     # 获胜方
