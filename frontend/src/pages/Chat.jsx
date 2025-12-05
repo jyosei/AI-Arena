@@ -630,11 +630,13 @@ export default function ChatPage() {
       return;
     }
 
+    const normalizedWinner = winnerChoice === 'bad' ? 'both_bad' : winnerChoice;
+
     const voteData = {
       model_a: leftModel,
       model_b: rightModel,
       prompt: lastUserMessage.content, // 使用从历史记录中找到的 prompt
-      winner: winnerChoice,
+      winner: normalizedWinner,
     };
 
     try {
@@ -661,15 +663,14 @@ export default function ChatPage() {
       // 如果用户觉得好，那么获胜者就是当前模型
       winnerValue = leftModel;
     } else {
-      // 如果用户觉得不好，可以传递 'bad' 或者模型名称，这里我们统一为 'bad'
-      // 后端需要能处理 'bad' 这种特殊情况
-      winnerValue = 'bad';
+      // 如果用户觉得不好，反馈为双方都不佳
+      winnerValue = 'both_bad';
     }
     const voteData = {
       model_a: leftModel,
       model_b: null,
       prompt: lastUserMessage.content,
-      winner: choice,
+      winner: winnerValue,
     };
 
     try {

@@ -225,6 +225,14 @@ html, body {
   padding: 0;
 }
 
+.evaluation-row-highlight {
+  background-color: #e6f7ff !important;
+}
+
+.evaluation-row-highlight:hover {
+  background-color: #bae7ff !important;
+}
+
 /* 移动端响应式样式 */
 @media (max-width: 768px) {
   /* 隐藏侧边栏，通过汉堡菜单控制 */
