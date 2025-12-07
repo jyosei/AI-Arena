@@ -7,6 +7,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import remarkBreaks from 'remark-breaks';
+import MarkdownTypewriter from './MarkdownTypewriter';
 
 // 将 \(...\) 与 \[...\] 转换为 $...$ 与 $$...$$，并避免修改代码块中的内容
 function normalizeTexDelimiters(text) {
@@ -22,6 +23,14 @@ function normalizeTexDelimiters(text) {
       return out;
     })
     .join('');
+}
+
+function stripTrailingUndefined(text) {
+  if (!text) return '';
+  let t = String(text);
+  t = t.replace(/(\s*\$\$undefined\s*)$/i, '');
+  t = t.replace(/(\s*undefined\s*)$/i, '');
+  return t;
 }
 
 const { TextArea } = Input;
@@ -64,6 +73,7 @@ export default function ChatDialog({ visible, onClose, model }) {
         id: Date.now() + 1,
         content: response.data.response, // 使用后端返回的真实回复
         isUser: false,
+        animate: true,
       };
       setMessages(prev => [...prev, aiMessage]);
 
@@ -123,23 +133,12 @@ export default function ChatDialog({ visible, onClose, model }) {
                       {message.isUser ? (
                         message.content
                       ) : (
-                        <ReactMarkdown
-                          remarkPlugins={[remarkGfm, remarkBreaks, remarkMath]}
-                          rehypePlugins={[rehypeKatex]}
-                          linkTarget="_blank"
-                          components={{
-                            a: ({node, ...props}) => <a {...props} rel="noopener noreferrer" />,
-                            code: ({inline, className, children, ...props}) => {
-                              return (
-                                <code className={className} {...props}>
-                                  {children}
-                                </code>
-                              );
-                            }
-                          }}
-                        >
-                          {normalizeTexDelimiters(String(message.content || ''))}
-                        </ReactMarkdown>
+                        <MarkdownTypewriter
+                          source={stripTrailingUndefined(normalizeTexDelimiters(String(message.content || '')))}
+                          enabled={!!message.animate}
+                          speed={50}
+                          by="word"
+                        />
                       )}
                     </div>
                   </div>

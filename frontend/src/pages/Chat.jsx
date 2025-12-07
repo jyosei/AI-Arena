@@ -13,6 +13,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import remarkBreaks from 'remark-breaks';
+import MarkdownTypewriter from '../components/MarkdownTypewriter';
 import { Plus, Globe, Image as ImageIcon, Code } from 'lucide-react';
 // 与 ChatDialog 一致：将 \(...\)/\[...\] 转为 $...$/$$..$$ ，保持代码块原样
 function normalizeTexDelimiters(text) {
@@ -28,6 +29,15 @@ function normalizeTexDelimiters(text) {
       return out;
     })
     .join('');
+}
+
+// 移除尾部意外的 "undefined" 或 "$$undefined"
+function stripTrailingUndefined(text) {
+  if (!text) return '';
+  let t = String(text);
+  t = t.replace(/(\s*\$\$undefined\s*)$/i, '');
+  t = t.replace(/(\s*undefined\s*)$/i, '');
+  return t;
 }
 
 const { TextArea } = Input;
@@ -179,6 +189,7 @@ export default function ChatPage() {
           created_at: msg.created_at,
           // --- 关键修改: 加载历史图片 ---
           image: msg.image || null,
+          animate: false, // 历史消息不启用打字机
         }));
         
         // 根据模式分配消息
@@ -457,7 +468,7 @@ export default function ChatPage() {
       try {
         // evaluateModel 会自动保存用户消息和AI回复
         const res = await evaluateModel(model.name, currentPrompt, id, currentImage, true);
-        const aiMessage = { id: Date.now() + 1, content: res.data.response, isUser: false, model_name: model.name };
+        const aiMessage = { id: Date.now() + 1, content: res.data.response, isUser: false, model_name: model.name, animate: true };
         setMessages(prev => [...prev, aiMessage]);
 
         // 不需要手动保存AI消息，后端已自动保存
@@ -496,7 +507,8 @@ export default function ChatPage() {
             id: Date.now() + Math.random(), 
             content: result.response, 
             isUser: false,
-            model_name: result.model
+            model_name: result.model,
+            animate: true
           };
           
           if (result.model === leftModel) {
@@ -579,13 +591,15 @@ export default function ChatPage() {
             id: Date.now(), 
             content: result1.response, 
             isUser: false,
-            model_name: result1.model // 保存真实模型名,但界面不显示
+            model_name: result1.model, // 保存真实模型名,但界面不显示
+            animate: true
           }]);
           setRightMessages(prev => [...prev, { 
             id: Date.now() + 1, 
             content: result2.response, 
             isUser: false,
-            model_name: result2.model
+            model_name: result2.model,
+            animate: true
           }]);
         } else {
           // 非匿名:根据模型名分配
@@ -594,7 +608,8 @@ export default function ChatPage() {
               id: Date.now() + Math.random(), 
               content: result.response, 
               isUser: false,
-              model_name: result.model
+              model_name: result.model,
+              animate: true
             };
             
             if (result.model === modelA) {
@@ -718,17 +733,12 @@ export default function ChatPage() {
       {message.isUser ? (
         message.content
       ) : (
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm, remarkBreaks, remarkMath]}
-          rehypePlugins={[rehypeKatex]}
-          linkTarget="_blank"
-          components={{
-            a: ({node, ...props}) => <a {...props} rel="noopener noreferrer" />,
-            code: ({inline, className, children, ...props}) => (<code className={className} {...props}>{children}</code>)
-          }}
-        >
-          {normalizeTexDelimiters(String(message.content || ''))}
-        </ReactMarkdown>
+        <MarkdownTypewriter
+          source={stripTrailingUndefined(normalizeTexDelimiters(String(message.content || '')))}
+          enabled={!!message.animate}
+          speed={50}
+          by="word"
+        />
       )}
     </>
   );
