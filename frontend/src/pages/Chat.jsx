@@ -191,6 +191,32 @@ export default function ChatPage() {
           image: msg.image || null,
           animate: false, // 历史消息不启用打字机
         }));
+        const imageModelNames = imageModels.map(model => model.name);
+        const adapted = res.data.map(msg => {
+          const rawContent = msg.content ?? '';
+          const normalized = {
+            id: msg.id,
+            content: rawContent,
+            isUser: msg.is_user,
+            model_name: msg.model_name,
+            created_at: msg.created_at,
+            image: msg.image || null,
+            rawContent,
+          };
+
+          const isPotentialImage = typeof rawContent === 'string' && (
+            rawContent.startsWith('data:image') ||
+            /^https?:\/\/\S+$/i.test(rawContent)
+          );
+          const fromImageModel = !msg.is_user && msg.model_name && imageModelNames.includes(msg.model_name);
+
+          if (!normalized.image && fromImageModel && isPotentialImage) {
+            normalized.image = rawContent;
+            normalized.content = 'AI 生成的图片';
+          }
+
+          return normalized;
+        });
         
         // 根据模式分配消息
         if (savedMode === 'direct-chat') {
@@ -344,7 +370,7 @@ export default function ChatPage() {
 
     setLoadingHistory(true);
     loadMessages();
-  }, [id, user, savedMode, leftModel, rightModel, conv?.model_name]);
+  }, [id, user, savedMode, leftModel, rightModel, conv?.model_name, imageModels]);
 
   // 处理从首页传来的初始消息与图片，并自动发送一次
   // 第一步：接收首页带来的初始输入，存到本地状态，并设置 shouldAutoSend
@@ -422,7 +448,8 @@ export default function ChatPage() {
       id: Date.now(), 
       content: currentPrompt, 
       isUser: true,
-      image: currentImage ? URL.createObjectURL(currentImage) : null
+      image: currentImage ? URL.createObjectURL(currentImage) : null,
+      rawContent: currentPrompt,
     };
     if (isGeneratingImage) {
       if (!model || !model.capabilities.includes('image_generation')) {
@@ -435,11 +462,13 @@ export default function ChatPage() {
         // 调用 evaluateModel，后端应能处理图片生成任务
         const res = await evaluateModel(model.name, currentPrompt, id, null, true); // 图片生成不上传图片，保存用户消息
         // 假设后端返回的 response 是图片 URL
+        const imagePayload = res.data?.image_url || res.data?.response;
         const aiMessage = { 
           id: Date.now() + 1, 
           content: `为您生成的图片，提示词: "${currentPrompt}"`, 
           isUser: false,
-          image: res.data.response // 将返回的 URL 作为图片源
+          image: imagePayload,
+          rawContent: imagePayload,
         };
         setMessages(prev => [...prev, aiMessage]);
         // (可选) 保存AI消息到后端，需要后端支持保存图片URL
@@ -469,6 +498,20 @@ export default function ChatPage() {
         // evaluateModel 会自动保存用户消息和AI回复
         const res = await evaluateModel(model.name, currentPrompt, id, currentImage, true);
         const aiMessage = { id: Date.now() + 1, content: res.data.response, isUser: false, model_name: model.name, animate: true };
+        const rawResponse = res.data?.response;
+        const looksLikeImage = typeof rawResponse === 'string' && (
+          rawResponse.startsWith('data:image') ||
+          /^https?:\/\/\S+$/i.test(rawResponse)
+        );
+        const shouldRenderAsImage = looksLikeImage && model?.capabilities?.includes('image_generation');
+        const aiMessage = {
+          id: Date.now() + 1,
+          content: shouldRenderAsImage ? 'AI 生成的图片' : (rawResponse ?? ''),
+          isUser: false,
+          model_name: model.name,
+          image: shouldRenderAsImage ? rawResponse : null,
+          rawContent: rawResponse,
+        };
         setMessages(prev => [...prev, aiMessage]);
 
         // 不需要手动保存AI消息，后端已自动保存
@@ -662,12 +705,13 @@ export default function ChatPage() {
       antdMessage.error('无法确定参与对战的模型名称。请重新开始对战。');
       return;
     }
+    const normalizedWinner = winnerChoice === 'bad' ? 'both_bad' : winnerChoice;
 
     const voteData = {
       model_a: modelAName,
       model_b: modelBName,
       prompt: lastUserMessage.content, // 使用从历史记录中找到的 prompt
-      winner: winnerChoice,
+      winner: normalizedWinner,
     };
 
     try {
@@ -696,6 +740,8 @@ export default function ChatPage() {
     } else {
       // 用户觉得不好：统一传递 'bad'，后端映射为 'both_bad'
       winnerValue = 'bad';
+      // 如果用户觉得不好，反馈为双方都不佳
+      winnerValue = 'both_bad';
     }
     const voteData = {
       model_a: directModel || model?.name || leftModel,

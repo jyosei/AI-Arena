@@ -2,6 +2,77 @@ from django.db import models
 from django.conf import settings
 
 
+class DatasetEvaluationResult(models.Model):
+    STATUS_CHOICES = (
+        ('running', 'Running'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+    )
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='dataset_evaluations'
+    )
+    dataset_name = models.CharField(max_length=255)
+    model_name = models.CharField(max_length=255)
+    evaluation_mode = models.CharField(max_length=64, default='unknown')
+    benchmark_type = models.CharField(max_length=128, blank=True)
+    total_prompts = models.IntegerField(default=0)
+    evaluated_prompts = models.IntegerField(default=0)
+    correct_answers = models.IntegerField(default=0)
+    metrics = models.JSONField(default=dict, blank=True)
+    error_samples = models.JSONField(default=list, blank=True)
+    elapsed_seconds = models.FloatField(default=0)
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default='running')
+    extra = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['dataset_name']),
+            models.Index(fields=['model_name']),
+            models.Index(fields=['status']),
+            models.Index(fields=['created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.model_name} on {self.dataset_name} ({self.status})"
+
+
+class DatasetEvaluationSample(models.Model):
+    result = models.ForeignKey(
+        DatasetEvaluationResult,
+        on_delete=models.CASCADE,
+        related_name='samples'
+    )
+    index = models.IntegerField()
+    prompt = models.TextField(blank=True)
+    expected_answer = models.TextField(blank=True)
+    model_response = models.TextField(blank=True)
+    is_correct = models.BooleanField(null=True)
+    included_in_metrics = models.BooleanField(default=True)
+    skipped = models.BooleanField(default=False)
+    sample_time = models.FloatField(null=True, blank=True)
+    message = models.CharField(max_length=255, blank=True)
+    extra = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ['index']
+        indexes = [
+            models.Index(fields=['result', 'index']),
+            models.Index(fields=['result', 'is_correct']),
+            models.Index(fields=['result', 'skipped']),
+        ]
+
+    def __str__(self):
+        return f"Sample {self.index} of evaluation {self.result_id}"
+
+
 class AIModel(models.Model):
     """存储AI模型信息和评分数据"""
     name = models.CharField(max_length=100, unique=True, help_text="模型名称")
@@ -46,7 +117,7 @@ class AIModel(models.Model):
 class BattleVote(models.Model):
     """存储一次模型对战的投票结果"""
     model_a = models.CharField(max_length=100, help_text="模型A的名称")
-    model_b = models.CharField(max_length=100, help_text="模型B的名称")
+    model_b = models.CharField(max_length=100, null=True, blank=True, help_text="模型B的名称")
     prompt = models.TextField(help_text="用户输入的提示")
     
     # 获胜方

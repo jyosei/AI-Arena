@@ -13,7 +13,8 @@ import {
   DeleteOutlined,
   CloseOutlined,
   MenuOutlined,
-  UploadOutlined
+  UploadOutlined,
+  HistoryOutlined,
 } from '@ant-design/icons';
 import{
     Swords,
@@ -66,12 +67,17 @@ const AppLayout = () => {
     '/leaderboard': '2',
     '/forum': '3',
     '/evaluate-dataset': '4',
+    '/evaluate-dataset/history': '5',
   };
   
   // 根据当前路径获取应高亮的 key
   let currentKey = '1'; // 默认
   if (location.pathname.startsWith('/chat/')) {
     currentKey = '1';
+  } else if (location.pathname === '/forum') {
+    currentKey = '3';
+  } else if (location.pathname.startsWith('/forum/')) {
+    currentKey = '3';
   } else {
     currentKey = pathKeyMap[location.pathname] || '1';
   }
@@ -236,8 +242,13 @@ const AppLayout = () => {
             { // 上传数据集菜单项
               key: '4',
               icon: <UploadOutlined />,
-              label: <Link to="/evaluate-dataset" onClick={closeMobileSider}>上传数据集</Link>,
-            }
+              label: <Link to="/evaluate-dataset" onClick={closeMobileSider}>数据集测评</Link>,
+            },
+            {
+              key: '5',
+              icon: <HistoryOutlined />,
+              label: <Link to="/evaluate-dataset/history" onClick={closeMobileSider}>测评历史</Link>,
+            },
           ]}
           // ---
         />
@@ -431,16 +442,13 @@ const AppLayout = () => {
         </Header>
         <Content style={{ 
           margin: '24px', 
-          background: '#fff', 
-          padding: '24px', 
-          borderRadius: '8px',
-          height: 'calc(100vh - 64px - 48px)', // 减去 Header 高度和 margin
-          overflowY: 'auto',
-          display: 'flex',
-          flexDirection: 'column'
+          padding: '0 0 32px',
+          minHeight: 'calc(100vh - 64px - 48px)',
+          background: 'transparent'
         }}>
-          {shouldShowModelSelectors && (
-            <div style={{ marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid #f0f0f0' }}>
+          <div className="app-content-shell">
+            {shouldShowModelSelectors && (
+              <div className="app-content-toolbar">
               <Space size="large" className="model-selector-space">
                 <Dropdown overlay={menu}>
                   <Button size="large">
@@ -452,44 +460,47 @@ const AppLayout = () => {
                   </Button>
                 </Dropdown>
 
-            {mode === 'side-by-side' && (
-              <>
-                <Select
-                  showSearch
-                  placeholder="选择左侧模型"
-                  value={leftModel}
-                  onChange={setLeftModel}
-                  style={{ width: 180 }}
-                  options={modelOptions}
-                  filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
-                />
-                <Typography.Text strong>VS</Typography.Text>
-                <Select
-                  showSearch
-                  placeholder="选择右侧模型"
-                  value={rightModel}
-                  onChange={setRightModel}
-                  style={{ width: 180 }}
-                  options={modelOptions}
-                  filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
-                />
-              </>
+                {mode === 'side-by-side' && (
+                  <>
+                    <Select
+                      showSearch
+                      placeholder="选择左侧模型"
+                      value={leftModel}
+                      onChange={setLeftModel}
+                      style={{ width: 180 }}
+                      options={modelOptions}
+                      filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+                    />
+                    <Typography.Text strong>VS</Typography.Text>
+                    <Select
+                      showSearch
+                      placeholder="选择右侧模型"
+                      value={rightModel}
+                      onChange={setRightModel}
+                      style={{ width: 180 }}
+                      options={modelOptions}
+                      filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+                    />
+                  </>
+                )}
+                {mode === 'direct-chat' && (
+                  <Select
+                    showSearch
+                    placeholder="选择一个模型"
+                    value={leftModel}
+                    onChange={setLeftModel}
+                    style={{ width: 180 }}
+                    options={modelOptions}
+                    filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+                  />
+                )}
+              </Space>
+              </div>
             )}
-            {mode === 'direct-chat' && (
-              <Select
-                showSearch
-                placeholder="选择一个模型"
-                value={leftModel}
-                onChange={setLeftModel}
-                style={{ width: 180 }}
-                options={modelOptions}
-                filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
-              />
-            )}
-          </Space>
+            <div className="app-content-body">
+              <Outlet />
             </div>
-          )}
-          <Outlet />
+          </div>
         </Content>
       </Layout>
     </Layout>

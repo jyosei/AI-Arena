@@ -20,6 +20,7 @@ import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import GitHubCallback from "./pages/GitHubCallback.jsx"; // GitHub 登录回调页面
 
 import DatasetEvaluationPage from "./pages/DatasetEvaluation.jsx";
+import DatasetEvaluationHistoryPage from "./pages/DatasetEvaluationHistory.jsx";
 // 2. 导入所有需要的 Context Provider
 import { AuthProvider } from "./contexts/AuthContext.jsx";
 import { ModeProvider } from './contexts/ModeContext';
@@ -89,6 +90,7 @@ function App() {
                   {/* 保留 shallcheer 的用户面板 */}
                   <Route path="/user" element={<UserPanel />} />
                   <Route path="/evaluate-dataset" element={<DatasetEvaluationPage />} />
+                  <Route path="/evaluate-dataset/history" element={<DatasetEvaluationHistoryPage />} />
                 </Route>
               </Routes>
             </DialogProvider>

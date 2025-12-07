@@ -45,6 +45,13 @@ import { formatDateTime } from '../utils/time.js';
 const { Search } = Input;
 const { Text, Title } = Typography;
 
+const LEGACY_CATEGORY_OPTIONS = [
+  { value: '技术交流', label: '技术交流', isLegacy: true },
+  { value: '功能建议', label: '功能建议', isLegacy: true },
+  { value: '作品分享', label: '作品分享', isLegacy: true },
+  { value: '问题反馈', label: '问题反馈', isLegacy: true },
+];
+
 const IconText = ({ icon, text }) => (
   <Space>
     {React.createElement(icon)}
@@ -140,13 +147,33 @@ const PostForm = ({ visible, onCancel, onSuccess, categories, tagSuggestions }) 
     setSubmitting(true);
     try {
       const attachmentIds = fileList.map((item) => item.response?.id).filter(Boolean);
-      // 后端创建帖子序列化器字段为 `category` (映射 category_obj_id)，原代码误用 category_id
+      const selectedCategory = categories.find((cat) => String(cat.value) === String(values.category));
+
+      let categoryId = null;
+      let legacyCategory = null;
+
+      if (selectedCategory?.isLegacy) {
+        legacyCategory = selectedCategory.label;
+      } else if (values.category != null && String(values.category).trim() !== '') {
+        const parsed = Number(values.category);
+        if (!Number.isNaN(parsed)) {
+          categoryId = parsed;
+        }
+      }
+
       const payload = {
         title: values.title,
         content: values.content,
         tags: values.tags || [],
-        category: values.category ? Number(values.category) : null,
       };
+
+      if (categoryId !== null) {
+        payload.category = categoryId;
+      }
+      if (legacyCategory) {
+        payload.legacy_category = legacyCategory;
+      }
+
       if (attachmentIds.length) payload.attachment_ids = attachmentIds;
       const response = await createForumPost(payload);
       message.success('帖子发布成功');
@@ -154,7 +181,10 @@ const PostForm = ({ visible, onCancel, onSuccess, categories, tagSuggestions }) 
       setFileList([]);
       onSuccess(response.data);
     } catch (error) {
-      const detail = error.response?.data?.detail;
+      const responseData = error.response?.data;
+      const detail = responseData?.detail
+        || (Array.isArray(responseData?.category) ? responseData.category[0] : null)
+        || (Array.isArray(responseData?.non_field_errors) ? responseData.non_field_errors[0] : null);
       message.error(detail || '发布失败，请稍后再试');
     } finally {
       setSubmitting(false);
@@ -254,28 +284,16 @@ export default function Forum() {
     try {
       const res = await fetchForumCategories();
       const payload = Array.isArray(res.data) ? res.data : res.data?.results || [];
-      const options = payload.map((cat) => ({ value: String(cat.id), label: cat.name }));
-      setCategoryOptions([{ value: 'all', label: '全部板块' }, ...options]);
-      // 如果后端返回但没有任何分类（极少数场景），提供内置回退
-      if (options.length === 0) {
-        const fallback = [
-          { value: '1', label: '技术交流' },
-          { value: '2', label: '功能建议' },
-          { value: '3', label: '作品分享' },
-          { value: '4', label: '问题反馈' },
-        ];
-        setCategoryOptions([{ value: 'all', label: '全部板块' }, ...fallback]);
+      const options = payload.map((cat) => ({ value: String(cat.id), label: cat.name, isLegacy: false }));
+      if (options.length) {
+        setCategoryOptions([{ value: 'all', label: '全部板块', isLegacy: false }, ...options]);
+      } else {
+        setCategoryOptions([{ value: 'all', label: '全部板块', isLegacy: false }, ...LEGACY_CATEGORY_OPTIONS]);
       }
     } catch (e) {
       console.error('加载板块失败', e);
-      // 网络或接口失败时也使用回退，避免出现 No data
-      const fallback = [
-        { value: '1', label: '技术交流' },
-        { value: '2', label: '功能建议' },
-        { value: '3', label: '作品分享' },
-        { value: '4', label: '问题反馈' },
-      ];
-      setCategoryOptions([{ value: 'all', label: '全部板块' }, ...fallback]);
+      // 网络或接口失败时使用回退，避免出现 No data
+      setCategoryOptions([{ value: 'all', label: '全部板块', isLegacy: false }, ...LEGACY_CATEGORY_OPTIONS]);
     }
   }, []);
 

@@ -118,3 +118,11 @@ export const generateImage = (prompt) => {
 export const getImageStatus = (taskId) => {
   return apiClient.get('/models/get-image-status/', { params: { task_id: taskId } });
 };
+
+export const getDatasetEvaluations = (params = {}) => {
+  return apiClient.get('/models/dataset-evaluations/', { params });
+};
+
+export const getDatasetEvaluationDetail = (id, params = {}) => {
+  return apiClient.get(`/models/dataset-evaluations/${id}/`, { params });
+};
