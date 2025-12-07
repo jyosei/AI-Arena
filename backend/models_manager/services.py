@@ -336,8 +336,15 @@ class ELORatingSystem:
             model_a.losses += 1
             model_b.wins += 1
         else:
-            model_a.ties += 1
-            model_b.ties += 1
+            # 区分平局与都很差：
+            # - tie: 双方皆胜
+            # - both_bad: 双方皆负
+            if winner == 'both_bad':
+                model_a.losses += 1
+                model_b.losses += 1
+            else:  # 默认为 tie
+                model_a.wins += 1
+                model_b.wins += 1
         
         model_a.save()
         model_b.save()

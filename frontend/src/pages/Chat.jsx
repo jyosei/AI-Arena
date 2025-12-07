@@ -13,6 +13,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import remarkBreaks from 'remark-breaks';
+import MarkdownTypewriter from '../components/MarkdownTypewriter';
 import { Plus, Globe, Image as ImageIcon, Code } from 'lucide-react';
 // 与 ChatDialog 一致：将 \(...\)/\[...\] 转为 $...$/$$..$$ ，保持代码块原样
 function normalizeTexDelimiters(text) {
@@ -30,6 +31,15 @@ function normalizeTexDelimiters(text) {
     .join('');
 }
 
+// 移除尾部意外的 "undefined" 或 "$$undefined"
+function stripTrailingUndefined(text) {
+  if (!text) return '';
+  let t = String(text);
+  t = t.replace(/(\s*\$\$undefined\s*)$/i, '');
+  t = t.replace(/(\s*undefined\s*)$/i, '');
+  return t;
+}
+
 const { TextArea } = Input;
 const { Title } = Typography;
 
@@ -40,6 +50,8 @@ export default function ChatPage() {
   const { chatHistory } = useChat();
   const { mode, setMode, models, leftModel, rightModel, setLeftModel, setRightModel } = useMode();
   const { user } = React.useContext(AuthContext);
+  // Direct Chat 独立模型选择，避免影响 battle/side-by-side 的左右模型
+  const [directModel, setDirectModel] = useState(null);
 
   const conv = chatHistory.find(c => String(c.id) === String(id));
   const title = conv ? conv.title : '会话';
@@ -91,8 +103,8 @@ export default function ChatPage() {
         if (left) setLeftModel(left);
         if (right) setRightModel(right);
       } else if (savedMode === 'direct-chat') {
-        // Direct Chat 模式：只设置左侧模型
-        setLeftModel(conv.model_name);
+        // Direct Chat 模式：不影响全局 leftModel，使用局部 directModel
+        setDirectModel(conv.model_name);
       }
     }
   }, [id, savedMode, conv?.model_name, mode, setMode, setLeftModel, setRightModel]);
@@ -121,12 +133,16 @@ export default function ChatPage() {
   const savedModelName = conv?.model_name;
   const modelName = useMemo(() => {
     if (isGeneratingImage) {
-      // 如果是生成图片模式，从图片模型中选择
-      return leftModel && imageModels.some(m => m.name === leftModel) ? leftModel : imageModels[0]?.name;
+      // 生成图片模式使用 directModel，避免污染全局 leftModel
+      return directModel && imageModels.some(m => m.name === directModel) ? directModel : imageModels[0]?.name;
     }
-    // 否则，使用现有逻辑
+    if (mode === 'direct-chat') {
+      // Direct Chat 优先会话保存的模型，其次本地 directModel，再次默认文本模型
+      return conv?.model_name || directModel || textModels[0]?.name;
+    }
+    // 其他模式保持全局左右模型
     return conv?.model_name || leftModel || textModels[0]?.name;
-  }, [isGeneratingImage, leftModel, conv?.model_name, textModels, imageModels]);
+  }, [isGeneratingImage, mode, directModel, leftModel, conv?.model_name, textModels, imageModels]);
 
   const model = models.find(m => m.name === modelName) || null;
 
@@ -165,6 +181,16 @@ export default function ChatPage() {
 
       try {
         const res = await request.get(`models/chat/conversation/${id}/messages/`);
+        const adapted = res.data.map(msg => ({
+          id: msg.id,
+          content: msg.content,
+          isUser: msg.is_user,
+          model_name: msg.model_name,
+          created_at: msg.created_at,
+          // --- 关键修改: 加载历史图片 ---
+          image: msg.image || null,
+          animate: false, // 历史消息不启用打字机
+        }));
         const imageModelNames = imageModels.map(model => model.name);
         const adapted = res.data.map(msg => {
           const rawContent = msg.content ?? '';
@@ -392,7 +418,7 @@ export default function ChatPage() {
         // 进入生成图片模式
         setUploadedImage(null); // 清除已上传的图片
         if (imageModels.length > 0) {
-          setLeftModel(imageModels[0].name); // 自动选择第一个图片模型
+          setDirectModel(imageModels[0].name); // 自动选择第一个图片模型（本地）
         } else {
           antdMessage.warning('没有可用的图片生成模型。');
           return false; // 阻止切换
@@ -400,7 +426,7 @@ export default function ChatPage() {
       } else {
         // 退出生成图片模式，恢复到默认文本模型
         if (textModels.length > 0) {
-          setLeftModel(textModels[0].name);
+          setDirectModel(textModels[0].name);
         }
       }
       return nextState;
@@ -471,6 +497,7 @@ export default function ChatPage() {
       try {
         // evaluateModel 会自动保存用户消息和AI回复
         const res = await evaluateModel(model.name, currentPrompt, id, currentImage, true);
+        const aiMessage = { id: Date.now() + 1, content: res.data.response, isUser: false, model_name: model.name, animate: true };
         const rawResponse = res.data?.response;
         const looksLikeImage = typeof rawResponse === 'string' && (
           rawResponse.startsWith('data:image') ||
@@ -523,7 +550,8 @@ export default function ChatPage() {
             id: Date.now() + Math.random(), 
             content: result.response, 
             isUser: false,
-            model_name: result.model
+            model_name: result.model,
+            animate: true
           };
           
           if (result.model === leftModel) {
@@ -560,7 +588,7 @@ export default function ChatPage() {
       let modelB = rightModel;
       
       // 如果还没有选择模型，随机选择
-      if (1) {
+      if (!modelA || !modelB) {
         // 过滤掉图片和视频模型
         const requiredCapability = currentImage ? 'vision' : 'chat';
         const filteredModels = models.filter(m => m.capabilities.includes(requiredCapability));
@@ -606,13 +634,15 @@ export default function ChatPage() {
             id: Date.now(), 
             content: result1.response, 
             isUser: false,
-            model_name: result1.model // 保存真实模型名,但界面不显示
+            model_name: result1.model, // 保存真实模型名,但界面不显示
+            animate: true
           }]);
           setRightMessages(prev => [...prev, { 
             id: Date.now() + 1, 
             content: result2.response, 
             isUser: false,
-            model_name: result2.model
+            model_name: result2.model,
+            animate: true
           }]);
         } else {
           // 非匿名:根据模型名分配
@@ -621,7 +651,8 @@ export default function ChatPage() {
               id: Date.now() + Math.random(), 
               content: result.response, 
               isUser: false,
-              model_name: result.model
+              model_name: result.model,
+              animate: true
             };
             
             if (result.model === modelA) {
@@ -663,11 +694,22 @@ export default function ChatPage() {
       return;
     }
 
+    // 在匿名 battle 模式下，leftModel/rightModel 可能未设置；
+    // 使用左右侧最新 AI 消息的真实 model_name 作为提交的模型名。
+    const lastLeftAi = [...leftMessages].reverse().find(m => !m.isUser && !m.isError && m.model_name);
+    const lastRightAi = [...rightMessages].reverse().find(m => !m.isUser && !m.isError && m.model_name);
+    const modelAName = lastLeftAi?.model_name || leftModel;
+    const modelBName = lastRightAi?.model_name || rightModel;
+
+    if (!modelAName || !modelBName) {
+      antdMessage.error('无法确定参与对战的模型名称。请重新开始对战。');
+      return;
+    }
     const normalizedWinner = winnerChoice === 'bad' ? 'both_bad' : winnerChoice;
 
     const voteData = {
-      model_a: leftModel,
-      model_b: rightModel,
+      model_a: modelAName,
+      model_b: modelBName,
       prompt: lastUserMessage.content, // 使用从历史记录中找到的 prompt
       winner: normalizedWinner,
     };
@@ -693,14 +735,16 @@ export default function ChatPage() {
     }
     let winnerValue;
     if (choice === 'good') {
-      // 如果用户觉得好，那么获胜者就是当前模型
-      winnerValue = leftModel;
+      // 用户觉得好：direct-chat 模式将当前模型作为胜者
+      winnerValue = directModel || model?.name || leftModel;
     } else {
+      // 用户觉得不好：统一传递 'bad'，后端映射为 'both_bad'
+      winnerValue = 'bad';
       // 如果用户觉得不好，反馈为双方都不佳
       winnerValue = 'both_bad';
     }
     const voteData = {
-      model_a: leftModel,
+      model_a: directModel || model?.name || leftModel,
       model_b: null,
       prompt: lastUserMessage.content,
       winner: winnerValue,
@@ -735,17 +779,12 @@ export default function ChatPage() {
       {message.isUser ? (
         message.content
       ) : (
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm, remarkBreaks, remarkMath]}
-          rehypePlugins={[rehypeKatex]}
-          linkTarget="_blank"
-          components={{
-            a: ({node, ...props}) => <a {...props} rel="noopener noreferrer" />,
-            code: ({inline, className, children, ...props}) => (<code className={className} {...props}>{children}</code>)
-          }}
-        >
-          {normalizeTexDelimiters(String(message.content || ''))}
-        </ReactMarkdown>
+        <MarkdownTypewriter
+          source={stripTrailingUndefined(normalizeTexDelimiters(String(message.content || '')))}
+          enabled={!!message.animate}
+          speed={50}
+          by="word"
+        />
       )}
     </>
   );
@@ -867,7 +906,7 @@ export default function ChatPage() {
           </Space>
         </div>
       )}
-      {mode === 'direct-chat' && messages.some(m => !m.isUser && !m.isError) && !voted &&(
+      {mode === 'direct-chat' && messages.some(m => !m.isUser && !m.isError) && !directChatVoted &&(
         <div style={{ marginTop: 12, textAlign: 'center' }}>
           <Space wrap size={[8,8]} style={{ justifyContent: 'center' }}>
             <Button style={{ minWidth: 120 }} onClick={() => handleDirectChatVote('good')} disabled={directChatVoted}>👍 Good</Button>
