@@ -448,13 +448,44 @@ class BattleModelView(APIView):
             model_a_service = get_chat_model_service(model_a_name)
             model_b_service = get_chat_model_service(model_b_name)
 
-            # 调用各自的 evaluate 方法 (后续可优化为并行)
-            response_a_data = model_a_service.evaluate(prompt, model_a_name)
-            response_b_data = model_b_service.evaluate(prompt, model_b_name)
+            # 构建历史上下文（如果有会话）：
+            # - 用户消息对两侧共享
+            # - 助手消息按模型名分别过滤，避免一侧模型收到另一侧的助手回答，导致上下文冲突
+            history_messages_a = []
+            history_messages_b = []
+            if conversation:
+                for msg in conversation.messages.order_by('created_at'):
+                    if msg.role == 'user':
+                        history_messages_a.append({"role": "user", "content": msg.content})
+                        history_messages_b.append({"role": "user", "content": msg.content})
+                    else:
+                        # 仅保留各自模型的助手消息
+                        if msg.model_name == model_a_name:
+                            history_messages_a.append({"role": "assistant", "content": msg.content})
+                        if msg.model_name == model_b_name:
+                            history_messages_b.append({"role": "assistant", "content": msg.content})
+
+            # 关键：在传给模型前，将当前用户输入也作为最后一条 user 消息加入上下文
+            # 部分模型需要完整的 messages 序列（包含当前 user）而不是通过单独 prompt 参数
+            if prompt:
+                history_messages_a.append({"role": "user", "content": prompt})
+                history_messages_b.append({"role": "user", "content": prompt})
+
+            # 调用各自的 evaluate 方法，带上历史上下文
+            response_a_data = model_a_service.evaluate(
+                prompt=prompt,
+                model_name=model_a_name,
+                messages=history_messages_a
+            )
+            response_b_data = model_b_service.evaluate(
+                prompt=prompt,
+                model_name=model_b_name,
+                messages=history_messages_b
+            )
 
             # 保存到数据库
             if conversation:
-                # 保存用户消息
+                # 保存用户消息（先保存，保证下次有完整历史）
                 ChatMessage.objects.create(
                     conversation=conversation,
                     role='user',
