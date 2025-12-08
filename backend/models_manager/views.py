@@ -26,6 +26,7 @@ import json
 from django.conf import settings
 import csv 
 import re
+from sympy import sympify, simplify
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 DATASET_METADATA = {
     "test_math_small.csv": {
@@ -865,9 +866,89 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 class EvaluateDatasetView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def _json_line(self, payload: dict) -> bytes:
-        return (json.dumps(payload, ensure_ascii=True) + "\n").encode('utf-8')
+    def _check_math_answer(self, model_answer, correct_answer):
+        """
+        更强大的答案校验函数，V6版，带 LaTeX 解析。
+        """
+        print("\n--- [DEBUG] New Answer Check ---")
+        print(f"[DEBUG] Raw Model Answer: {repr(model_answer)}")
+        print(f"[DEBUG] Raw Correct Answer: {repr(correct_answer)}")
 
+        model_answer, correct_answer = str(model_answer), str(correct_answer)
+
+        # 1. 增强的答案提取逻辑 (保持不变)
+        boxed_match = re.search(r'\\boxed\{(.*?)\}', model_answer)
+        if boxed_match:
+            model_final_answer = boxed_match.group(1)
+            print(f"[DEBUG] Extracted from \\boxed: {repr(model_final_answer)}")
+        else:
+            print("[DEBUG] No \\boxed found. Trying heuristic extraction from last lines.")
+            lines = model_answer.strip().split('\n')
+            for line in reversed(lines[-5:]):
+                line = line.strip()
+                potential_answer_match = re.fullmatch(r'[\(\[]?[\w\s\.,\+\-\*\/\\^]+[\)\]]?', line)
+                if potential_answer_match and len(line) > 0 and len(line) < 50:
+                    model_final_answer = line
+                    print(f"[DEBUG] Heuristically extracted: {repr(model_final_answer)}")
+                    break
+            else:
+                model_final_answer = model_answer
+                print("[DEBUG] Heuristic extraction failed. Using full response.")
+
+        # 2. 升级的 normalize_latex 函数，增加 LaTeX 到 sympy 的转换
+        def normalize_latex(text):
+            # 移除不影响数学含义的格式命令
+            text = re.sub(r'\\left|\\right', '', text)
+            text = re.sub(r'\\text\{.*?\}', '', text)
+            text = re.sub(r'\\boxed\{(.*?)\}', r'\1', text)
+            
+            # --- 核心修改：转换 LaTeX 数学命令 ---
+            # 分数: \frac{a}{b} -> (a)/(b)
+            text = re.sub(r'\\frac\{([^}]+)\}\{([^}]+)\}', r'(\1)/(\2)', text)
+            # 平方根: \sqrt{a} -> sqrt(a)
+            text = re.sub(r'\\sqrt\{([^}]+)\}', r'sqrt(\1)', text)
+            # 乘法符号: \cdot, \times -> *
+            text = re.sub(r'\\cdot|\\times', '*', text)
+            # --- 修改结束 ---
+
+            return text.strip()
+
+        model_final_answer = normalize_latex(model_final_answer)
+        correct_answer = normalize_latex(correct_answer)
+        print(f"[DEBUG] Normalized Model Answer: {repr(model_final_answer)}")
+        print(f"[DEBUG] Normalized Correct Answer: {repr(correct_answer)}")
+
+        # 3. 元组比较逻辑 (保持不变)
+        tuple_match_model = re.fullmatch(r'[\(\[]\s*(.*?)\s*[\)\]]', model_final_answer)
+        tuple_match_correct = re.fullmatch(r'[\(\[]\s*(.*?)\s*[\)\]]', correct_answer)
+
+        if tuple_match_model and tuple_match_correct:
+            print("[DEBUG] Trying tuple comparison...")
+            # ... (元组比较逻辑) ...
+
+        # 4. 单个表达式比较 (现在应该能处理 LaTeX 了)
+        try:
+            print("[DEBUG] Trying sympy expression comparison...")
+            # 在 sympify 中加入 pi 的识别
+            local_dict = {"pi": sympify("pi")}
+            model_expr = sympify(model_final_answer, locals=local_dict)
+            correct_expr = sympify(correct_answer, locals=local_dict)
+            print(f"[DEBUG] Sympified Model: {model_expr}")
+            print(f"[DEBUG] Sympified Correct: {correct_expr}")
+            
+            if simplify(model_expr - correct_expr) == 0:
+                print("[DEBUG] RESULT: TRUE (Sympy match)")
+                return True
+        except Exception as e:
+            print(f"[DEBUG] Sympy Error: {e}")
+
+        # 5. 字符串比较 (保持不变)
+        print("[DEBUG] Trying string comparison...")
+        # ... (字符串比较逻辑) ...
+            
+        print("[DEBUG] RESULT: FALSE (All checks failed)")
+        return False
+    
     def _extract_final_answer(self, text: str) -> str:
         """从文本中提取 #### 后面的数字答案"""
         match = re.search(r'####\s*([\d,.-]+)', text)
@@ -968,8 +1049,48 @@ class EvaluateDatasetView(APIView):
             "elapsed_seconds": total_elapsed,
             "samples": samples,
         }
+    def _evaluate_generic_math(self, model_service, prompts, model_name: str):
+        """处理像 MATH-500 这样的通用数学任务"""
+        correct = 0
+        error_samples = []
+        
+        for row in prompts:
+            # 使用 'problem' 列
+            question = row.get('problem')
+            true_answer = row.get('answer')
+            if not question or not true_answer:
+                continue
 
-    def _evaluate_classification(self, model_service, prompts, model_name: str):
+            # 清理问题文本中的 [asy] 代码块
+            prompt_to_model = re.sub(r'\[asy\].*?\[/asy\]', '', question, flags=re.DOTALL).strip()
+            
+            try:
+                model_response = model_service.evaluate(prompt=prompt_to_model, model_name=model_name)
+                
+                # 使用我们强大的答案校验函数
+                if self._check_math_answer(model_response, true_answer):
+                    correct += 1
+                else:
+                    if len(error_samples) < 5:
+                        error_samples.append({
+                            "prompt": prompt_to_model,
+                            "expected_answer": true_answer,
+                            "model_response": model_response
+                        })
+            except Exception as e:
+                if len(error_samples) < 5:
+                    error_samples.append({"prompt": prompt_to_model, "expected_answer": true_answer, "model_response": f"API Error: {e}"})
+
+        accuracy = (correct / len(prompts) * 100) if prompts else 0
+        return {
+            "benchmark_type": "General Math",
+            "metrics": {"accuracy": round(accuracy, 2)},
+            "total_prompts": len(prompts),
+            "correct_answers": correct,
+            "error_samples": error_samples,
+        }
+    
+    def _evaluate_classification(self, model_service, prompts,model_name:str):
         """处理 rotten_tomatoes 类型的分类任务"""
         predictions = []
         ground_truth = []
@@ -1171,15 +1292,13 @@ class EvaluateDatasetView(APIView):
 
             # --- 智能判断任务类型 ---
             if 'question' in fieldnames and 'answer' in fieldnames:
-                # 判定为 GSM8K 类型
-                evaluation_mode = 'gsm8k'
                 result = self._evaluate_gsm8k(model_service, prompts, model_name=model_name)
+            elif 'problem' in fieldnames and 'answer' in fieldnames: # <-- 新增的分支
+                result = self._evaluate_generic_math(model_service, prompts, model_name=model_name)
             elif 'text' in fieldnames and 'label' in fieldnames:
-                # 判定为分类任务类型
-                evaluation_mode = 'classification'
                 result = self._evaluate_classification(model_service, prompts, model_name=model_name)
             else:
-                return Response({"error": "数据集格式不被支持。需要 (question, answer) 或 (text, label) 列。"}, status=400)
+                return Response({"error": "数据集格式不被支持。需要 (question, answer), (problem, answer) 或 (text, label) 列。"}, status=400)
             
             # 补充通用信息
             result['model_name'] = model_name
@@ -1202,593 +1321,13 @@ class EvaluateDatasetView(APIView):
             import traceback
             traceback.print_exc()
             return Response({"error": f"处理时发生严重错误: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-class EvaluateDatasetStreamView(EvaluateDatasetView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request, *args, **kwargs):
-        dataset_name = request.data.get('dataset_name')
-        model_name = request.data.get('model_name')
-        user_api_key = request.data.get('api_key')
-
-        if not dataset_name or not model_name:
-            return Response({"error": "必须提供数据集和模型名称"}, status=status.HTTP_400_BAD_REQUEST)
-
-        dataset_path = settings.BASE_DIR / 'dataset_files' / dataset_name
-        if not os.path.exists(dataset_path):
-            return Response({"error": f"数据集文件 '{dataset_name}' 不存在"}, status=status.HTTP_404_NOT_FOUND)
-
-        try:
-            model_service = get_evaluation_model_service(model_name, api_key=user_api_key)
-        except Exception as exc:
-            return Response({"error": f"无法初始化模型服务: {exc}"}, status=status.HTTP_400_BAD_REQUEST)
-
-        with open(dataset_path, mode='r', encoding='utf-8-sig') as f:
-            reader = csv.DictReader(f)
-            prompts = list(reader)
-            fieldnames = reader.fieldnames or []
-
-        if not prompts:
-            return Response({"error": "数据集中没有可用的样本"}, status=status.HTTP_400_BAD_REQUEST)
-
-        if 'question' in fieldnames and 'answer' in fieldnames:
-            evaluation_mode = 'gsm8k'
-        elif 'text' in fieldnames and 'label' in fieldnames:
-            evaluation_mode = 'classification'
-        else:
-            return Response({"error": "数据集格式不被支持。需要 (question, answer) 或 (text, label) 列。"}, status=status.HTTP_400_BAD_REQUEST)
-
-        total_prompts = len(prompts)
-        benchmark_type = 'Math Reasoning (GSM8K)' if evaluation_mode == 'gsm8k' else 'Sentiment Classification'
-        evaluation_record = DatasetEvaluationResult.objects.create(
-            user=request.user if request.user.is_authenticated else None,
-            dataset_name=dataset_name,
-            model_name=model_name,
-            evaluation_mode=evaluation_mode,
-            benchmark_type=benchmark_type,
-            total_prompts=total_prompts,
-            status='running',
-            extra={'source': 'stream'},
-        )
-
-        def stream():
-            start_time = time.perf_counter()
-            yield self._json_line({
-                "type": "init",
-                "dataset_name": dataset_name,
-                "model_name": model_name,
-                "total": total_prompts,
-                "started_at": time.time(),
-                "evaluation_id": evaluation_record.id,
-            })
-
-            try:
-                if evaluation_mode == 'gsm8k':
-                    yield from self._stream_gsm8k(
-                        model_service,
-                        prompts,
-                        model_name,
-                        dataset_name,
-                        total_prompts,
-                        start_time,
-                        evaluation_record,
-                    )
-                else:
-                    yield from self._stream_classification(
-                        model_service,
-                        prompts,
-                        model_name,
-                        dataset_name,
-                        total_prompts,
-                        start_time,
-                        evaluation_record,
-                    )
-            except Exception as exc:
-                evaluation_record.status = 'failed'
-                evaluation_record.extra = {
-                    **(evaluation_record.extra or {}),
-                    'error': str(exc),
-                }
-                evaluation_record.elapsed_seconds = round(time.perf_counter() - start_time, 3)
-                evaluation_record.completed_at = timezone.now()
-                evaluation_record.save(update_fields=['status', 'extra', 'elapsed_seconds', 'completed_at'])
-                yield self._json_line({
-                    "type": "error",
-                    "message": f"处理时发生严重错误: {exc}"
-                })
-
-        response = StreamingHttpResponse(stream(), content_type='application/x-ndjson')
-        response['Cache-Control'] = 'no-cache'
-        response['X-Accel-Buffering'] = 'no'
-        return response
-
-    def _stream_gsm8k(self, model_service, prompts, model_name, dataset_name, total_prompts, start_time, evaluation_record):
-        correct = 0
-        evaluated = 0
-        processed = 0
-        error_samples = []
-        batch = []
-
-        def flush_batch():
-            nonlocal batch
-            if batch:
-                DatasetEvaluationSample.objects.bulk_create(batch)
-                batch = []
-
-        for row in prompts:
-            processed += 1
-            question = row.get('question')
-            true_answer_text = row.get('answer')
-            if not question or not true_answer_text:
-                batch.append(
-                    DatasetEvaluationSample(
-                        result=evaluation_record,
-                        index=processed,
-                        prompt=question or "",
-                        expected_answer="",
-                        model_response="",
-                        is_correct=None,
-                        included_in_metrics=False,
-                        skipped=True,
-                        sample_time=None,
-                        message="缺少 question 或 answer 字段",
-                    )
-                )
-                if len(batch) >= 50:
-                    flush_batch()
-                yield self._json_line({
-                    "type": "progress",
-                    "index": processed,
-                    "total": total_prompts,
-                    "skipped": True,
-                    "message": "缺少 question 或 answer 字段",
-                    "elapsed": round(time.perf_counter() - start_time, 3)
-                })
-                continue
-
-            true_final_answer = self._extract_final_answer(true_answer_text)
-            prompt_to_model = "Question: " + question + "\n\nLet's think step by step, and then write the final answer in the format '#### <number>'."
-
-            sample_started = time.perf_counter()
-            sample_error = None
-            try:
-                model_response = model_service.evaluate(prompt=prompt_to_model, model_name=model_name)
-            except Exception as exc:
-                sample_error = f"API Error: {exc}"
-                model_response = sample_error
-
-            model_final_answer = self._extract_final_answer(model_response)
-            is_correct = bool(
-                model_final_answer and true_final_answer and model_final_answer == true_final_answer
-            ) if sample_error is None else None
-            included_in_metrics = sample_error is None
-
-            if included_in_metrics:
-                evaluated += 1
-                if is_correct:
-                    correct += 1
-                elif len(error_samples) < 5:
-                    error_samples.append({
-                        "prompt": question,
-                        "expected_answer": true_final_answer,
-                        "model_response": model_response
-                    })
-            elif len(error_samples) < 5 and sample_error:
-                error_samples.append({
-                    "prompt": question,
-                    "expected_answer": true_final_answer,
-                    "model_response": model_response
-                })
-
-            sample_time = round(time.perf_counter() - sample_started, 3)
-            running_accuracy = round((correct / evaluated) * 100, 2) if evaluated else 0.0
-
-            batch.append(
-                DatasetEvaluationSample(
-                    result=evaluation_record,
-                    index=processed,
-                    prompt=question,
-                    expected_answer=true_final_answer,
-                    model_response=model_response,
-                    is_correct=is_correct,
-                    included_in_metrics=included_in_metrics,
-                    skipped=False,
-                    sample_time=sample_time,
-                    message=sample_error or "",
-                )
-            )
-            if len(batch) >= 50:
-                flush_batch()
-
-            yield self._json_line({
-                "type": "progress",
-                "index": processed,
-                "total": total_prompts,
-                "prompt": question,
-                "expected_answer": true_final_answer,
-                "model_response": model_response,
-                "is_correct": is_correct,
-                "sample_time": sample_time,
-                "elapsed": round(time.perf_counter() - start_time, 3),
-                "included_in_metrics": included_in_metrics,
-                "message": sample_error or "",
-                "running_metrics": {"accuracy": running_accuracy}
-            })
-
-        flush_batch()
-        total_elapsed = round(time.perf_counter() - start_time, 3)
-        summary = {
-            "benchmark_type": "Math Reasoning (GSM8K)",
-            "metrics": {"accuracy": round((correct / evaluated) * 100, 2) if evaluated else 0.0},
-            "total_prompts": total_prompts,
-            "evaluated_prompts": evaluated,
-            "correct_answers": correct,
-            "error_samples": error_samples,
-            "model_name": model_name,
-            "dataset_name": dataset_name,
-            "elapsed_seconds": total_elapsed,
-        }
-
-        evaluation_record.evaluated_prompts = evaluated
-        evaluation_record.correct_answers = correct
-        evaluation_record.metrics = summary['metrics']
-        evaluation_record.error_samples = error_samples
-        evaluation_record.elapsed_seconds = total_elapsed
-        evaluation_record.status = 'completed'
-        evaluation_record.completed_at = timezone.now()
-        evaluation_record.save(update_fields=[
-            'evaluated_prompts',
-            'correct_answers',
-            'metrics',
-            'error_samples',
-            'elapsed_seconds',
-            'status',
-            'completed_at',
-        ])
-
-        summary['evaluation_id'] = evaluation_record.id
-
-        yield self._json_line({
-            "type": "summary",
-            "result": summary
-        })
-
-
-class DatasetEvaluationListView(APIView):
-    permission_classes = [IsAuthenticated]
+class BenchmarkScoresView(APIView):
+    """提供客观基准测评的排行榜数据"""
+    permission_classes = [AllowAny]
 
     def get(self, request, *args, **kwargs):
-        qs = DatasetEvaluationResult.objects.all()
-        if not request.user.is_staff:
-            qs = qs.filter(user=request.user)
-
-        status_filter = request.query_params.get('status')
-        if status_filter:
-            qs = qs.filter(status=status_filter)
-
-        mode_filter = request.query_params.get('mode')
-        if mode_filter:
-            qs = qs.filter(evaluation_mode=mode_filter)
-
-        dataset_filter = request.query_params.get('dataset')
-        if dataset_filter:
-            qs = qs.filter(dataset_name=dataset_filter)
-
-        model_filter = request.query_params.get('model')
-        if model_filter:
-            qs = qs.filter(model_name=model_filter)
-
-        try:
-            limit = int(request.query_params.get('limit', 20))
-        except (TypeError, ValueError):
-            limit = 20
-
-        try:
-            offset = int(request.query_params.get('offset', 0))
-        except (TypeError, ValueError):
-            offset = 0
-
-        total_count = qs.count()
-        qs = qs.order_by('-created_at')[offset:offset + limit]
-
-        records = []
-        for record in qs:
-            records.append({
-                "id": record.id,
-                "dataset_name": record.dataset_name,
-                "model_name": record.model_name,
-                "evaluation_mode": record.evaluation_mode,
-                "benchmark_type": record.benchmark_type,
-                "status": record.status,
-                "total_prompts": record.total_prompts,
-                "evaluated_prompts": record.evaluated_prompts,
-                "correct_answers": record.correct_answers,
-                "metrics": record.metrics,
-                "elapsed_seconds": record.elapsed_seconds,
-                "created_at": record.created_at,
-                "completed_at": record.completed_at,
-            })
-
-        return Response({
-            "count": total_count,
-            "limit": limit,
-            "offset": offset,
-            "results": records,
-        })
-
-
-class DatasetEvaluationDetailView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request, evaluation_id, *args, **kwargs):
-        evaluation = get_object_or_404(DatasetEvaluationResult, pk=evaluation_id)
-
-        if not request.user.is_staff and evaluation.user_id != request.user.id:
-            return Response({"error": "无权访问该测评记录"}, status=status.HTTP_403_FORBIDDEN)
-
-        errors_only = request.query_params.get('errors_only', 'false').lower() in {'true', '1', 'yes'}
-
-        try:
-            limit = int(request.query_params.get('limit', 50))
-        except (TypeError, ValueError):
-            limit = 50
-
-        try:
-            offset = int(request.query_params.get('offset', 0))
-        except (TypeError, ValueError):
-            offset = 0
-
-        samples_qs = evaluation.samples.all()
-        if errors_only:
-            samples_qs = samples_qs.filter(skipped=False, included_in_metrics=True).exclude(is_correct=True)
-
-        total_samples = samples_qs.count()
-        samples_slice = samples_qs[offset:offset + limit]
-
-        samples_data = []
-        for sample in samples_slice:
-            samples_data.append({
-                "index": sample.index,
-                "prompt": sample.prompt,
-                "expected_answer": sample.expected_answer,
-                "model_response": sample.model_response,
-                "is_correct": sample.is_correct,
-                "included_in_metrics": sample.included_in_metrics,
-                "skipped": sample.skipped,
-                "sample_time": sample.sample_time,
-                "message": sample.message,
-            })
-
-        payload = {
-            "id": evaluation.id,
-            "dataset_name": evaluation.dataset_name,
-            "model_name": evaluation.model_name,
-            "evaluation_mode": evaluation.evaluation_mode,
-            "benchmark_type": evaluation.benchmark_type,
-            "status": evaluation.status,
-            "total_prompts": evaluation.total_prompts,
-            "evaluated_prompts": evaluation.evaluated_prompts,
-            "correct_answers": evaluation.correct_answers,
-            "metrics": evaluation.metrics,
-            "error_samples": evaluation.error_samples,
-            "elapsed_seconds": evaluation.elapsed_seconds,
-            "created_at": evaluation.created_at,
-            "completed_at": evaluation.completed_at,
-            "samples": samples_data,
-            "pagination": {
-                "total": total_samples,
-                "limit": limit,
-                "offset": offset,
-                "errors_only": errors_only,
-            },
-        }
-
-        return Response(payload)
-
-    def _stream_classification(self, model_service, prompts, model_name, dataset_name, total_prompts, start_time, evaluation_record):
-        processed = 0
-        evaluated = 0
-        tp = fp = tn = fn = 0
-        error_samples = []
-        batch = []
-
-        def flush_batch():
-            nonlocal batch
-            if batch:
-                DatasetEvaluationSample.objects.bulk_create(batch)
-                batch = []
-
-        for row in prompts:
-            processed += 1
-            text = row.get('text')
-            label = row.get('label')
-            if text is None or label is None:
-                batch.append(
-                    DatasetEvaluationSample(
-                        result=evaluation_record,
-                        index=processed,
-                        prompt=text or "",
-                        expected_answer="",
-                        model_response="",
-                        is_correct=None,
-                        included_in_metrics=False,
-                        skipped=True,
-                        sample_time=None,
-                        message="缺少 text 或 label 字段",
-                    )
-                )
-                if len(batch) >= 50:
-                    flush_batch()
-                yield self._json_line({
-                    "type": "progress",
-                    "index": processed,
-                    "total": total_prompts,
-                    "skipped": True,
-                    "message": "缺少 text 或 label 字段",
-                    "elapsed": round(time.perf_counter() - start_time, 3)
-                })
-                continue
-
-            try:
-                label_int = int(label)
-            except (ValueError, TypeError):
-                batch.append(
-                    DatasetEvaluationSample(
-                        result=evaluation_record,
-                        index=processed,
-                        prompt=text or "",
-                        expected_answer=str(label),
-                        model_response="",
-                        is_correct=None,
-                        included_in_metrics=False,
-                        skipped=True,
-                        sample_time=None,
-                        message="label 无法解析为整数",
-                    )
-                )
-                if len(batch) >= 50:
-                    flush_batch()
-                yield self._json_line({
-                    "type": "progress",
-                    "index": processed,
-                    "total": total_prompts,
-                    "skipped": True,
-                    "message": "label 无法解析为整数",
-                    "elapsed": round(time.perf_counter() - start_time, 3)
-                })
-                continue
-
-            prompt_to_model = "Analyze the sentiment of the following movie review. Respond with only the word 'positive' or 'negative'.\n\nReview: '" + text + "'"
-
-            sample_started = time.perf_counter()
-            predicted_label = None
-            sample_error = None
-            try:
-                model_response = model_service.evaluate(prompt=prompt_to_model, model_name=model_name).lower()
-                predicted_label = 1 if 'positive' in model_response else 0
-            except Exception as exc:
-                sample_error = f"API Error: {exc}"
-                model_response = sample_error
-
-            sample_time = round(time.perf_counter() - sample_started, 3)
-
-            included_in_metrics = predicted_label is not None
-            is_correct = None
-            if included_in_metrics:
-                evaluated += 1
-                if predicted_label == 1 and label_int == 1:
-                    tp += 1
-                elif predicted_label == 1 and label_int == 0:
-                    fp += 1
-                elif predicted_label == 0 and label_int == 0:
-                    tn += 1
-                elif predicted_label == 0 and label_int == 1:
-                    fn += 1
-
-                is_correct = predicted_label == label_int
-                if not is_correct and len(error_samples) < 5:
-                    error_samples.append({
-                        "prompt": text,
-                        "expected_answer": "positive" if label_int == 1 else "negative",
-                        "model_response": model_response
-                    })
-            else:
-                if len(error_samples) < 5:
-                    error_samples.append({
-                        "prompt": text,
-                        "expected_answer": "positive" if label_int == 1 else "negative",
-                        "model_response": model_response
-                    })
-
-            accuracy = ((tp + tn) / evaluated * 100) if evaluated else 0.0
-            precision = (tp / (tp + fp) * 100) if (tp + fp) else 0.0
-            recall = (tp / (tp + fn) * 100) if (tp + fn) else 0.0
-            f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
-
-             # store sample
-            batch.append(
-                DatasetEvaluationSample(
-                    result=evaluation_record,
-                    index=processed,
-                    prompt=text,
-                    expected_answer="positive" if label_int == 1 else "negative",
-                    model_response=model_response,
-                    is_correct=is_correct if included_in_metrics else None,
-                    included_in_metrics=included_in_metrics,
-                    skipped=False,
-                    sample_time=sample_time,
-                    message=sample_error or ("" if included_in_metrics else "模型响应无效"),
-                )
-            )
-            if len(batch) >= 50:
-                flush_batch()
-
-            yield self._json_line({
-                "type": "progress",
-                "index": processed,
-                "total": total_prompts,
-                "prompt": text,
-                "expected_answer": "positive" if label_int == 1 else "negative",
-                "model_response": model_response,
-                "is_correct": is_correct,
-                "sample_time": sample_time,
-                "elapsed": round(time.perf_counter() - start_time, 3),
-                "included_in_metrics": included_in_metrics,
-                "message": sample_error or ("" if included_in_metrics else "模型响应无效"),
-                "running_metrics": {
-                    "accuracy": round(accuracy, 2),
-                    "precision": round(precision, 2),
-                    "recall": round(recall, 2),
-                    "f1_score": round(f1, 2),
-                }
-            })
-
-        flush_batch()
-        total_elapsed = round(time.perf_counter() - start_time, 3)
-
-        final_accuracy = ((tp + tn) / evaluated * 100) if evaluated else 0.0
-        final_precision = (tp / (tp + fp) * 100) if (tp + fp) else 0.0
-        final_recall = (tp / (tp + fn) * 100) if (tp + fn) else 0.0
-        final_f1 = (2 * final_precision * final_recall / (final_precision + final_recall)) if (final_precision + final_recall) else 0.0
-
-        summary = {
-            "benchmark_type": "Sentiment Classification",
-            "metrics": {
-                "accuracy": round(final_accuracy, 2),
-                "precision": round(final_precision, 2),
-                "recall": round(final_recall, 2),
-                "f1_score": round(final_f1, 2),
-            },
-            "total_prompts": total_prompts,
-            "evaluated_prompts": evaluated,
-            "correct_answers": int(tp + tn),
-            "error_samples": error_samples,
-            "model_name": model_name,
-            "dataset_name": dataset_name,
-            "elapsed_seconds": total_elapsed,
-        }
-
-        evaluation_record.evaluated_prompts = evaluated
-        evaluation_record.correct_answers = int((tp + tn))
-        evaluation_record.metrics = summary['metrics']
-        evaluation_record.error_samples = error_samples
-        evaluation_record.elapsed_seconds = total_elapsed
-        evaluation_record.status = 'completed'
-        evaluation_record.completed_at = timezone.now()
-        evaluation_record.save(update_fields=[
-            'evaluated_prompts',
-            'correct_answers',
-            'metrics',
-            'error_samples',
-            'elapsed_seconds',
-            'status',
-            'completed_at',
-        ])
-
-        summary['evaluation_id'] = evaluation_record.id
-
-        yield self._json_line({
-            "type": "summary",
-            "result": summary
-        })
+        # 按总分从高到低排序
+        scores = BenchmarkScore.objects.order_by('-total_score')
+        # 假设你已经创建了 BenchmarkScoreSerializer
+        serializer = BenchmarkScoreSerializer(scores, many=True)
+        return Response(serializer.data)

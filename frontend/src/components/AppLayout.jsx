@@ -241,6 +241,13 @@ const AppLayout = () => {
             },
             { // 上传数据集菜单项
               key: '4',
+              icon: <MessageOutlined />,
+              label: <Link to="/evaluate-dataset">数据集上传</Link>,
+            },
+            { // <-- 这是新添加的项
+              key: '6',
+              icon: <MessageOutlined />,
+              label: <Link to="/benchmark-leaderboard">客观排行榜</Link>,
               icon: <UploadOutlined />,
               label: <Link to="/evaluate-dataset" onClick={closeMobileSider}>数据集测评</Link>,
             },

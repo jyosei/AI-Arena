@@ -5,6 +5,7 @@ from datasets import load_dataset
 DATASETS_TO_DOWNLOAD = {
     "openai/gsm8k": {"name": "main", "split": "test", "filename": "gsm8k.csv"},
     "rotten_tomatoes": {"name": None, "split": "test", "filename": "rotten_tomatoes.csv"},
+    "HuggingFaceH4/MATH-500": {"name": None, "split": "test", "filename": "MATH-500.csv"},
 }
 
 output_dir = "dataset_files"
