@@ -16,6 +16,7 @@ import os
 from django.conf import settings
 import csv 
 import re
+import json
 from sympy import sympify, simplify
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 DATASET_METADATA = {
@@ -961,8 +962,21 @@ class BenchmarkScoresView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, *args, **kwargs):
-        # 按总分从高到低排序
+        # --- 从 JSON 文件加载伪造数据 ---
+        # 设置 USE_FAKE_DATA 为 False 即可切换回真实数据
+        USE_FAKE_DATA = True 
+
+        if USE_FAKE_DATA:
+            try:
+                # 构建文件的绝对路径
+                file_path = os.path.join(settings.BASE_DIR, 'models_manager', 'benchmark_scores.json')
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    fake_data = json.load(f)
+                return Response(fake_data)
+            except (FileNotFoundError, json.JSONDecodeError) as e:
+                return Response({"error": f"无法加载伪造的排行榜数据: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # --- 真实的数据库查询 ---
         scores = BenchmarkScore.objects.order_by('-total_score')
-        # 假设你已经创建了 BenchmarkScoreSerializer
         serializer = BenchmarkScoreSerializer(scores, many=True)
         return Response(serializer.data)

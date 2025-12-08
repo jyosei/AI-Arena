@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Spin, Alert, Typography, Tag } from 'antd';
-import request from '../api/request'; // 你的 API 请求工具
+import { Table, Spin, Alert, Typography, Tag, Space } from 'antd';
+import { MessageOutlined, LinkOutlined } from '@ant-design/icons';
+import request from '../api/request';
 
-const { Title, Paragraph } = Typography;
+const { Title, Text } = Typography;
 
-const categoryColors = {
-  '综合知识': 'blue',
-  '代码能力': 'green',
-  '数学推理': 'orange',
-  '常识问答': 'purple',
+// 根据分数返回条形图的颜色
+const getBarColor = (score) => {
+  if (score > 80) return '#52c41a'; // 优异 (绿色)
+  if (score > 50) return '#1890ff'; // 良好 (蓝色)
+  if (score > 30) return '#faad14'; // 一般 (橙色)
+  return '#f5222d'; // 较差 (红色)
 };
 
 export default function BenchmarkLeaderboard() {
@@ -20,10 +22,9 @@ export default function BenchmarkLeaderboard() {
     const fetchBenchmarkScores = async () => {
       try {
         setLoading(true);
-        // 假设后端提供了这个 API 端点
         const response = await request.get('models/benchmark-scores/');
-        // 假设返回的数据格式为: [{ model_name: '...', total_score: 95.5, scores: { '代码能力': 98.0, ... } }, ...]
-        setScores(response.data);
+        const dataWithKeys = response.data.map(item => ({ ...item, key: item.rank }));
+        setScores(dataWithKeys);
         setError(null);
       } catch (err) {
         setError('无法加载客观基准测评数据，请稍后再试。');
@@ -36,62 +37,134 @@ export default function BenchmarkLeaderboard() {
     fetchBenchmarkScores();
   }, []);
 
-  // 动态生成列，基于第一个模型的评测维度
-  const scoreColumns = scores.length > 0 
+  // 动态生成评测维度的列
+  const benchmarkColumns = scores.length > 0
     ? Object.keys(scores[0].scores).map(category => ({
-        title: category,
+        title: category.toUpperCase(),
         dataIndex: ['scores', category],
         key: category,
         align: 'center',
+        width: 150, // 给定一个固定宽度以获得更好的视觉效果
         sorter: (a, b) => a.scores[category] - b.scores[category],
-        render: (score) => <Tag color={categoryColors[category] || 'default'}>{score?.toFixed(1) || 'N/A'}</Tag>,
+        render: (score) => {
+          if (score === null || typeof score === 'undefined') {
+            return <Text type="secondary">N/A</Text>;
+          }
+          const scoreValue = score.toFixed(2);
+          return (
+            // 容器 div，用于相对定位
+            <div style={{ position: 'relative', height: '24px', backgroundColor: '#f0f0f0', borderRadius: '4px', overflow: 'hidden' }}>
+              {/* 颜色条 div，宽度根据分数变化 */}
+              <div style={{
+                width: `${scoreValue}%`,
+                height: '100%',
+                backgroundColor: getBarColor(score),
+                position: 'absolute',
+                left: 0,
+                top: 0,
+                transition: 'width 0.3s ease-in-out',
+              }} />
+              {/* 分数文本 div，绝对定位以居中 */}
+              <div style={{
+                position: 'absolute',
+                left: '50%',
+                top: '50%',
+                transform: 'translate(-50%, -50%)',
+                color: '#fff',
+                fontWeight: 'bold',
+                textShadow: '1px 1px 2px rgba(0,0,0,0.5)', // 给文本加一点阴影使其更清晰
+              }}>
+                {scoreValue}%
+              </div>
+            </div>
+          );
+        },
       }))
     : [];
 
   const columns = [
     {
-      title: '排名',
+      title: 'Rank',
+      dataIndex: 'rank',
       key: 'rank',
-      width: 80,
       align: 'center',
-      render: (text, record, index) => <strong>{index + 1}</strong>,
+      sorter: (a, b) => a.rank - b.rank,
     },
     {
-      title: '模型',
+      title: 'Type',
+      key: 'type',
+      align: 'center',
+      render: () => <MessageOutlined style={{ color: '#9c88ff' }} />,
+    },
+    {
+      title: 'Model',
       dataIndex: 'model_name',
       key: 'model_name',
+      render: (text) => (
+        <a href="#" onClick={(e) => e.preventDefault()}>
+          {text} <LinkOutlined />
+        </a>
+      ),
     },
     {
-      title: '总分',
+      title: 'Average',
       dataIndex: 'total_score',
       key: 'total_score',
       align: 'center',
+      width: 150, // 同样设置宽度
       sorter: (a, b) => a.total_score - b.total_score,
-      defaultSortOrder: 'descend',
-      render: (score) => <strong style={{ color: '#1890ff' }}>{score?.toFixed(2)}</strong>,
+      render: (score) => { // <-- 使用与其他分数相同的渲染逻辑
+        if (score === null || typeof score === 'undefined') {
+          return <Text type="secondary">N/A</Text>;
+        }
+        const scoreValue = score.toFixed(2);
+        return (
+          <div style={{ position: 'relative', height: '24px', backgroundColor: '#f0f0f0', borderRadius: '4px', overflow: 'hidden' }}>
+            <div style={{
+              width: `${scoreValue}%`,
+              height: '100%',
+              backgroundColor: getBarColor(score),
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              transition: 'width 0.3s ease-in-out',
+            }} />
+            <div style={{
+              position: 'absolute',
+              left: '50%',
+              top: '50%',
+              transform: 'translate(-50%, -50%)',
+              color: '#fff',
+              fontWeight: 'bold',
+              textShadow: '1px 1px 2px rgba(0,0,0,0.5)',
+            }}>
+              {scoreValue}%
+            </div>
+          </div>
+        );
+      },
     },
-    ...scoreColumns, // 动态插入各个维度的分数
+    ...benchmarkColumns,
   ];
 
-  return (
-    <div style={{ padding: '0 16px' }}>
-      <Title level={2}>客观基准测评排行榜</Title>
-      <Paragraph type="secondary">
-        该排行榜通过在精选的标准化测试集（如代码生成、数学推理等）上自动运行模型得出。分数会定期更新。
-      </Paragraph>
-      
-      {loading && <div style={{ textAlign: 'center', padding: '50px' }}><Spin size="large" /></div>}
-      
-      {error && <Alert message={error} type="error" showIcon />}
+  if (loading) {
+    return <div style={{ textAlign: 'center', padding: '50px' }}><Spin size="large" /></div>;
+  }
 
-      {!loading && !error && (
-        <Table
-          dataSource={scores}
-          columns={columns}
-          rowKey="model_name"
-          pagination={{ pageSize: 15 }}
-        />
-      )}
+  if (error) {
+    return <Alert message="错误" description={error} type="error" showIcon />;
+  }
+
+  return (
+    <div style={{ padding: '24px' }}>
+      <Title level={2}>客观基准测评排行榜</Title>
+      <Table
+        columns={columns}
+        dataSource={scores}
+        bordered
+        pagination={{ pageSize: 10 }}
+        scroll={{ x: 'max-content' }}
+      />
     </div>
   );
 }

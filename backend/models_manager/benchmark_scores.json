@@ -1,0 +1,278 @@
+[
+    {
+        "rank": 1,
+        "model_name": "Qwen/Qwen2.5-72B-Instruct",
+        "total_score": 47.98,
+        "scores": { "IFEval": 86.38, "BBH": 61.87, "MATH": 59.82, "GPQA": 16.67, "MUSR": 11.74, "MMLU": 51.40 }
+    },
+    {
+        "rank": 2,
+        "model_name": "mistralai/Mistral-Large-Instruct-2411",
+        "total_score": 46.52,
+        "scores": { "IFEval": 84.01, "BBH": 52.74, "MATH": 49.55, "GPQA": 24.94, "MUSR": 17.22, "MMLU": 50.69 }
+    },
+    {
+        "rank": 3,
+        "model_name": "meta-llama/Llama-3.3-70B-Instruct",
+        "total_score": 44.85,
+        "scores": { "IFEval": 89.98, "BBH": 56.56, "MATH": 48.34, "GPQA": 10.51, "MUSR": 15.57, "MMLU": 48.13 }
+    },
+    {
+        "rank": 4,
+        "model_name": "Qwen/Qwen2-72B-Instruct",
+        "total_score": 43.59,
+        "scores": { "IFEval": 79.89, "BBH": 57.48, "MATH": 41.77, "GPQA": 16.33, "MUSR": 17.17, "MMLU": 48.92 }
+    },
+    {
+        "rank": 5,
+        "model_name": "meta-llama/Llama-3.1-70B-Instruct",
+        "total_score": 43.41,
+        "scores": { "IFEval": 86.69, "BBH": 55.93, "MATH": 38.07, "GPQA": 14.21, "MUSR": 17.69, "MMLU": 47.88 }
+    },
+    {
+        "rank": 6,
+        "model_name": "abacusai/Dracarys-72B-Instruct",
+        "total_score": 43.38,
+        "scores": { "IFEval": 78.56, "BBH": 56.94, "MATH": 39.65, "GPQA": 18.79, "MUSR": 16.81, "MMLU": 49.51 }
+    },
+    {
+        "rank": 7,
+        "model_name": "allenai/Llama-3.1-Tulu-3-70B",
+        "total_score": 42.33,
+        "scores": { "IFEval": 82.91, "BBH": 45.37, "MATH": 45.02, "GPQA": 16.44, "MUSR": 23.75, "MMLU": 40.50 }
+    },
+    {
+        "rank": 8,
+        "model_name": "allenai/Llama-3.1-70B-DPO",
+        "total_score": 42.22,
+        "scores": { "IFEval": 82.82, "BBH": 45.05, "MATH": 44.94, "GPQA": 16.78, "MUSR": 23.40, "MMLU": 40.36 }
+    },
+    {
+        "rank": 9,
+        "model_name": "abacusai/Smaug-Qwen2-72B-Instruct",
+        "total_score": 42.07,
+        "scores": { "IFEval": 78.25, "BBH": 56.27, "MATH": 41.31, "GPQA": 14.88, "MUSR": 15.18, "MMLU": 46.56 }
+    },
+    {
+        "rank": 10,
+        "model_name": "allenai/Llama-3.1-Tulu-3-70B",
+        "total_score": 41.45,
+        "scores": { "IFEval": 83.79, "BBH": 45.26, "MATH": 38.29, "GPQA": 16.44, "MUSR": 24.32, "MMLU": 40.62 }
+    },
+    {
+        "rank": 11,
+        "model_name": "nvidia/AceInstruct-72B",
+        "total_score": 40.41,
+        "scores": { "IFEval": 71.19, "BBH": 44.20, "MATH": 62.61, "GPQA": 9.51, "MUSR": 11.88, "MMLU": 43.04 }
+    },
+    {
+        "rank": 12,
+        "model_name": "Qwen/Qwen2-VL-72B-Instruct",
+        "total_score": 39.54,
+        "scores": { "IFEval": 59.82, "BBH": 56.31, "MATH": 34.44, "GPQA": 18.34, "MUSR": 15.89, "MMLU": 52.41 }
+    },
+    {
+        "rank": 13,
+        "model_name": "allenai/Llama-3.1-Tulu-3-70B-SFT",
+        "total_score": 38.85,
+        "scores": { "IFEval": 80.51, "BBH": 42.02, "MATH": 33.16, "GPQA": 12.64, "MUSR": 24.49, "MMLU": 40.27 }
+    },
+    {
+        "rank": 14,
+        "model_name": "NousResearch/Hermes-3-Llama-3.1-70B",
+        "total_score": 38.51,
+        "scores": { "IFEval": 76.61, "BBH": 53.77, "MATH": 21.00, "GPQA": 14.88, "MUSR": 23.43, "MMLU": 41.41 }
+    },
+    {
+        "rank": 15,
+        "model_name": "Qwen/Qwen2.5-72B",
+        "total_score": 38.44,
+        "scores": { "IFEval": 41.37, "BBH": 54.62, "MATH": 39.12, "GPQA": 20.69, "MUSR": 19.64, "MMLU": 55.20 }
+    },
+    {
+        "rank": 16,
+        "model_name": "Qwen/Qwen2-Math-72B-Instruct",
+        "total_score": 38.02,
+        "scores": { "IFEval": 56.94, "BBH": 47.96, "MATH": 55.36, "GPQA": 15.77, "MUSR": 15.73, "MMLU": 36.36 }
+    },
+    {
+        "rank": 17,
+        "model_name": "cognitivecomputations/dolphin-2.9.2-qwen2-72b",
+        "total_score": 36.98,
+        "scores": { "IFEval": 63.44, "BBH": 47.70, "MATH": 28.02, "GPQA": 16.00, "MUSR": 17.04, "MMLU": 49.69 }
+    },
+    {
+        "rank": 18,
+        "model_name": "nvidia/Llama-3.1-Nemotron-70B-Instruct-HF",
+        "total_score": 36.91,
+        "scores": { "IFEval": 73.81, "BBH": 47.11, "MATH": 42.67, "GPQA": 1.12, "MUSR": 13.20, "MMLU": 43.54 }
+    },
+    {
+        "rank": 19,
+        "model_name": "Qwen/Qwen2.5-Math-72B-Instruct",
+        "total_score": 36.82,
+        "scores": { "IFEval": 40.03, "BBH": 48.97, "MATH": 62.39, "GPQA": 10.85, "MUSR": 16.34, "MMLU": 42.36 }
+    },
+    {
+        "rank": 20,
+        "model_name": "nvidia/AceMath-72B-Instruct",
+        "total_score": 36.66,
+        "scores": { "IFEval": 49.50, "BBH": 48.69, "MATH": 71.45, "GPQA": 2.80, "MUSR": 9.60, "MMLU": 37.90 }
+    },
+    {
+        "rank": 21,
+        "model_name": "meta-llama/Meta-Llama-3-70B-Instruct",
+        "total_score": 36.37,
+        "scores": { "IFEval": 80.99, "BBH": 50.19, "MATH": 24.47, "GPQA": 4.92, "MUSR": 10.92, "MMLU": 46.74 }
+    },
+    {
+        "rank": 22,
+        "model_name": "abacusai/Smaug-Llama-3-70B-Instruct-32K",
+        "total_score": 35.76,
+        "scores": { "IFEval": 77.61, "BBH": 49.07, "MATH": 27.49, "GPQA": 6.15, "MUSR": 12.43, "MMLU": 41.83 }
+    },
+    {
+        "rank": 23,
+        "model_name": "Qwen/Qwen2-72B",
+        "total_score": 35.46,
+        "scores": { "IFEval": 38.24, "BBH": 51.86, "MATH": 31.12, "GPQA": 19.24, "MUSR": 19.73, "MMLU": 52.56 }
+    },
+    {
+        "rank": 24,
+        "model_name": "HuggingFaceH4/zephyr-orpo-141b-A35b-v0.1",
+        "total_score": 34.13,
+        "scores": { "IFEval": 65.11, "BBH": 47.50, "MATH": 20.47, "GPQA": 17.11, "MUSR": 14.72, "MMLU": 39.85 }
+    },
+    {
+        "rank": 25,
+        "model_name": "mistralai/Mixtral-8x22B-Instruct-v0.1",
+        "total_score": 33.89,
+        "scores": { "IFEval": 71.84, "BBH": 44.11, "MATH": 18.73, "GPQA": 16.44, "MUSR": 13.49, "MMLU": 38.70 }
+    },
+    {
+        "rank": 26,
+        "model_name": "CohereForAI/c4ai-command-r-plus-08-2024",
+        "total_score": 33.65,
+        "scores": { "IFEval": 75.40, "BBH": 42.84, "MATH": 12.39, "GPQA": 13.42, "MUSR": 19.84, "MMLU": 38.01 }
+    },
+    {
+        "rank": 27,
+        "model_name": "Qwen/Qwen1.5-110B-Chat",
+        "total_score": 33.13,
+        "scores": { "IFEval": 59.39, "BBH": 44.98, "MATH": 23.41, "GPQA": 12.19, "MUSR": 16.29, "MMLU": 42.50 }
+    },
+    {
+        "rank": 28,
+        "model_name": "mlabonne/Hermes-3-Llama-3.1-70B-lorablated",
+        "total_score": 31.75,
+        "scores": { "IFEval": 34.24, "BBH": 52.75, "MATH": 22.43, "GPQA": 15.44, "MUSR": 24.73, "MMLU": 40.88 }
+    },
+    {
+        "rank": 29,
+        "model_name": "CohereForAI/c4ai-command-r-plus",
+        "total_score": 30.94,
+        "scores": { "IFEval": 76.64, "BBH": 39.92, "MATH": 8.01, "GPQA": 7.38, "MUSR": 20.42, "MMLU": 33.24 }
+    },
+    {
+        "rank": 30,
+        "model_name": "Qwen/Qwen1.5-110B",
+        "total_score": 29.89,
+        "scores": { "IFEval": 34.22, "BBH": 44.28, "MATH": 24.70, "GPQA": 13.65, "MUSR": 13.71, "MMLU": 48.45 }
+    },
+    {
+        "rank": 31,
+        "model_name": "abacusai/Smaug-72B-v0.1",
+        "total_score": 29.74,
+        "scores": { "IFEval": 51.67, "BBH": 43.13, "MATH": 19.11, "GPQA": 9.84, "MUSR": 14.42, "MMLU": 40.26 }
+    },
+    {
+        "rank": 32,
+        "model_name": "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
+        "total_score": 27.81,
+        "scores": { "IFEval": 43.36, "BBH": 35.82, "MATH": 30.74, "GPQA": 2.01, "MUSR": 13.28, "MMLU": 41.65 }
+    },
+    {
+        "rank": 33,
+        "model_name": "deepseek-ai/deepseek-llm-67b-chat",
+        "total_score": 27.31,
+        "scores": { "IFEval": 55.87, "BBH": 33.23, "MATH": 9.29, "GPQA": 8.84, "MUSR": 23.93, "MMLU": 32.71 }
+    },
+    {
+        "rank": 34,
+        "model_name": "meta-llama/Meta-Llama-3-70B",
+        "total_score": 26.71,
+        "scores": { "IFEval": 16.03, "BBH": 48.71, "MATH": 18.58, "GPQA": 19.69, "MUSR": 16.01, "MMLU": 41.21 }
+    },
+    {
+        "rank": 35,
+        "model_name": "meta-llama/Llama-3.1-70B",
+        "total_score": 26.20,
+        "scores": { "IFEval": 16.84, "BBH": 46.40, "MATH": 18.43, "GPQA": 18.34, "MUSR": 16.58, "MMLU": 40.60 }
+    },
+    {
+        "rank": 36,
+        "model_name": "mistral-community/mixtral-8x22B-v0.3",
+        "total_score": 25.80,
+        "scores": { "IFEval": 25.83, "BBH": 45.73, "MATH": 18.35, "GPQA": 17.00, "MUSR": 7.46, "MMLU": 40.44 }
+    },
+    {
+        "rank": 37,
+        "model_name": "mistralai/Mixtral-8x22B-v0.1",
+        "total_score": 25.74,
+        "scores": { "IFEval": 25.83, "BBH": 45.59, "MATH": 18.35, "GPQA": 16.78, "MUSR": 7.46, "MMLU": 40.44 }
+    },
+    {
+        "rank": 38,
+        "model_name": "cognitivecomputations/dolphin-2.9.1-llama-3-70b",
+        "total_score": 25.53,
+        "scores": { "IFEval": 37.60, "BBH": 31.10, "MATH": 18.20, "GPQA": 7.83, "MUSR": 23.70, "MMLU": 34.78 }
+    },
+    {
+        "rank": 39,
+        "model_name": "databricks/dbrx-instruct",
+        "total_score": 25.20,
+        "scores": { "IFEval": 54.16, "BBH": 35.96, "MATH": 6.87, "GPQA": 12.19, "MUSR": 12.20, "MMLU": 29.81 }
+    },
+    {
+        "rank": 40,
+        "model_name": "LLM360/K2-Chat",
+        "total_score": 24.39,
+        "scores": { "IFEval": 51.52, "BBH": 33.79, "MATH": 10.35, "GPQA": 7.49, "MUSR": 16.82, "MMLU": 26.34 }
+    },
+    {
+        "rank": 41,
+        "model_name": "stabilityai/StableBeluga2",
+        "total_score": 22.81,
+        "scores": { "IFEval": 37.87, "BBH": 41.26, "MATH": 4.38, "GPQA": 8.84, "MUSR": 18.65, "MMLU": 25.85 }
+    },
+    {
+        "rank": 42,
+        "model_name": "WizardLMTeam/WizardLM-70B-V1.0",
+        "total_score": 22.40,
+        "scores": { "IFEval": 49.51, "BBH": 37.54, "MATH": 3.93, "GPQA": 2.13, "MUSR": 14.09, "MMLU": 27.18 }
+    },
+    {
+        "rank": 43,
+        "model_name": "meta-llama/Llama-2-70b-hf",
+        "total_score": 18.37,
+        "scores": { "IFEval": 24.07, "BBH": 35.90, "MATH": 3.25, "GPQA": 7.05, "MUSR": 9.78, "MMLU": 30.20 }
+    },
+    {
+        "rank": 44,
+        "model_name": "LLM360/K2",
+        "total_score": 14.64,
+        "scores": { "IFEval": 22.52, "BBH": 28.22, "MATH": 2.72, "GPQA": 3.58, "MUSR": 8.55, "MMLU": 22.27 }
+    },
+    {
+        "rank": 45,
+        "model_name": "meta-llama/Llama-2-70b-chat-hf",
+        "total_score": 13.07,
+        "scores": { "IFEval": 49.58, "BBH": 4.61, "MATH": 2.95, "GPQA": 1.90, "MUSR": 3.48, "MMLU": 15.92 }
+    },
+    {
+        "rank": 46,
+        "model_name": "nvidia/AceMath-72B-RM",
+        "total_score": 3.43,
+        "scores": { "IFEval": 14.13, "BBH": 1.40, "MATH": 0.00, "GPQA": 0.00, "MUSR": 3.06, "MMLU": 1.98 }
+    }
+]
