@@ -21,6 +21,7 @@ import GitHubCallback from "./pages/GitHubCallback.jsx"; // GitHub 登录回调�
 
 import DatasetEvaluationPage from "./pages/DatasetEvaluation.jsx";
 import BenchmarkLeaderboard from './pages/BenchmarkLeaderboard';
+import DatasetEvaluationHistoryPage from "./pages/DatasetEvaluationHistory.jsx";
 // 2. 导入所有需要的 Context Provider
 import { AuthProvider } from "./contexts/AuthContext.jsx";
 import { ModeProvider } from './contexts/ModeContext';
@@ -91,6 +92,7 @@ function App() {
                   <Route path="/user" element={<UserPanel />} />
                   <Route path="/evaluate-dataset" element={<DatasetEvaluationPage />} />
                   <Route path="benchmark-leaderboard" element={<BenchmarkLeaderboard />} /> 
+                  <Route path="/evaluate-dataset/history" element={<DatasetEvaluationHistoryPage />} />
                 </Route>
               </Routes>
             </DialogProvider>

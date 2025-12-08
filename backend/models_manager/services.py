@@ -108,8 +108,17 @@ class OpenAIModel(BaseLanguageModel):
                     n=1,
                     size="1024x1024" # 或其他支持的尺寸
                 )
-                image_url = response.data[0].url
-                # --- 关键修改：直接返回纯粹的 URL ---
+                image_data = response.data[0]
+                image_url = getattr(image_data, "url", None)
+                if not image_url:
+                    # 某些兼容服务返回 base64，而非可直接访问的 URL
+                    b64_image = getattr(image_data, "b64_json", None) or getattr(image_data, "b64_image", None)
+                    if b64_image:
+                        mime = "image/png"
+                        image_url = f"data:{mime};base64,{b64_image}"
+                if not image_url:
+                    raise ValueError("Image generation succeeded but no image payload was returned.")
+                # --- 关键修改：直接返回可供前端渲染的 URL 或 data URL ---
                 return image_url
 
             # --- 原有聊天模型逻辑 ---
@@ -140,7 +149,19 @@ class OpenAIModel(BaseLanguageModel):
                 max_tokens=4096,
                 temperature=0.7
             )
-            return response.choices[0].message.content
+            content = response.choices[0].message.content
+            if isinstance(content, list):
+                # 兼容新版返回结构
+                combined = []
+                for item in content:
+                    if isinstance(item, dict) and 'text' in item:
+                        combined.append(item['text'])
+                    elif isinstance(item, str):
+                        combined.append(item)
+                content = "".join(combined)
+            if content is None:
+                raise ValueError("Model returned empty response content.")
+            return content
         except Exception as e:
             raise e
 
@@ -315,8 +336,15 @@ class ELORatingSystem:
             model_a.losses += 1
             model_b.wins += 1
         else:
-            model_a.ties += 1
-            model_b.ties += 1
+            # 区分平局与都很差：
+            # - tie: 双方皆胜
+            # - both_bad: 双方皆负
+            if winner == 'both_bad':
+                model_a.losses += 1
+                model_b.losses += 1
+            else:  # 默认为 tie
+                model_a.wins += 1
+                model_b.wins += 1
         
         model_a.save()
         model_b.save()
