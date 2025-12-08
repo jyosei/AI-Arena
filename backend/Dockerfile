@@ -5,6 +5,12 @@ FROM python:3.12
 RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources \
     && apt-get update && apt-get install -y netcat-openbsd libmagic1 bash
 
+# 更新包列表并安装 Asymptote 及其依赖
+RUN apt-get update && apt-get install -y \
+    asymptote \
+    ghostscript \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY requirements.txt .
 # 使用国内镜像源加速 pip install

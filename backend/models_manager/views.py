@@ -15,6 +15,8 @@ import base64
 import os
 from django.conf import settings
 import csv 
+import subprocess
+import tempfile
 import re
 import json
 from sympy import sympify, simplify
@@ -91,6 +93,14 @@ DATASET_METADATA = {
         "modality": "audio",
         "downloads": "35.2k",
         "likes": 157,
+    },
+    "squad_formatted.csv": { 
+        "id": "local/squad-formatted",
+        "creator": "Stanford",
+        "name": "SQuAD (Formatted)",
+        "modality": "text",
+        "downloads": "1M+",
+        "likes": "10k+",
     },
     "gsm8k.csv": {
         "id": "openai/gsm8k",
@@ -814,24 +824,65 @@ class EvaluateDatasetView(APIView):
             "error_samples": error_samples,
         }
     def _evaluate_generic_math(self, model_service, prompts, model_name: str):
-        """处理像 MATH-500 这样的通用数学任务"""
+        """处理像 MATH 这样的通用数学任务，V2版，支持识图"""
         correct = 0
         error_samples = []
         
         for row in prompts:
-            # 使用 'problem' 列
             question = row.get('problem')
             true_answer = row.get('answer')
             if not question or not true_answer:
                 continue
 
-            # 清理问题文本中的 [asy] 代码块
-            prompt_to_model = re.sub(r'\[asy\].*?\[/asy\]', '', question, flags=re.DOTALL).strip()
+            prompt_to_model = question
+            image_base64 = None
+            mime_type = "image/png" # Asymptote 默认生成 PNG
+
+            # 1. 检测并提取 [asy] 代码
+            asy_match = re.search(r'\[asy\](.*?)\[/asy\]', question, re.DOTALL)
+            if asy_match:
+                asy_code = asy_match.group(1)
+                # 从问题文本中移除 asy 代码块，使其更干净
+                prompt_to_model = re.sub(r'\[asy\].*?\[/asy\]', '', question, flags=re.DOTALL).strip()
+
+                # 2. 动态渲染图片
+                try:
+                    # 创建临时文件来保存 asy 代码和输出的 png 图片
+                    with tempfile.NamedTemporaryFile(mode='w+', suffix='.asy', delete=True) as asy_file, \
+                         tempfile.NamedTemporaryFile(suffix='.png', delete=True) as png_file:
+                        
+                        asy_file.write(asy_code)
+                        asy_file.flush() # 确保所有内容都写入文件
+
+                        # 构造并执行 asy 命令
+                        # asy [asy_file_path] -f png -o [png_file_path]
+                        command = ['asy', asy_file.name, '-f', 'png', '-o', png_file.name]
+                        subprocess.run(command, check=True, timeout=15, capture_output=True)
+
+                        # 3. 读取渲染好的图片并编码为 Base64
+                        with open(png_file.name, 'rb') as f_img:
+                            image_base64 = base64.b64encode(f_img.read()).decode('utf-8')
+                        
+                        print(f"[DEBUG] Successfully rendered image for prompt.")
+
+                except FileNotFoundError:
+                    print("[ERROR] 'asy' command not found. Please install Asymptote in your backend environment.")
+                    # 选择降级处理：不带图片继续测评
+                    image_base64 = None
+                except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+                    print(f"[ERROR] Asymptote rendering failed: {e.stderr.decode() if e.stderr else e}")
+                    # 降级处理
+                    image_base64 = None
             
+            # 4. 调用模型服务 (现在可能包含图片)
             try:
-                model_response = model_service.evaluate(prompt=prompt_to_model, model_name=model_name)
+                model_response = model_service.evaluate(
+                    prompt=prompt_to_model, 
+                    model_name=model_name,
+                    image_base64=image_base64, # 传递图片
+                    mime_type=mime_type if image_base64 else None
+                )
                 
-                # 使用我们强大的答案校验函数
                 if self._check_math_answer(model_response, true_answer):
                     correct += 1
                 else:
@@ -839,7 +890,8 @@ class EvaluateDatasetView(APIView):
                         error_samples.append({
                             "prompt": prompt_to_model,
                             "expected_answer": true_answer,
-                            "model_response": model_response
+                            "model_response": model_response,
+                            "image_base64": image_base64 # (可选) 将图片也存入错误样本，方便前端展示
                         })
             except Exception as e:
                 if len(error_samples) < 5:
@@ -847,7 +899,7 @@ class EvaluateDatasetView(APIView):
 
         accuracy = (correct / len(prompts) * 100) if prompts else 0
         return {
-            "benchmark_type": "General Math",
+            "benchmark_type": "General Math (with Vision)",
             "metrics": {"accuracy": round(accuracy, 2)},
             "total_prompts": len(prompts),
             "correct_answers": correct,
