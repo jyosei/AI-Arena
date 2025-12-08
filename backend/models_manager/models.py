@@ -119,7 +119,94 @@ class ChatMessage(models.Model):
         ordering = ['created_at']
 
     def __str__(self):
-        # --- 相应地更新 __str__ 方法 ---
-        return f"{self.get_role_display()}: {self.content[:50]}..."
         sender = "用户" if self.is_user else f"AI({self.model_name})"
         return f"{sender}: {self.content[:50]}..."
+
+
+class ModelTestResult(models.Model):
+    """存储模型的测试结果数据"""
+    model = models.ForeignKey(
+        AIModel,
+        on_delete=models.CASCADE,
+        related_name='test_results',
+        help_text="测试的模型"
+    )
+    
+    # 测试类型
+    TEST_TYPE_CHOICES = [
+        ('accuracy', '准确度'),
+        ('latency', '响应延迟'),
+        ('throughput', '吞吐量'),
+        ('perplexity', '困惑度'),
+        ('custom', '自定义'),
+    ]
+    test_type = models.CharField(
+        max_length=50,
+        choices=TEST_TYPE_CHOICES,
+        default='custom',
+        help_text="测试类型"
+    )
+    
+    # 测试内容
+    test_name = models.CharField(max_length=255, help_text="测试名称")
+    description = models.TextField(blank=True, help_text="测试描述")
+    test_data = models.JSONField(default=dict, blank=True, help_text="测试数据集")
+    
+    # 测试结果
+    score = models.FloatField(help_text="测试得分/结果")
+    metrics = models.JSONField(default=dict, blank=True, help_text="详细指标")
+    status = models.CharField(
+        max_length=20,
+        choices=[
+            ('pending', '待测试'),
+            ('running', '测试中'),
+            ('passed', '通过'),
+            ('failed', '失败'),
+        ],
+        default='pending',
+        help_text="测试状态"
+    )
+    
+    # 执行者和时间
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        help_text="测试执行者"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['model', '-created_at']),
+            models.Index(fields=['test_type', '-created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.model.name} - {self.test_name} ({self.get_status_display()})"
+
+
+class LeaderboardSnapshot(models.Model):
+    """存储排行榜快照（定期备份排名历史）"""
+    snapshot_date = models.DateTimeField(auto_now_add=True, help_text="快照时间")
+    
+    # 排行榜数据
+    leaderboard_data = models.JSONField(
+        default=list,
+        help_text="排行榜完整数据（JSON数组）"
+    )
+    
+    # 统计信息
+    total_models = models.IntegerField(help_text="参与排名的模型数量")
+    total_battles = models.IntegerField(help_text="总对战次数")
+    
+    class Meta:
+        ordering = ['-snapshot_date']
+        verbose_name = "排行榜快照"
+        verbose_name_plural = "排行榜快照"
+    
+    def __str__(self):
+        return f"排行榜快照 - {self.snapshot_date.strftime('%Y-%m-%d %H:%M')}"

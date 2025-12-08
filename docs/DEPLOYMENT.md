@@ -2,6 +2,8 @@
 
 本文档介绍如何在不同环境下部署 AI-Arena 项目。
 
+> 编辑: shallcheer
+
 ## 目录
 
 - [Docker 部署（推荐）](#docker-部署推荐)

@@ -114,6 +114,13 @@ class ForumPost(models.Model):
         ordering = ("-is_sticky", "-last_activity_at", "-created_at")
         verbose_name = "帖子"
         verbose_name_plural = "帖子"
+        indexes = [
+            models.Index(fields=["author_id", "-created_at"]),
+            models.Index(fields=["category_obj_id", "-created_at"]),
+            models.Index(fields=["-last_activity_at"]),
+            models.Index(fields=["status", "-created_at"]),
+            models.Index(fields=["is_sticky", "-created_at"]),
+        ]
 
     def __str__(self) -> str:
         return self.title
@@ -275,6 +282,11 @@ class ForumComment(models.Model):
         ordering = ("created_at",)
         verbose_name = "评论"
         verbose_name_plural = "评论"
+        indexes = [
+            models.Index(fields=["post_id", "-created_at"]),
+            models.Index(fields=["author_id", "-created_at"]),
+            models.Index(fields=["parent_id", "created_at"]),
+        ]
 
     def __str__(self) -> str:
         return f"Comment by {self.author} on {self.post}"
@@ -306,6 +318,10 @@ class ForumCommentLike(models.Model):
 
     class Meta:
         unique_together = ("comment", "user")
+        indexes = [
+            models.Index(fields=["comment_id", "-created_at"]),
+            models.Index(fields=["user_id", "-created_at"]),
+        ]
 
     def __str__(self) -> str:
         return f"CommentLike user={getattr(self, 'user_id', None)} comment={getattr(self, 'comment_id', None)}"
@@ -335,6 +351,10 @@ class ForumCommentReaction(models.Model):
         unique_together = ("comment", "user", "reaction_type")
         verbose_name = "评论互动"
         verbose_name_plural = "评论互动"
+        indexes = [
+            models.Index(fields=["comment_id", "-created_at"]),
+            models.Index(fields=["user_id", "-created_at"]),
+        ]
 
     def __str__(self) -> str:
         return f"{self.user} {self.reaction_type} {self.comment}"
