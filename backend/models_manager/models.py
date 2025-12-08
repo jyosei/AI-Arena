@@ -42,6 +42,81 @@ class AIModel(models.Model):
         return (self.wins / self.total_battles) * 100
 
 
+class DatasetEvaluationResult(models.Model):
+    """数据集评测结果，记录整体评测进度与指标"""
+
+    STATUS_CHOICES = (
+        ('running', 'Running'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+    )
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='dataset_evaluations',
+    )
+    dataset_name = models.CharField(max_length=255)
+    model_name = models.CharField(max_length=255)
+    evaluation_mode = models.CharField(max_length=64, default='unknown')
+    benchmark_type = models.CharField(max_length=128, blank=True)
+    total_prompts = models.IntegerField(default=0)
+    evaluated_prompts = models.IntegerField(default=0)
+    correct_answers = models.IntegerField(default=0)
+    metrics = models.JSONField(default=dict, blank=True)
+    error_samples = models.JSONField(default=list, blank=True)
+    elapsed_seconds = models.FloatField(default=0)
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default='running')
+    extra = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['dataset_name']),
+            models.Index(fields=['model_name']),
+            models.Index(fields=['status']),
+            models.Index(fields=['created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.model_name} on {self.dataset_name} ({self.status})"
+
+
+class DatasetEvaluationSample(models.Model):
+    """数据集评测的逐条样本记录"""
+
+    result = models.ForeignKey(
+        DatasetEvaluationResult,
+        on_delete=models.CASCADE,
+        related_name='samples',
+    )
+    index = models.IntegerField()
+    prompt = models.TextField(blank=True)
+    expected_answer = models.TextField(blank=True)
+    model_response = models.TextField(blank=True)
+    is_correct = models.BooleanField(null=True)
+    included_in_metrics = models.BooleanField(default=True)
+    skipped = models.BooleanField(default=False)
+    sample_time = models.FloatField(null=True, blank=True)
+    message = models.CharField(max_length=255, blank=True)
+    extra = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ['index']
+        indexes = [
+            models.Index(fields=['result', 'index']),
+            models.Index(fields=['result', 'is_correct']),
+            models.Index(fields=['result', 'skipped']),
+        ]
+
+    def __str__(self):
+        return f"Sample {self.index} of evaluation {self.result_id}"
+
+
 # Create your models here.
 class BattleVote(models.Model):
     """存储一次模型对战的投票结果"""
@@ -187,6 +262,22 @@ class ModelTestResult(models.Model):
     
     def __str__(self):
         return f"{self.model.name} - {self.test_name} ({self.get_status_display()})"
+
+
+class BenchmarkScore(models.Model):
+    """模型基准分，用于汇总各类别得分"""
+
+    model = models.OneToOneField(
+        AIModel,
+        on_delete=models.CASCADE,
+        related_name='benchmark_score',
+    )
+    total_score = models.FloatField(default=0.0, help_text="综合总分")
+    scores = models.JSONField(default=dict, help_text="分类得分，如 {'代码能力': 95.0}")
+    last_updated = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.model.name} - Score: {self.total_score}"
 
 
 class LeaderboardSnapshot(models.Model):

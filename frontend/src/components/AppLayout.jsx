@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layout, Menu, Dropdown, Button, Avatar, Space, Select, Typography, Form, Input, Modal, message, Tooltip, Radio, Divider } from 'antd';
+import { Layout, Menu, Dropdown, Button, Avatar, Space, Select, Typography, Form, Input, Modal, message, Tooltip, Divider } from 'antd';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useMode } from '../contexts/ModeContext';
 import { useChat } from '../contexts/ChatContext';
@@ -13,7 +13,8 @@ import {
   DeleteOutlined,
   CloseOutlined,
   MenuOutlined,
-  UploadOutlined
+  UploadOutlined,
+  HistoryOutlined,
 } from '@ant-design/icons';
 import{
     Swords,
@@ -46,12 +47,7 @@ const AppLayout = () => {
   const intl = useIntl();
   const { login, logout, user } = React.useContext(AuthContext);
   const isLoggedIn = !!user;
-  // 新建会话弹窗状态与临时选择
-  const [showNewChatModal, setShowNewChatModal] = React.useState(false);
-  const [creatingChat, setCreatingChat] = React.useState(false);
-  const [tempMode, setTempMode] = React.useState(mode);
-  const [tempLeftModel, setTempLeftModel] = React.useState(leftModel);
-  const [tempRightModel, setTempRightModel] = React.useState(rightModel);
+  // 取消弹窗式新建会话，改为跳转到首页
   const userEmail = user?.email || user?.username || '';
   const navigateToUserCenter = React.useCallback(() => {
     navigate('/user-center');
@@ -71,12 +67,17 @@ const AppLayout = () => {
     '/leaderboard': '2',
     '/forum': '3',
     '/evaluate-dataset': '4',
+    '/evaluate-dataset/history': '5',
   };
   
   // 根据当前路径获取应高亮的 key
   let currentKey = '1'; // 默认
   if (location.pathname.startsWith('/chat/')) {
     currentKey = '1';
+  } else if (location.pathname === '/forum') {
+    currentKey = '3';
+  } else if (location.pathname.startsWith('/forum/')) {
+    currentKey = '3';
   } else {
     currentKey = pathKeyMap[location.pathname] || '1';
   }
@@ -90,69 +91,24 @@ const AppLayout = () => {
     message.success('已登出');
   };
 
+  // 原先弹窗相关逻辑已移除
+
+  // 仍需保留的辅助方法
   const closeMobileSider = () => {
     setMobileSiderOpen(false);
   };
 
   const handleDeleteChat = async (e, chatId) => {
-    e.stopPropagation(); // 阻止事件冒泡，避免触发导航
+    e.stopPropagation();
     try {
       await deleteChat(chatId);
       message.success('已删除聊天记录');
-      // 如果删除的是当前正在查看的聊天，导航到首页
       if (location.pathname === `/chat/${chatId}`) {
         navigate('/');
       }
     } catch (error) {
       console.error('Failed to delete chat:', error);
       message.error('删除失败');
-    }
-  };
-
-  const openNewChatModal = () => {
-    setTempMode(mode);
-    setTempLeftModel(leftModel || (models[0]?.name ?? null));
-    setTempRightModel(rightModel || (models[1]?.name ?? null));
-    setShowNewChatModal(true);
-  };
-
-  const handleConfirmNewChat = async () => {
-    // battle 模式不需要选择模型
-    if (tempMode !== 'battle' && !tempLeftModel) {
-      message.warning('请选择模型');
-      return;
-    }
-    // side-by-side 模式需要选择两个模型
-    if (tempMode === 'side-by-side' && !tempRightModel) {
-      message.warning('Side by side 模式需要选择两个模型');
-      return;
-    }
-    setCreatingChat(true);
-    try {
-      setMode(tempMode);
-      setLeftModel(tempLeftModel);
-      if (tempMode === 'side-by-side') {
-        setRightModel(tempRightModel);
-      }
-      // 构造 model_name：side-by-side 需要 "modelA vs modelB" 格式
-      let modelNameForChat = tempLeftModel;
-      if (tempMode === 'side-by-side') {
-        modelNameForChat = `${tempLeftModel} vs ${tempRightModel}`;
-      } else if (tempMode === 'battle') {
-        // battle 模式可以传 null 或随机选择
-        modelNameForChat = null;
-      }
-      const newChatId = await addChat('新会话', modelNameForChat, tempMode);
-      if (newChatId) {
-        navigate(`/chat/${newChatId}`);
-        message.success('会话已创建');
-      }
-      setShowNewChatModal(false);
-    } catch (error) {
-      console.error('Failed to create new chat:', error);
-      message.error('创建新会话失败');
-    } finally {
-      setCreatingChat(false);
     }
   };
 
@@ -268,8 +224,9 @@ const AppLayout = () => {
             {
               key: '1',
               icon: <EditOutlined />,
-              // 使用 onClick 处理新建会话
-              label: <span onClick={() => { openNewChatModal(); closeMobileSider(); }}>新对话</span>,
+              // 将点击行为绑定到整块菜单项
+              onClick: () => { navigate('/'); closeMobileSider(); },
+              label: '新建会话',
             },
             {
               key: '2',
@@ -284,8 +241,20 @@ const AppLayout = () => {
             },
             { // 上传数据集菜单项
               key: '4',
+              icon: <MessageOutlined />,
+              label: <Link to="/evaluate-dataset">数据集上传</Link>,
+            },
+            { // <-- 这是新添加的项
+              key: '6',
+              icon: <MessageOutlined />,
+              label: <Link to="/benchmark-leaderboard">客观排行榜</Link>,
               icon: <UploadOutlined />,
-              label: <Link to="/evaluate-dataset" onClick={closeMobileSider}>上传数据集</Link>,
+              label: <Link to="/evaluate-dataset" onClick={closeMobileSider}>数据集测评</Link>,
+            },
+            {
+              key: '5',
+              icon: <HistoryOutlined />,
+              label: <Link to="/evaluate-dataset/history" onClick={closeMobileSider}>测评历史</Link>,
             },
           ]}
           // ---
@@ -476,86 +445,17 @@ const AppLayout = () => {
               <LoginForm />
             </div>
           </Modal>
-          <Modal
-            title={<div style={{ fontWeight: 600 }}>新建会话</div>}
-            open={showNewChatModal}
-            onCancel={() => setShowNewChatModal(false)}
-            onOk={handleConfirmNewChat}
-            okText={creatingChat ? '创建中...' : '开始会话'}
-            confirmLoading={creatingChat}
-            destroyOnClose
-          >
-            {models.length === 0 ? (
-              <div style={{ padding: '12px 0' }}>暂无可用模型，请稍后再试。</div>
-            ) : (
-              <Space direction="vertical" size="large" style={{ width: '100%' }}>
-                <div>
-                  <Typography.Text>选择模式：</Typography.Text>
-                  <Radio.Group
-                    value={tempMode}
-                    onChange={(e) => setTempMode(e.target.value)}
-                    style={{ marginTop: 8 }}
-                  >
-                    <Radio.Button value="battle">Battle</Radio.Button>
-                    <Radio.Button value="side-by-side">Side by side</Radio.Button>
-                    <Radio.Button value="direct-chat">Direct chat</Radio.Button>
-                  </Radio.Group>
-                </div>
-                {tempMode === 'battle' ? (
-                  <Typography.Text type="secondary">
-                    Battle 模式将随机匹配模型进行对战，无需手动选择。
-                  </Typography.Text>
-                ) : tempMode === 'side-by-side' ? (
-                  <Space size="middle" wrap>
-                    <Select
-                      showSearch
-                      placeholder="左侧模型"
-                      value={tempLeftModel}
-                      onChange={setTempLeftModel}
-                      style={{ width: 180 }}
-                      options={models.map(m => ({ label: m.name, value: m.name }))}
-                    />
-                    <Typography.Text strong>VS</Typography.Text>
-                    <Select
-                      showSearch
-                      placeholder="右侧模型"
-                      value={tempRightModel}
-                      onChange={setTempRightModel}
-                      style={{ width: 180 }}
-                      options={models.map(m => ({ label: m.name, value: m.name }))}
-                    />
-                  </Space>
-                ) : (
-                  <Select
-                    showSearch
-                    placeholder="选择模型"
-                    value={tempLeftModel}
-                    onChange={setTempLeftModel}
-                    style={{ width: 240 }}
-                    options={models.map(m => ({ label: m.name, value: m.name }))}
-                  />
-                )}
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  {tempMode === 'battle' 
-                    ? '点击"开始会话"进入 Battle 模式。' 
-                    : '根据模式选择一个或两个模型，确认后进入聊天界面。'}
-                </Typography.Text>
-              </Space>
-            )}
-          </Modal>
+          {/* 新建会话弹窗已删除，改为直接导航到首页 */}
         </Header>
         <Content style={{ 
           margin: '24px', 
-          background: '#fff', 
-          padding: '24px', 
-          borderRadius: '8px',
-          height: 'calc(100vh - 64px - 48px)', // 减去 Header 高度和 margin
-          overflowY: 'auto',
-          display: 'flex',
-          flexDirection: 'column'
+          padding: '0 0 32px',
+          minHeight: 'calc(100vh - 64px - 48px)',
+          background: 'transparent'
         }}>
-          {shouldShowModelSelectors && (
-            <div style={{ marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid #f0f0f0' }}>
+          <div className="app-content-shell">
+            {shouldShowModelSelectors && (
+              <div className="app-content-toolbar">
               <Space size="large" className="model-selector-space">
                 <Dropdown overlay={menu}>
                   <Button size="large">
@@ -567,44 +467,47 @@ const AppLayout = () => {
                   </Button>
                 </Dropdown>
 
-            {mode === 'side-by-side' && (
-              <>
-                <Select
-                  showSearch
-                  placeholder="选择左侧模型"
-                  value={leftModel}
-                  onChange={setLeftModel}
-                  style={{ width: 180 }}
-                  options={modelOptions}
-                  filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
-                />
-                <Typography.Text strong>VS</Typography.Text>
-                <Select
-                  showSearch
-                  placeholder="选择右侧模型"
-                  value={rightModel}
-                  onChange={setRightModel}
-                  style={{ width: 180 }}
-                  options={modelOptions}
-                  filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
-                />
-              </>
+                {mode === 'side-by-side' && (
+                  <>
+                    <Select
+                      showSearch
+                      placeholder="选择左侧模型"
+                      value={leftModel}
+                      onChange={setLeftModel}
+                      style={{ width: 180 }}
+                      options={modelOptions}
+                      filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+                    />
+                    <Typography.Text strong>VS</Typography.Text>
+                    <Select
+                      showSearch
+                      placeholder="选择右侧模型"
+                      value={rightModel}
+                      onChange={setRightModel}
+                      style={{ width: 180 }}
+                      options={modelOptions}
+                      filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+                    />
+                  </>
+                )}
+                {mode === 'direct-chat' && (
+                  <Select
+                    showSearch
+                    placeholder="选择一个模型"
+                    value={leftModel}
+                    onChange={setLeftModel}
+                    style={{ width: 180 }}
+                    options={modelOptions}
+                    filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+                  />
+                )}
+              </Space>
+              </div>
             )}
-            {mode === 'direct-chat' && (
-              <Select
-                showSearch
-                placeholder="选择一个模型"
-                value={leftModel}
-                onChange={setLeftModel}
-                style={{ width: 180 }}
-                options={modelOptions}
-                filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
-              />
-            )}
-          </Space>
+            <div className="app-content-body">
+              <Outlet />
             </div>
-          )}
-          <Outlet />
+          </div>
         </Content>
       </Layout>
     </Layout>

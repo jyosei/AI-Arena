@@ -15,8 +15,8 @@ export default function ProtectedRoute({ children }) {
     );
   }
   
-  // 初始化完成后，如果没有用户则跳转登录
-  if (!user) return <Navigate to="/login" replace />;
+  // 初始化完成后，如果没有用户则跳转首页
+  if (!user) return <Navigate to="/" replace />;
   
   return children;
 }

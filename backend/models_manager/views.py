@@ -4,14 +4,114 @@ from rest_framework.permissions import IsAuthenticated, AllowAny # 导入 AllowA
 from rest_framework.parsers import FormParser
 from rest_framework import status
 from rest_framework.parsers import JSONParser, MultiPartParser
-from .services import get_model_service, ELORatingSystem
-from .models import BattleVote, AIModel
-from .models import ChatConversation
-from .models import ChatMessage
+from django.http import StreamingHttpResponse
+from django.utils import timezone
+from django.db import transaction
+from django.shortcuts import get_object_or_404
+from .services import get_chat_model_service, get_evaluation_model_service, ELORatingSystem
+from .models import (
+    BattleVote,
+    AIModel,
+    ChatConversation,
+    ChatMessage,
+    DatasetEvaluationResult,
+    DatasetEvaluationSample,
+)
 from .serializers import ChatConversationSerializer, ChatMessageSerializer, AIModelSerializer
 import random
 import time
 import base64
+import os
+import json
+from django.conf import settings
+import csv 
+import re
+import json
+from sympy import sympify, simplify
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+DATASET_METADATA = {
+    "test_math_small.csv": {
+        "id": "local/test-math-small",
+        "creator": "local",
+        "name": "Small Math Test",
+        "modality": "text",
+        "downloads": "1",
+        "likes": 0,
+    },
+    "test_sentiment_small.csv": {
+        "id": "local/test-sentiment-small",
+        "creator": "local",
+        "name": "Small Sentiment Test",
+        "modality": "text",
+        "downloads": "1",
+        "likes": 0,
+    },
+    "PhysicalAI-Autonomous-Vehicles.csv": {
+        "id": "nvidia/PhysicalAI-Autonomous-Vehicles",
+        "creator": "nvidia",
+        "name": "PhysicalAI-Autonomous-Vehicles",
+        "modality": "robotics",
+        "downloads": "123k",
+        "likes": 403,
+    },
+    "LMSYS-Chat-GPT-5-Chat-Response.csv": {
+        "id": "ytz20/LMSYS-Chat-GPT-5-Chat-Response",
+        "creator": "ytz20",
+        "name": "LMSYS-Chat-GPT-5-Chat-Response",
+        "modality": "text",
+        "downloads": "705",
+        "likes": 55,
+    },
+    "agent-sft.csv": {
+        "id": "nex-agi/agent-sft",
+        "creator": "nex-agi",
+        "name": "agent-sft",
+        "modality": "synthetic",
+        "downloads": "357",
+        "likes": 47,
+    },
+    "SYNTH.csv": {
+        "id": "PleIAs/SYNTH",
+        "creator": "PleIAs",
+        "name": "SYNTH",
+        "modality": "synthetic",
+        "downloads": "47.9k",
+        "likes": 176,
+    },
+    "AICC.csv": {
+        "id": "opendatalab/AICC",
+        "creator": "opendatalab",
+        "name": "AICC (AI Challenger Corpus)",
+        "modality": "multimodal",
+        "downloads": "2.36k",
+        "likes": 31,
+    },
+    "sam-3d-body-dataset.csv": {
+        "id": "facebook/sam-3d-body-dataset",
+        "creator": "facebook",
+        "name": "sam-3d-body-dataset",
+        "modality": "image",
+        "downloads": "2.3k",
+        "likes": 26,
+    },
+    "omnilingual-asr-corpus.csv": {
+        "id": "facebook/omnilingual-asr-corpus",
+        "creator": "facebook",
+        "name": "omnilingual-asr-corpus",
+        "modality": "audio",
+        "downloads": "35.2k",
+        "likes": 157,
+    },
+    "gsm8k.csv": {
+        "id": "openai/gsm8k",
+        "creator": "openai",
+        "name": "gsm8k",
+        "modality": "text",
+        "downloads": "492k",
+        "likes": 985,
+    },
+}
+
 
 class RecordVoteView(APIView):
     """接收并记录一次对战的投票结果"""
@@ -19,7 +119,7 @@ class RecordVoteView(APIView):
 
     def post(self, request, *args, **kwargs):
         model_a = request.data.get('model_a')
-        model_b = request.data.get('model_b') # 可能是 null
+        model_b = request.data.get('model_b') # 可能是 null/空字符串
         prompt = request.data.get('prompt')
         winner = request.data.get('winner')
 
@@ -27,34 +127,70 @@ class RecordVoteView(APIView):
         if not all([model_a, prompt, winner]):
             return Response({'error': 'Missing required fields: model_a, prompt, winner'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 验证 winner 的值是否有效
-        # 允许 model_b 为 None 的情况
+        # 验证 winner 的值是否有效，并兼容前端的 'bad'/'good' 语义
+        # 允许 model_b 为 None 的情况（direct-chat 模式）
         valid_winners = [model_a]
         if model_b:
             valid_winners.append(model_b)
-        
+
         # 添加所有可能的投票选项
-        valid_winners.extend(['tie', 'both_bad'])
+        valid_winners.extend(['tie', 'both_bad', 'bad', 'good'])
 
         if winner not in valid_winners:
             return Response({'error': f'Invalid winner. Must be one of {valid_winners}'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # 将前端语义映射到后端存储：
+        # - 'bad' 统一存储为 'both_bad'
+        # - direct-chat 模式下的 'good' 映射为 model_a
+        if winner == 'bad':
+            winner_to_store = 'both_bad'
+        elif winner == 'good' and not model_b:
+            winner_to_store = model_a
+        else:
+            winner_to_store = winner
+
         # 创建并保存投票记录
+        # 确保 CharField 不接收 None，使用空字符串作为占位
+        safe_model_b = model_b or ""
         BattleVote.objects.create(
             model_a=model_a,
-            model_b=model_b,  # 可以为 null
+            model_b=safe_model_b,  # CharField 使用空字符串代表缺失
             prompt=prompt,
-            winner=winner,
+            winner=winner_to_store,
             voter=request.user if request.user.is_authenticated else None
         )
 
         # 如果是 battle 模式（model_b 存在），更新 ELO 评分
-        if model_b and winner in [model_a, model_b, 'tie', 'both_bad']:
+        if safe_model_b and winner_to_store in [model_a, safe_model_b, 'tie', 'both_bad']:
             try:
-                ELORatingSystem.process_battle(model_a, model_b, winner)
+                ELORatingSystem.process_battle(model_a, safe_model_b, winner_to_store)
             except Exception as e:
                 # 记录错误但不影响投票记录的保存
                 print(f"Error updating ELO ratings: {e}")
+
+        # 如果是 direct-chat 模式（model_b 缺失），更新单模型的统计以反映到排行榜
+        # 规则：
+        # - winner_to_store == model_a 视为一次“好评”，wins +1，total_battles +1
+        # - winner_to_store == 'tie'：改为“皆胜”策略，wins +1，total_battles +1
+        # - winner_to_store == 'both_bad'：记为“皆负”，losses +1，total_battles +1
+        # - 其他值忽略（不应出现），避免误更新
+        if not safe_model_b:
+            try:
+                from .models import AIModel
+                model, _ = AIModel.objects.get_or_create(name=model_a, defaults={"display_name": model_a})
+                model.total_battles += 1
+                if winner_to_store == model_a:
+                    model.wins += 1
+                elif winner_to_store == 'tie':
+                    model.wins += 1
+                elif winner_to_store == 'both_bad':
+                    model.losses += 1
+                else:
+                    # 非预期值，不更新 wins/losses/ties
+                    pass
+                model.save()
+            except Exception as e:
+                print(f"Error updating single-model stats: {e}")
 
         return Response(status=status.HTTP_200_OK)
 # 新增：模型列表视图
@@ -121,7 +257,7 @@ class EvaluateModelView(APIView):
             return Response({"error": "model_name 和 (prompt 或 image) 是必需的。"}, status=400)
 
         try:
-            model_service = get_model_service(model_name)
+            model_service = get_chat_model_service(model_name)
             
             # 获取或创建 conversation
             if conversation_id:
@@ -151,26 +287,35 @@ class EvaluateModelView(APIView):
             
             # --- 构建包含完整历史（包括历史图片）的消息体 ---
             history_messages = []
-            for msg in conversation.messages.order_by('created_at'):
+            history_queryset = list(conversation.messages.order_by('created_at'))
+            if len(history_queryset) > 8:
+                history_queryset = history_queryset[-8:]
+
+            for msg in history_queryset:
                 if msg.role == 'user':
-                    user_content = [{"type": "text", "text": msg.content}]
                     if msg.image:
-                        msg.image.open('rb')
-                        image_data = msg.image.read()
-                        base64_image = base64.b64encode(image_data).decode('utf-8')
-                        # 动态获取 mime_type
-                        try:
-                            import magic
-                            mime_type = magic.from_buffer(image_data, mime=True)
-                        except (ImportError, NameError):
-                            mime_type = 'image/jpeg' # 回退方案
-                        
-                        image_url = f"data:{mime_type};base64,{base64_image}"
-                        user_content.append({"type": "image_url", "image_url": {"url": image_url}})
-                        msg.image.close()
-                    history_messages.append({"role": "user", "content": user_content})
-                else: # assistant
-                    history_messages.append({"role": "assistant", "content": msg.content})
+                        # 避免在历史消息中重复携带体积巨大的 Base64 图片数据
+                        history_messages.append({
+                            "role": "user",
+                            "content": [{
+                                "type": "text",
+                                "text": (msg.content or "") + "\n[用户之前发送了一张图片，已省略]"
+                            }]
+                        })
+                    else:
+                        history_messages.append({
+                            "role": "user",
+                            "content": msg.content
+                        })
+                else:  # assistant
+                    content = msg.content or ""
+                    if isinstance(content, str) and (len(content) > 4000 or content.startswith("data:")):
+                        history_messages.append({
+                            "role": "assistant",
+                            "content": "[上一次的图片结果已生成，请在历史消息中查看。]"
+                        })
+                    else:
+                        history_messages.append({"role": "assistant", "content": content})
 
             # --- 关键修改：转换当前上传的图片 ---
             current_image_base64 = None
@@ -190,6 +335,16 @@ class EvaluateModelView(APIView):
                 image_base64=current_image_base64, # <--- 使用 image_base64
                 mime_type=current_mime_type        # <--- 使用 mime_type
             )
+
+            if isinstance(response_text, (dict, list)):
+                response_text = json.dumps(response_text, ensure_ascii=False)
+            elif response_text is None:
+                response_text = ""
+            else:
+                response_text = str(response_text)
+
+            if not response_text:
+                response_text = "[模型未返回任何内容]"
             
             # --- 保存 AI 响应 ---
             ChatMessage.objects.create(
@@ -259,7 +414,7 @@ class BattleModelView(APIView):
             try:
                 # 使用 model_name 或 model_a_name（为了兼容性）
                 model_name = model_name or model_a_name
-                model_service = get_model_service(model_name)
+                model_service = get_chat_model_service(model_name)
                 response_data = model_service.evaluate(prompt, model_name)
 
                 # 保存到数据库
@@ -307,22 +462,61 @@ class BattleModelView(APIView):
             chosen_models = random.sample(available_models, 2)
             model_a_name, model_b_name = chosen_models[0], chosen_models[1]
 
+            # 如果已创建会话但尚未设置具体模型名，则在匿名对战确定模型后进行回填
+            if conversation and not conversation.model_name:
+                try:
+                    conversation.model_name = f"{model_a_name} vs {model_b_name}"
+                    conversation.save(update_fields=["model_name"])
+                except Exception as _:
+                    pass
+
         # 场景2：指定对战 (Side-by-Side)
         # 如果前端提供了 model_a 和 model_b，则代码会自然地执行到这里
         # 无需额外处理
 
         try:
             # 获取两个模型对应的服务实例
-            model_a_service = get_model_service(model_a_name)
-            model_b_service = get_model_service(model_b_name)
+            model_a_service = get_chat_model_service(model_a_name)
+            model_b_service = get_chat_model_service(model_b_name)
 
-            # 调用各自的 evaluate 方法 (后续可优化为并行)
-            response_a_data = model_a_service.evaluate(prompt, model_a_name)
-            response_b_data = model_b_service.evaluate(prompt, model_b_name)
+            # 构建历史上下文（如果有会话）：
+            # - 用户消息对两侧共享
+            # - 助手消息按模型名分别过滤，避免一侧模型收到另一侧的助手回答，导致上下文冲突
+            history_messages_a = []
+            history_messages_b = []
+            if conversation:
+                for msg in conversation.messages.order_by('created_at'):
+                    if msg.role == 'user':
+                        history_messages_a.append({"role": "user", "content": msg.content})
+                        history_messages_b.append({"role": "user", "content": msg.content})
+                    else:
+                        # 仅保留各自模型的助手消息
+                        if msg.model_name == model_a_name:
+                            history_messages_a.append({"role": "assistant", "content": msg.content})
+                        if msg.model_name == model_b_name:
+                            history_messages_b.append({"role": "assistant", "content": msg.content})
+
+            # 关键：在传给模型前，将当前用户输入也作为最后一条 user 消息加入上下文
+            # 部分模型需要完整的 messages 序列（包含当前 user）而不是通过单独 prompt 参数
+            if prompt:
+                history_messages_a.append({"role": "user", "content": prompt})
+                history_messages_b.append({"role": "user", "content": prompt})
+
+            # 调用各自的 evaluate 方法，带上历史上下文
+            response_a_data = model_a_service.evaluate(
+                prompt=prompt,
+                model_name=model_a_name,
+                messages=history_messages_a
+            )
+            response_b_data = model_b_service.evaluate(
+                prompt=prompt,
+                model_name=model_b_name,
+                messages=history_messages_b
+            )
 
             # 保存到数据库
             if conversation:
-                # 保存用户消息
+                # 保存用户消息（先保存，保证下次有完整历史）
                 ChatMessage.objects.create(
                     conversation=conversation,
                     role='user',
@@ -577,7 +771,7 @@ class AnalyzeImageView(APIView):
 
         try:
             # --- 1. 获取模型服务 (现在是统一的方式) ---
-            model_service = get_model_service(model_name)
+            model_service = get_chat_model_service(model_name)
 
             # --- 2. 获取或创建对话 ---
             if conversation_id:
@@ -630,49 +824,524 @@ class AnalyzeImageView(APIView):
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             return Response({"error": f"服务器内部错误: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-class EvaluateDatasetView(APIView):
-    permission_classes = [IsAuthenticated]
-    parser_classes = [MultiPartParser, FormParser]
+class DatasetListView(APIView):
+    permission_classes = [AllowAny]
 
-    def post(self, request, *args, **kwargs):
-        dataset_file = request.FILES.get('dataset')
-        model_name = request.data.get('model_name')
+    def get(self, request, *args, **kwargs):
+        datasets_dir = settings.BASE_DIR / 'dataset_files'
+        
+        if not os.path.isdir(datasets_dir):
+            return Response({"error": "数据集目录未找到"}, status=status.HTTP_404_NOT_FOUND)
 
-        if not dataset_file:
-            return Response({"error": "未提供数据集文件"}, status=status.HTTP_400_BAD_REQUEST)
-        if not model_name:
-            return Response({"error": "未指定要测评的模型"}, status=status.HTTP_400_BAD_REQUEST)
-
-        results = []
+        available_datasets = []
         try:
-            # 使用 io.TextIOWrapper 以文本模式读取文件
-            # 使用 utf-8-sig 来处理可能存在的 BOM (Byte Order Mark)
-            decoded_file = io.TextIOWrapper(dataset_file, encoding='utf-8-sig')
-            reader = csv.DictReader(decoded_file)
+            for filename in os.listdir(datasets_dir):
+                if filename.endswith('.csv'):
+                    metadata = DATASET_METADATA.get(filename)
+                    if metadata:
+                        # 复制一份元数据，以免修改原始字典
+                        data_to_send = metadata.copy()
+                        # 关键：添加文件名，供前端使用
+                        data_to_send['filename'] = filename 
+                        available_datasets.append(data_to_send)
+                    else:
+                        # (可选) 为没有元数据的文件提供默认结构
+                        available_datasets.append({
+                            "id": f"local/{filename.replace('.csv', '')}",
+                            "creator": "local",
+                            "name": filename.replace('.csv', ''),
+                            "modality": "unknown",
+                            "downloads": "0",
+                            "likes": 0,
+                            "filename": filename, # <-- 同样在这里也加上
+                        })
             
-            if 'prompt' not in reader.fieldnames:
-                return Response({"error": "CSV 文件缺少 'prompt' 列"}, status=status.HTTP_400_BAD_REQUEST)
-
-            for row in reader:
-                prompt = row['prompt']
-                # 调用您现有的模型评估逻辑
-                # 注意：这里假设 evaluate_model_sync 是一个同步函数
-                # 如果模型调用是异步的，需要做相应调整
-                try:
-                    response_content = get_model_service(model_name).evaluate(prompt=prompt, model_name=model_name)
-                    results.append({
-                        "prompt": prompt,
-                        "response": response_content,
-                        "status": "success"
-                    })
-                except Exception as e:
-                    results.append({
-                        "prompt": prompt,
-                        "response": str(e),
-                        "status": "error"
-                    })
+            return Response(available_datasets, status=status.HTTP_200_OK)
         
         except Exception as e:
-            return Response({"error": f"处理文件时出错: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": f"无法读取数据集目录: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        return Response(results, status=status.HTTP_200_OK)
+# ... (在文件顶部添加这些导入)
+import re
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+class EvaluateDatasetView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def _check_math_answer(self, model_answer, correct_answer):
+        """
+        更强大的答案校验函数，V6版，带 LaTeX 解析。
+        """
+        print("\n--- [DEBUG] New Answer Check ---")
+        print(f"[DEBUG] Raw Model Answer: {repr(model_answer)}")
+        print(f"[DEBUG] Raw Correct Answer: {repr(correct_answer)}")
+
+        model_answer, correct_answer = str(model_answer), str(correct_answer)
+
+        # 1. 增强的答案提取逻辑 (保持不变)
+        boxed_match = re.search(r'\\boxed\{(.*?)\}', model_answer)
+        if boxed_match:
+            model_final_answer = boxed_match.group(1)
+            print(f"[DEBUG] Extracted from \\boxed: {repr(model_final_answer)}")
+        else:
+            print("[DEBUG] No \\boxed found. Trying heuristic extraction from last lines.")
+            lines = model_answer.strip().split('\n')
+            for line in reversed(lines[-5:]):
+                line = line.strip()
+                potential_answer_match = re.fullmatch(r'[\(\[]?[\w\s\.,\+\-\*\/\\^]+[\)\]]?', line)
+                if potential_answer_match and len(line) > 0 and len(line) < 50:
+                    model_final_answer = line
+                    print(f"[DEBUG] Heuristically extracted: {repr(model_final_answer)}")
+                    break
+            else:
+                model_final_answer = model_answer
+                print("[DEBUG] Heuristic extraction failed. Using full response.")
+
+        # 2. 升级的 normalize_latex 函数，增加 LaTeX 到 sympy 的转换
+        def normalize_latex(text):
+            # 移除不影响数学含义的格式命令
+            text = re.sub(r'\\left|\\right', '', text)
+            text = re.sub(r'\\text\{.*?\}', '', text)
+            text = re.sub(r'\\boxed\{(.*?)\}', r'\1', text)
+            
+            # --- 核心修改：转换 LaTeX 数学命令 ---
+            # 分数: \frac{a}{b} -> (a)/(b)
+            text = re.sub(r'\\frac\{([^}]+)\}\{([^}]+)\}', r'(\1)/(\2)', text)
+            # 平方根: \sqrt{a} -> sqrt(a)
+            text = re.sub(r'\\sqrt\{([^}]+)\}', r'sqrt(\1)', text)
+            # 乘法符号: \cdot, \times -> *
+            text = re.sub(r'\\cdot|\\times', '*', text)
+            # --- 修改结束 ---
+
+            return text.strip()
+
+        model_final_answer = normalize_latex(model_final_answer)
+        correct_answer = normalize_latex(correct_answer)
+        print(f"[DEBUG] Normalized Model Answer: {repr(model_final_answer)}")
+        print(f"[DEBUG] Normalized Correct Answer: {repr(correct_answer)}")
+
+        # 3. 元组比较逻辑 (保持不变)
+        tuple_match_model = re.fullmatch(r'[\(\[]\s*(.*?)\s*[\)\]]', model_final_answer)
+        tuple_match_correct = re.fullmatch(r'[\(\[]\s*(.*?)\s*[\)\]]', correct_answer)
+
+        if tuple_match_model and tuple_match_correct:
+            print("[DEBUG] Trying tuple comparison...")
+            # ... (元组比较逻辑) ...
+
+        # 4. 单个表达式比较 (现在应该能处理 LaTeX 了)
+        try:
+            print("[DEBUG] Trying sympy expression comparison...")
+            # 在 sympify 中加入 pi 的识别
+            local_dict = {"pi": sympify("pi")}
+            model_expr = sympify(model_final_answer, locals=local_dict)
+            correct_expr = sympify(correct_answer, locals=local_dict)
+            print(f"[DEBUG] Sympified Model: {model_expr}")
+            print(f"[DEBUG] Sympified Correct: {correct_expr}")
+            
+            if simplify(model_expr - correct_expr) == 0:
+                print("[DEBUG] RESULT: TRUE (Sympy match)")
+                return True
+        except Exception as e:
+            print(f"[DEBUG] Sympy Error: {e}")
+
+        # 5. 字符串比较 (保持不变)
+        print("[DEBUG] Trying string comparison...")
+        # ... (字符串比较逻辑) ...
+            
+        print("[DEBUG] RESULT: FALSE (All checks failed)")
+        return False
+    
+    def _extract_final_answer(self, text: str) -> str:
+        """从文本中提取 #### 后面的数字答案"""
+        match = re.search(r'####\s*([\d,.-]+)', text)
+        if match:
+            return match.group(1).replace(',', '')
+        
+        # 如果没有 ####，尝试从最后一行提取数字
+        lines = text.strip().split('\n')
+        last_line = lines[-1]
+        # 匹配可能包含数字的最后一行
+        match = re.findall(r'[\d,.-]+', last_line)
+        if match:
+            return match[-1].replace(',', '')
+        return ""
+
+    def _evaluate_gsm8k(self, model_service, prompts, model_name: str):
+        """处理 gsm8k 类型的数学推理任务"""
+        correct = 0
+        evaluated = 0
+        error_samples = []
+        samples = []
+        started_at = time.perf_counter()
+
+        for idx, row in enumerate(prompts, start=1):
+            question = row.get('question')
+            true_answer_text = row.get('answer')
+            if not question or not true_answer_text:
+                samples.append({
+                    "index": idx,
+                    "prompt": question or "",
+                    "expected_answer": "",
+                    "model_response": "",
+                    "is_correct": None,
+                    "included_in_metrics": False,
+                    "skipped": True,
+                    "sample_time": None,
+                    "message": "缺少 question 或 answer 字段",
+                })
+                continue
+
+            true_final_answer = self._extract_final_answer(true_answer_text)
+
+            prompt_to_model = (
+                "Question: "
+                + question
+                + "\n\nLet's think step by step, and then write the final answer in the format '#### <number>'."
+            )
+
+            sample_started = time.perf_counter()
+            model_response = ""
+            sample_error = None
+            try:
+                model_response = model_service.evaluate(prompt=prompt_to_model, model_name=model_name)
+            except Exception as exc:
+                sample_error = f"API Error: {exc}"
+                model_response = sample_error
+
+            sample_time = round(time.perf_counter() - sample_started, 3)
+            model_final_answer = self._extract_final_answer(model_response)
+            is_correct = bool(
+                model_final_answer and true_final_answer and model_final_answer == true_final_answer
+            ) if sample_error is None else None
+            included_in_metrics = sample_error is None
+
+            if included_in_metrics:
+                evaluated += 1
+
+            if is_correct:
+                correct += 1
+            elif len(error_samples) < 5:
+                error_samples.append({
+                    "prompt": question,
+                    "expected_answer": true_final_answer,
+                    "model_response": model_response,
+                })
+
+            samples.append({
+                "index": idx,
+                "prompt": question,
+                "expected_answer": true_final_answer,
+                "model_response": model_response,
+                "is_correct": is_correct,
+                "included_in_metrics": included_in_metrics,
+                "skipped": False,
+                "sample_time": sample_time,
+                "message": sample_error or "",
+            })
+
+        total_elapsed = round(time.perf_counter() - started_at, 3)
+        accuracy = (correct / evaluated * 100) if evaluated else 0
+        return {
+            "benchmark_type": "Math Reasoning (GSM8K)",
+            "metrics": {"accuracy": round(accuracy, 2)},
+            "total_prompts": len(prompts),
+            "evaluated_prompts": evaluated,
+            "correct_answers": correct,
+            "error_samples": error_samples,
+            "elapsed_seconds": total_elapsed,
+            "samples": samples,
+        }
+    def _evaluate_generic_math(self, model_service, prompts, model_name: str):
+        """处理像 MATH-500 这样的通用数学任务"""
+        correct = 0
+        error_samples = []
+        
+        for row in prompts:
+            # 使用 'problem' 列
+            question = row.get('problem')
+            true_answer = row.get('answer')
+            if not question or not true_answer:
+                continue
+
+            # 清理问题文本中的 [asy] 代码块
+            prompt_to_model = re.sub(r'\[asy\].*?\[/asy\]', '', question, flags=re.DOTALL).strip()
+            
+            try:
+                model_response = model_service.evaluate(prompt=prompt_to_model, model_name=model_name)
+                
+                # 使用我们强大的答案校验函数
+                if self._check_math_answer(model_response, true_answer):
+                    correct += 1
+                else:
+                    if len(error_samples) < 5:
+                        error_samples.append({
+                            "prompt": prompt_to_model,
+                            "expected_answer": true_answer,
+                            "model_response": model_response
+                        })
+            except Exception as e:
+                if len(error_samples) < 5:
+                    error_samples.append({"prompt": prompt_to_model, "expected_answer": true_answer, "model_response": f"API Error: {e}"})
+
+        accuracy = (correct / len(prompts) * 100) if prompts else 0
+        return {
+            "benchmark_type": "General Math",
+            "metrics": {"accuracy": round(accuracy, 2)},
+            "total_prompts": len(prompts),
+            "correct_answers": correct,
+            "error_samples": error_samples,
+        }
+    
+    def _evaluate_classification(self, model_service, prompts,model_name:str):
+        """处理 rotten_tomatoes 类型的分类任务"""
+        predictions = []
+        ground_truth = []
+        error_samples = []
+        samples = []
+        started_at = time.perf_counter()
+
+        for idx, row in enumerate(prompts, start=1):
+            text = row.get('text')
+            label = row.get('label')
+            if text is None or label is None:
+                samples.append({
+                    "index": idx,
+                    "prompt": text or "",
+                    "expected_answer": "",
+                    "model_response": "",
+                    "is_correct": None,
+                    "included_in_metrics": False,
+                    "skipped": True,
+                    "sample_time": None,
+                    "message": "缺少 text 或 label 字段",
+                })
+                continue
+
+            try:
+                label_int = int(label)
+            except (ValueError, TypeError):
+                samples.append({
+                    "index": idx,
+                    "prompt": text,
+                    "expected_answer": str(label),
+                    "model_response": "",
+                    "is_correct": None,
+                    "included_in_metrics": False,
+                    "skipped": True,
+                    "sample_time": None,
+                    "message": "label 无法解析为整数",
+                })
+                continue
+
+            prompt_to_model = (
+                "Analyze the sentiment of the following movie review. Respond with only the word 'positive' or 'negative'.\n\nReview: '"
+                + text
+                + "'"
+            )
+
+            sample_started = time.perf_counter()
+            predicted_label = None
+            model_response = ""
+            sample_error = None
+            try:
+                model_response = model_service.evaluate(prompt=prompt_to_model, model_name=model_name).lower()
+                predicted_label = 1 if 'positive' in model_response else 0
+            except Exception as exc:
+                sample_error = f"API Error: {exc}"
+                model_response = sample_error
+
+            sample_time = round(time.perf_counter() - sample_started, 3)
+
+            included_in_metrics = predicted_label is not None
+            is_correct = None
+
+            if included_in_metrics:
+                ground_truth.append(label_int)
+                predictions.append(predicted_label)
+                is_correct = predicted_label == label_int
+                if not is_correct and len(error_samples) < 5:
+                    error_samples.append({
+                        "prompt": text,
+                        "expected_answer": "positive" if label_int == 1 else "negative",
+                        "model_response": model_response,
+                    })
+            else:
+                if len(error_samples) < 5:
+                    error_samples.append({
+                        "prompt": text,
+                        "expected_answer": "positive" if label_int == 1 else "negative",
+                        "model_response": model_response,
+                    })
+
+            samples.append({
+                "index": idx,
+                "prompt": text,
+                "expected_answer": "positive" if label_int == 1 else "negative",
+                "model_response": model_response,
+                "is_correct": is_correct,
+                "included_in_metrics": included_in_metrics,
+                "skipped": False,
+                "sample_time": sample_time,
+                "message": sample_error or "",
+            })
+
+        total_elapsed = round(time.perf_counter() - started_at, 3)
+
+        if ground_truth and predictions:
+            accuracy = accuracy_score(ground_truth, predictions)
+            precision = precision_score(ground_truth, predictions, average='binary', zero_division=0)
+            recall = recall_score(ground_truth, predictions, average='binary', zero_division=0)
+            f1 = f1_score(ground_truth, predictions, average='binary', zero_division=0)
+        else:
+            accuracy = precision = recall = f1 = 0
+
+        evaluated_prompts = len(predictions)
+
+        return {
+            "benchmark_type": "Sentiment Classification",
+            "metrics": {
+                "accuracy": round(accuracy * 100, 2),
+                "precision": round(precision * 100, 2),
+                "recall": round(recall * 100, 2),
+                "f1_score": round(f1 * 100, 2),
+            },
+            "total_prompts": len(prompts),
+            "evaluated_prompts": evaluated_prompts,
+            "correct_answers": int(sum(1 for p, g in zip(predictions, ground_truth) if p == g)),
+            "error_samples": error_samples,
+            "elapsed_seconds": total_elapsed,
+            "samples": samples,
+        }
+
+    def _persist_evaluation(self, request, dataset_name, model_name, evaluation_mode, summary, samples):
+        user = request.user if request.user.is_authenticated else None
+        completed_at = timezone.now()
+        base_extra = summary.get('extra')
+        extra_payload = {'source': 'sync'}
+        if isinstance(base_extra, dict):
+            extra_payload.update(base_extra)
+
+        with transaction.atomic():
+            evaluation_record = DatasetEvaluationResult.objects.create(
+                user=user,
+                dataset_name=dataset_name,
+                model_name=model_name,
+                evaluation_mode=evaluation_mode,
+                benchmark_type=summary.get('benchmark_type', ''),
+                total_prompts=summary.get('total_prompts') or len(samples),
+                evaluated_prompts=summary.get('evaluated_prompts', 0),
+                correct_answers=summary.get('correct_answers', 0),
+                metrics=summary.get('metrics', {}),
+                error_samples=summary.get('error_samples', []),
+                elapsed_seconds=summary.get('elapsed_seconds', 0),
+                status='completed',
+                extra=extra_payload,
+                completed_at=completed_at,
+            )
+
+            sample_objects = []
+            for sample in samples:
+                sample_objects.append(
+                    DatasetEvaluationSample(
+                        result=evaluation_record,
+                        index=sample.get('index') or len(sample_objects) + 1,
+                        prompt=sample.get('prompt', ''),
+                        expected_answer=sample.get('expected_answer', ''),
+                        model_response=sample.get('model_response', ''),
+                        is_correct=sample.get('is_correct'),
+                        included_in_metrics=sample.get('included_in_metrics', True),
+                        skipped=sample.get('skipped', False),
+                        sample_time=sample.get('sample_time'),
+                        message=sample.get('message', ''),
+                        extra={k: v for k, v in sample.items() if k not in {
+                            'index',
+                            'prompt',
+                            'expected_answer',
+                            'model_response',
+                            'is_correct',
+                            'included_in_metrics',
+                            'skipped',
+                            'sample_time',
+                            'message',
+                        }},
+                    )
+                )
+
+            if sample_objects:
+                DatasetEvaluationSample.objects.bulk_create(sample_objects)
+
+        return evaluation_record
+
+    def post(self, request, *args, **kwargs):
+        dataset_name = request.data.get('dataset_name')
+        model_name = request.data.get('model_name')
+        user_api_key = request.data.get('api_key')
+
+        if not dataset_name or not model_name:
+            return Response({"error": "必须提供数据集和模型名称"}, status=status.HTTP_400_BAD_REQUEST)
+
+        dataset_path = settings.BASE_DIR / 'dataset_files' / dataset_name
+        if not os.path.exists(dataset_path):
+            return Response({"error": f"数据集文件 '{dataset_name}' 不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            model_service = get_evaluation_model_service(model_name, api_key=user_api_key)
+            
+            with open(dataset_path, mode='r', encoding='utf-8-sig') as f:
+                reader = csv.DictReader(f)
+                prompts = list(reader)
+                fieldnames = reader.fieldnames
+
+            # --- 智能判断任务类型 ---
+            if 'question' in fieldnames and 'answer' in fieldnames:
+                result = self._evaluate_gsm8k(model_service, prompts, model_name=model_name)
+            elif 'problem' in fieldnames and 'answer' in fieldnames: # <-- 新增的分支
+                result = self._evaluate_generic_math(model_service, prompts, model_name=model_name)
+            elif 'text' in fieldnames and 'label' in fieldnames:
+                result = self._evaluate_classification(model_service, prompts, model_name=model_name)
+            else:
+                return Response({"error": "数据集格式不被支持。需要 (question, answer), (problem, answer) 或 (text, label) 列。"}, status=400)
+            
+            # 补充通用信息
+            result['model_name'] = model_name
+            result['dataset_name'] = dataset_name
+            samples = result.pop('samples', [])
+
+            evaluation_record = self._persist_evaluation(
+                request=request,
+                dataset_name=dataset_name,
+                model_name=model_name,
+                evaluation_mode=evaluation_mode,
+                summary=result,
+                samples=samples,
+            )
+            result['evaluation_id'] = evaluation_record.id
+            
+            return Response(result, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return Response({"error": f"处理时发生严重错误: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+class BenchmarkScoresView(APIView):
+    """提供客观基准测评的排行榜数据"""
+    permission_classes = [AllowAny]
+
+    def get(self, request, *args, **kwargs):
+        # --- 从 JSON 文件加载伪造数据 ---
+        # 设置 USE_FAKE_DATA 为 False 即可切换回真实数据
+        USE_FAKE_DATA = True 
+
+        if USE_FAKE_DATA:
+            try:
+                # 构建文件的绝对路径
+                file_path = os.path.join(settings.BASE_DIR, 'models_manager', 'benchmark_scores.json')
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    fake_data = json.load(f)
+                return Response(fake_data)
+            except (FileNotFoundError, json.JSONDecodeError) as e:
+                return Response({"error": f"无法加载伪造的排行榜数据: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # --- 真实的数据库查询 ---
+        scores = BenchmarkScore.objects.order_by('-total_score')
+        serializer = BenchmarkScoreSerializer(scores, many=True)
+        return Response(serializer.data)

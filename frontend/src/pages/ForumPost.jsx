@@ -413,6 +413,13 @@ export default function ForumPost() {
     try {
       const res = await fetchForumPostDetail(id);
       const postData = res.data || {};
+      if (
+        postData.metrics &&
+        typeof postData.metrics.share_count === 'number' &&
+        typeof postData.share_count !== 'number'
+      ) {
+        postData.share_count = postData.metrics.share_count;
+      }
       const likeActive = postData?.user_reactions?.like ?? Boolean(postData?.is_liked);
       const favoriteActive = postData?.user_reactions?.favorite ?? Boolean(postData?.is_favorited);
       const likeCount =
@@ -532,7 +539,12 @@ export default function ForumPost() {
   const handleShare = async () => {
     try {
       const res = await shareForumPost(id, { channel: 'web' });
-      const shareCount = res?.data?.share_count;
+      const shareCount =
+        typeof res?.data?.share_count === 'number'
+          ? res.data.share_count
+          : typeof res?.data?.metrics?.share_count === 'number'
+            ? res.data.metrics.share_count
+            : null;
       setPost((prev) =>
         prev
           ? {
@@ -702,7 +714,7 @@ export default function ForumPost() {
   const categoryMeta = getCategoryMeta(post.category || post.category_obj);
 
   return (
-    <div>
+    <div className="forum-post-page">
       {/* 分享弹窗 */}
       <ShareModal
         visible={shareModalVisible}
@@ -746,7 +758,7 @@ export default function ForumPost() {
         </Col>
       </Row>
 
-      <Card>
+      <Card bordered className="forum-post-card">
         <div style={{ marginBottom: 16 }}>
           <Space size="middle" wrap>
             {categoryMeta.label && (
@@ -788,7 +800,7 @@ export default function ForumPost() {
           </Space>
         </div>
 
-        <Paragraph style={{ fontSize: '16px', lineHeight: '1.8', whiteSpace: 'pre-line' }}>{post.content}</Paragraph>
+        <div className="post-content" style={{ whiteSpace: 'pre-line' }}>{post.content}</div>
 
         {post.attachments?.length ? (
           <Image.PreviewGroup>
@@ -816,7 +828,7 @@ export default function ForumPost() {
               const showCollapseButton = comment.indent === 0 && comment.maxDepth >= 3;
               const indentStyle = {
                 marginLeft: comment.indent * 40,
-                borderLeft: comment.indent > 0 ? '2px solid #f0f0f0' : 'none',
+                borderLeft: comment.indent > 0 ? '2px solid var(--border)' : 'none',
                 paddingLeft: comment.indent > 0 ? 16 : 0,
                 transition: 'all 0.3s ease',
               };
@@ -998,7 +1010,7 @@ export default function ForumPost() {
                           height: 80,
                           borderRadius: 8,
                           overflow: 'hidden',
-                          border: '1px solid #f0f0f0',
+                          border: '1px solid var(--border)',
                           background: '#fafafa',
                           display: 'flex',
                           alignItems: 'center',

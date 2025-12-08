@@ -67,7 +67,7 @@ export default function ArenaPage() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+    <div className="container" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       {/* 欢迎界面 */}
       <div style={{ 
         flex: 1, 
@@ -77,10 +77,10 @@ export default function ArenaPage() {
         alignItems: 'center',
         padding: '20px'
       }}>
-        <Title level={1} style={{ color: '#333', marginBottom: '16px' }}>
+        <Title level={1} style={{ color: 'var(--text)', marginBottom: '16px' }}>
           欢迎使用 AI Arena
         </Title>
-        <Paragraph style={{ fontSize: '16px', color: '#666', marginBottom: '40px', textAlign: 'center', maxWidth: '600px' }}>
+        <Paragraph style={{ fontSize: '16px', color: 'var(--muted)', marginBottom: '40px', textAlign: 'center', maxWidth: '680px' }}>
           {mode === 'battle' && '两个模型将匿名回答您的问题，您可以为更好的回答投票'}
           {mode === 'side-by-side' && `比较 ${leftModel || '模型A'} 和 ${rightModel || '模型B'} 的回答`}
           {mode === 'direct-chat' && `开始与 ${leftModel || '一个模型'} 对话`}
@@ -90,10 +90,11 @@ export default function ArenaPage() {
       {/* --- 关键修改 3: 采用图片中的全新布局和样式 --- */}
       <div style={{ padding: '0 20px 20px 20px', flexShrink: 0 }}>
         <div style={{ 
-          border: '1px solid #e0e0e0',
-          borderRadius: '18px',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-lg)',
           padding: '12px',
-          background: '#fff',
+          background: 'var(--panel)',
+          boxShadow: 'var(--shadow-sm)',
           maxWidth: '800px',
           margin: '0 auto',
           display: 'flex',
@@ -105,7 +106,7 @@ export default function ArenaPage() {
             autoSize={{ minRows: 1, maxRows: 6 }}
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Ask followup..."
+            placeholder="输入您的问题..."
             style={{ 
               background: 'transparent',
               border: 'none',
@@ -139,6 +140,8 @@ export default function ArenaPage() {
             <Tooltip title="代码片段">
               <Button style={iconButtonStyle} icon={<Code size={20} />} />
             </Tooltip>
+            <div style={{ flex: 1 }} />
+            <Button type="primary" onClick={startBattle}>开始</Button>
           </div>
         </div>
       </div>
