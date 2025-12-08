@@ -3,7 +3,7 @@ from .views import EvaluateModelView
 from .views import BattleModelView,ModelListView, LeaderboardView,RecordVoteView
 from .views import ChatHistoryView, CreateConversationView, DeleteAllConversationsView, DeleteConversationView
 from .views import ConversationMessagesView, CreateMessageView
-from .views import GenerateImageView, GetImageStatusView,EvaluateDatasetView,DatasetListView # 导入新的 View
+from .views import GenerateImageView, GetImageStatusView,EvaluateDatasetView,DatasetListView,BenchmarkScoresView # 导入新的 View
 
 urlpatterns = [
     path('', ModelListView.as_view(), name='model-list'),
@@ -22,5 +22,6 @@ urlpatterns = [
     path('get-image-status/', GetImageStatusView.as_view(), name='get-image-status'),
     path('evaluate-dataset/',EvaluateDatasetView.as_view(), name='evaluate-dataset'),
     path('datasets/',DatasetListView.as_view(), name='dataset-list'),
+    path('benchmark-scores/', BenchmarkScoresView.as_view(), name='benchmark-scores'),
 
 ]

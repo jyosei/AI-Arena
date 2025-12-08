@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import ChatConversation, ChatMessage, AIModel
+from .models import ChatConversation, ChatMessage, AIModel,BenchmarkScore
 
 
 class AIModelSerializer(serializers.ModelSerializer):
@@ -28,3 +28,8 @@ class ChatMessageSerializer(serializers.ModelSerializer):
         model = ChatMessage
         fields = ['id', 'conversation', 'content', 'is_user', 'model_name', 'created_at']
         read_only_fields = ['id', 'created_at']
+class BenchmarkScoreSerializer(serializers.ModelSerializer):
+     model_name = serializers.CharField(source='model.name')
+     class Meta:
+         model = BenchmarkScore
+         fields = ['model_name', 'total_score', 'scores']

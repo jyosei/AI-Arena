@@ -5,10 +5,10 @@ from rest_framework.parsers import FormParser
 from rest_framework import status
 from rest_framework.parsers import JSONParser, MultiPartParser
 from .services import get_chat_model_service, get_evaluation_model_service, ELORatingSystem
-from .models import BattleVote, AIModel
+from .models import BattleVote, AIModel,BenchmarkScore
 from .models import ChatConversation
 from .models import ChatMessage
-from .serializers import ChatConversationSerializer, ChatMessageSerializer, AIModelSerializer
+from .serializers import ChatConversationSerializer, ChatMessageSerializer, AIModelSerializer,BenchmarkScoreSerializer
 import random
 import time
 import base64
@@ -16,6 +16,7 @@ import os
 from django.conf import settings
 import csv 
 import re
+from sympy import sympify, simplify
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 DATASET_METADATA = {
     "test_math_small.csv": {
@@ -674,6 +675,89 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 class EvaluateDatasetView(APIView):
     permission_classes = [IsAuthenticated]
 
+    def _check_math_answer(self, model_answer, correct_answer):
+        """
+        更强大的答案校验函数，V6版，带 LaTeX 解析。
+        """
+        print("\n--- [DEBUG] New Answer Check ---")
+        print(f"[DEBUG] Raw Model Answer: {repr(model_answer)}")
+        print(f"[DEBUG] Raw Correct Answer: {repr(correct_answer)}")
+
+        model_answer, correct_answer = str(model_answer), str(correct_answer)
+
+        # 1. 增强的答案提取逻辑 (保持不变)
+        boxed_match = re.search(r'\\boxed\{(.*?)\}', model_answer)
+        if boxed_match:
+            model_final_answer = boxed_match.group(1)
+            print(f"[DEBUG] Extracted from \\boxed: {repr(model_final_answer)}")
+        else:
+            print("[DEBUG] No \\boxed found. Trying heuristic extraction from last lines.")
+            lines = model_answer.strip().split('\n')
+            for line in reversed(lines[-5:]):
+                line = line.strip()
+                potential_answer_match = re.fullmatch(r'[\(\[]?[\w\s\.,\+\-\*\/\\^]+[\)\]]?', line)
+                if potential_answer_match and len(line) > 0 and len(line) < 50:
+                    model_final_answer = line
+                    print(f"[DEBUG] Heuristically extracted: {repr(model_final_answer)}")
+                    break
+            else:
+                model_final_answer = model_answer
+                print("[DEBUG] Heuristic extraction failed. Using full response.")
+
+        # 2. 升级的 normalize_latex 函数，增加 LaTeX 到 sympy 的转换
+        def normalize_latex(text):
+            # 移除不影响数学含义的格式命令
+            text = re.sub(r'\\left|\\right', '', text)
+            text = re.sub(r'\\text\{.*?\}', '', text)
+            text = re.sub(r'\\boxed\{(.*?)\}', r'\1', text)
+            
+            # --- 核心修改：转换 LaTeX 数学命令 ---
+            # 分数: \frac{a}{b} -> (a)/(b)
+            text = re.sub(r'\\frac\{([^}]+)\}\{([^}]+)\}', r'(\1)/(\2)', text)
+            # 平方根: \sqrt{a} -> sqrt(a)
+            text = re.sub(r'\\sqrt\{([^}]+)\}', r'sqrt(\1)', text)
+            # 乘法符号: \cdot, \times -> *
+            text = re.sub(r'\\cdot|\\times', '*', text)
+            # --- 修改结束 ---
+
+            return text.strip()
+
+        model_final_answer = normalize_latex(model_final_answer)
+        correct_answer = normalize_latex(correct_answer)
+        print(f"[DEBUG] Normalized Model Answer: {repr(model_final_answer)}")
+        print(f"[DEBUG] Normalized Correct Answer: {repr(correct_answer)}")
+
+        # 3. 元组比较逻辑 (保持不变)
+        tuple_match_model = re.fullmatch(r'[\(\[]\s*(.*?)\s*[\)\]]', model_final_answer)
+        tuple_match_correct = re.fullmatch(r'[\(\[]\s*(.*?)\s*[\)\]]', correct_answer)
+
+        if tuple_match_model and tuple_match_correct:
+            print("[DEBUG] Trying tuple comparison...")
+            # ... (元组比较逻辑) ...
+
+        # 4. 单个表达式比较 (现在应该能处理 LaTeX 了)
+        try:
+            print("[DEBUG] Trying sympy expression comparison...")
+            # 在 sympify 中加入 pi 的识别
+            local_dict = {"pi": sympify("pi")}
+            model_expr = sympify(model_final_answer, locals=local_dict)
+            correct_expr = sympify(correct_answer, locals=local_dict)
+            print(f"[DEBUG] Sympified Model: {model_expr}")
+            print(f"[DEBUG] Sympified Correct: {correct_expr}")
+            
+            if simplify(model_expr - correct_expr) == 0:
+                print("[DEBUG] RESULT: TRUE (Sympy match)")
+                return True
+        except Exception as e:
+            print(f"[DEBUG] Sympy Error: {e}")
+
+        # 5. 字符串比较 (保持不变)
+        print("[DEBUG] Trying string comparison...")
+        # ... (字符串比较逻辑) ...
+            
+        print("[DEBUG] RESULT: FALSE (All checks failed)")
+        return False
+    
     def _extract_final_answer(self, text: str) -> str:
         """从文本中提取 #### 后面的数字答案"""
         match = re.search(r'####\s*([\d,.-]+)', text)
@@ -730,7 +814,47 @@ class EvaluateDatasetView(APIView):
             "correct_answers": correct,
             "error_samples": error_samples,
         }
+    def _evaluate_generic_math(self, model_service, prompts, model_name: str):
+        """处理像 MATH-500 这样的通用数学任务"""
+        correct = 0
+        error_samples = []
+        
+        for row in prompts:
+            # 使用 'problem' 列
+            question = row.get('problem')
+            true_answer = row.get('answer')
+            if not question or not true_answer:
+                continue
 
+            # 清理问题文本中的 [asy] 代码块
+            prompt_to_model = re.sub(r'\[asy\].*?\[/asy\]', '', question, flags=re.DOTALL).strip()
+            
+            try:
+                model_response = model_service.evaluate(prompt=prompt_to_model, model_name=model_name)
+                
+                # 使用我们强大的答案校验函数
+                if self._check_math_answer(model_response, true_answer):
+                    correct += 1
+                else:
+                    if len(error_samples) < 5:
+                        error_samples.append({
+                            "prompt": prompt_to_model,
+                            "expected_answer": true_answer,
+                            "model_response": model_response
+                        })
+            except Exception as e:
+                if len(error_samples) < 5:
+                    error_samples.append({"prompt": prompt_to_model, "expected_answer": true_answer, "model_response": f"API Error: {e}"})
+
+        accuracy = (correct / len(prompts) * 100) if prompts else 0
+        return {
+            "benchmark_type": "General Math",
+            "metrics": {"accuracy": round(accuracy, 2)},
+            "total_prompts": len(prompts),
+            "correct_answers": correct,
+            "error_samples": error_samples,
+        }
+    
     def _evaluate_classification(self, model_service, prompts,model_name:str):
         """处理 rotten_tomatoes 类型的分类任务"""
         predictions = []
@@ -814,13 +938,13 @@ class EvaluateDatasetView(APIView):
 
             # --- 智能判断任务类型 ---
             if 'question' in fieldnames and 'answer' in fieldnames:
-                # 判定为 GSM8K 类型
                 result = self._evaluate_gsm8k(model_service, prompts, model_name=model_name)
+            elif 'problem' in fieldnames and 'answer' in fieldnames: # <-- 新增的分支
+                result = self._evaluate_generic_math(model_service, prompts, model_name=model_name)
             elif 'text' in fieldnames and 'label' in fieldnames:
-                # 判定为分类任务类型
                 result = self._evaluate_classification(model_service, prompts, model_name=model_name)
             else:
-                return Response({"error": "数据集格式不被支持。需要 (question, answer) 或 (text, label) 列。"}, status=400)
+                return Response({"error": "数据集格式不被支持。需要 (question, answer), (problem, answer) 或 (text, label) 列。"}, status=400)
             
             # 补充通用信息
             result['model_name'] = model_name
@@ -832,3 +956,13 @@ class EvaluateDatasetView(APIView):
             import traceback
             traceback.print_exc()
             return Response({"error": f"处理时发生严重错误: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+class BenchmarkScoresView(APIView):
+    """提供客观基准测评的排行榜数据"""
+    permission_classes = [AllowAny]
+
+    def get(self, request, *args, **kwargs):
+        # 按总分从高到低排序
+        scores = BenchmarkScore.objects.order_by('-total_score')
+        # 假设你已经创建了 BenchmarkScoreSerializer
+        serializer = BenchmarkScoreSerializer(scores, many=True)
+        return Response(serializer.data)

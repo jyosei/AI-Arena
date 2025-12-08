@@ -123,3 +123,12 @@ class ChatMessage(models.Model):
         return f"{self.get_role_display()}: {self.content[:50]}..."
         sender = "用户" if self.is_user else f"AI({self.model_name})"
         return f"{sender}: {self.content[:50]}..."
+class BenchmarkScore(models.Model):
+    model = models.OneToOneField(AIModel, on_delete=models.CASCADE, related_name='benchmark_score')
+    total_score = models.FloatField(default=0.0, help_text="综合总分")
+    # 使用 JSONField 存储各分类的得分，例如 {'代码能力': 95.0, '数学推理': 88.5}
+    scores = models.JSONField(default=dict)
+    last_updated = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.model.name} - Score: {self.total_score}"

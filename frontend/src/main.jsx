@@ -16,6 +16,7 @@ import AppLayout from "./components/AppLayout.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import UserCenter from "./pages/UserCenter.jsx";
 import DatasetEvaluationPage from "./pages/DatasetEvaluation.jsx";
+import BenchmarkLeaderboard from './pages/BenchmarkLeaderboard';
 // 2. 导入所有需要的 Context Provider
 import { AuthProvider } from "./contexts/AuthContext.jsx";
 import { ModeProvider } from './contexts/ModeContext';

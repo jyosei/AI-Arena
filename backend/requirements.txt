@@ -10,3 +10,4 @@ Pillow
 datasets
 # 指定一个较新的版本，例如 1.3.0 或更高
 scikit-learn>=1.3.0
+sympy
