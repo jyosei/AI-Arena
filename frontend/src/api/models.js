@@ -18,9 +18,10 @@ export const compareModels = (ids = []) => {
  * @param {string} prompt - 文本提示
  * @param {string|null} conversationId - 对话ID
  * @param {File|null} imageFile - 上传的图片文件
+ * @param {boolean} saveUserMessage - 是否保存用户消息（默认true）
  * @returns Promise
  */
-export const evaluateModel = (modelName, prompt, conversationId, imageFile) => {
+export const evaluateModel = (modelName, prompt, conversationId, imageFile, saveUserMessage = true) => {
   
   // 检查是否存在图片文件。imageFile 应该是来自 antd beforeUpload 的原始 File 对象。
   if (imageFile && imageFile instanceof File) {
@@ -32,6 +33,7 @@ export const evaluateModel = (modelName, prompt, conversationId, imageFile) => {
     formData.append('model_name', modelName);
     formData.append('prompt', prompt || ''); // 确保 prompt 即使为空也作为空字符串发送
     formData.append('conversation_id', conversationId || ''); // 确保 conversationId 存在
+    formData.append('save_user_message', saveUserMessage ? 'true' : 'false'); // 添加控制参数
     
     // 将 File 对象添加到 FormData 中
     formData.append('image', imageFile, imageFile.name); 
@@ -52,9 +54,29 @@ export const evaluateModel = (modelName, prompt, conversationId, imageFile) => {
       model_name: modelName,
       prompt: prompt,
       conversation_id: conversationId,
+      save_user_message: saveUserMessage, // 添加控制参数
     });
   }
 };
+/**
+ * Battle 对战接口 (支持 Battle 和 Side-by-Side 模式)
+ * @param {string} modelA - 模型A名称
+ * @param {string} modelB - 模型B名称
+ * @param {string} prompt - 提示词
+ * @param {string|null} conversationId - 对话ID
+ * @param {string} mode - 模式: 'battle' 或 'side-by-side'
+ * @returns Promise
+ */
+export const battleModels = (modelA, modelB, prompt, conversationId, mode = 'battle') => {
+  return apiClient.post('/models/battle/', {
+    model_a: modelA,
+    model_b: modelB,
+    prompt: prompt,
+    conversation_id: conversationId,
+    mode: mode
+  });
+};
+
 export const recordVote = (data) => {
   // --- 关键修改：截断 prompt 以防止超出数据库限制 ---
   const truncatedPrompt = data.prompt && data.prompt.length > 500 

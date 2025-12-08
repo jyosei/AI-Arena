@@ -8,13 +8,17 @@ from django.utils.translation import gettext_lazy as _
 
 class User(AbstractUser):
     description = models.TextField(blank=True)
-    avatar = models.URLField(blank=True, help_text="外部头像URL（优先使用该字段）")
+    avatar = models.URLField(blank=True, help_text="外部头像URL(优先使用该字段)")
     avatar_file = models.ImageField(
         upload_to="users/avatars/%Y/%m/%d/",
         blank=True,
         null=True,
         help_text="上传头像文件",
     )
+    
+    # 微信登录字段
+    wechat_openid = models.CharField(max_length=128, blank=True, unique=True, null=True, help_text="微信OpenID")
+    wechat_unionid = models.CharField(max_length=128, blank=True, unique=True, null=True, help_text="微信UnionID")
 
     # 兼容自定义 related_name，避免与默认 User 冲突（来自迁移 0002）
     groups = models.ManyToManyField(
@@ -77,6 +81,7 @@ class Notification(models.Model):
         ("post_comment", "帖子收到评论"),
         ("comment_reply", "评论被回复"),
         ("comment_like", "评论被点赞"),
+        ("post_favorite", "帖子被收藏"),
     )
 
     recipient = models.ForeignKey(
@@ -126,6 +131,8 @@ class Notification(models.Model):
             return f"{actor_name} 回复了你的评论"
         if self.action_type == "comment_like" and self.comment:
             return f"{actor_name} 点赞了你的评论"
+        if self.action_type == "post_favorite" and self.post:
+            return f"{actor_name} 收藏了你的帖子《{self.post.title}》"
         return "收到新通知"
 
     @classmethod

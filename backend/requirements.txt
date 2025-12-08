@@ -10,4 +10,9 @@ Pillow
 datasets
 # 指定一个较新的版本，例如 1.3.0 或更高
 scikit-learn>=1.3.0
+<<<<<<< HEAD
 sympy
+=======
+qrcode[pil]
+requests
+>>>>>>> 269cee7d7c9788ecbc7736139c543913c03f3f63

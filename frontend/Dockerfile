@@ -15,12 +15,16 @@ COPY . .
 ARG VITE_API_BASE=/api/
 ENV VITE_API_BASE=${VITE_API_BASE}
 
+# 公共访问地址（用于生成分享链接、二维码等）
+ARG VITE_PUBLIC_ORIGIN=http://localhost:8000
+ENV VITE_PUBLIC_ORIGIN=${VITE_PUBLIC_ORIGIN}
+
 # 构建（Vite 会把 import.meta.env.VITE_API_BASE 嵌入到构建产物）
 RUN npm run build
 
 # 部署阶段
 # --- 关键修改：使用一个有效的 Nginx 镜像标签 ---
-FROM nginx:1.27.2-alpine
+FROM nginx:alpine
 # 拷贝构建好的前端文件
 COPY --from=build /app/dist /usr/share/nginx/html
 # 拷贝我们自定义的 Nginx 配置文件
