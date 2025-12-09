@@ -3,10 +3,12 @@ FROM python:3.12
 # 关键：在 apt-get update 之前，先用 sed 命令替换软件源为国内镜像
 # 将 bash 的安装合并到这一行
 RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources \
-    && apt-get update && apt-get install -y netcat-openbsd libmagic1 bash dos2unix
+    && apt-get update && apt-get install -y --no-install-recommends netcat-openbsd libmagic1 bash dos2unix \
+    && rm -rf /var/lib/apt/lists/*
 
-# 更新包列表并安装 Asymptote 及其依赖
-RUN apt-get update && apt-get install -y \
+# 更新包列表并安装 Asymptote 及其依赖（不安装推荐包，避免拉取庞大的 TeX Live 附属组件）
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
     asymptote \
     ghostscript \
     && rm -rf /var/lib/apt/lists/*

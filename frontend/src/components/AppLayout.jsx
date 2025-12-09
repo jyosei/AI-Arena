@@ -68,6 +68,7 @@ const AppLayout = () => {
     '/forum': '3',
     '/evaluate-dataset': '4',
     '/evaluate-dataset/history': '5',
+    '/benchmark-leaderboard': '6',
   };
   
   // 根据当前路径获取应高亮的 key
@@ -248,11 +249,6 @@ const AppLayout = () => {
               key: '6',
               icon: <MessageOutlined />,
               label: <Link to="/benchmark-leaderboard" onClick={closeMobileSider}>客观排行榜</Link>,
-            },
-            { // 数据集测评
-              key: '7',
-              icon: <UploadOutlined />,
-              label: <Link to="/evaluate-dataset" onClick={closeMobileSider}>数据集测评</Link>,
             },
             {
               key: '5',
