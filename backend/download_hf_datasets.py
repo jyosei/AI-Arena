@@ -6,6 +6,12 @@ DATASETS_TO_DOWNLOAD = {
     "openai/gsm8k": {"name": "main", "split": "test", "filename": "gsm8k.csv"},
     "rotten_tomatoes": {"name": None, "split": "test", "filename": "rotten_tomatoes.csv"},
     "HuggingFaceH4/MATH-500": {"name": None, "split": "test", "filename": "MATH-500.csv"},
+    "DigitalLearningGmbH/MATH-lighteval":{"name": None, "split": "test", "filename": "MATH-lighteval.csv"},
+    "EleutherAI/hendrycks_math":{"name": None, "split": "test", "filename": "hendrycks_math.csv"},
+    "Etau/commonsense_qa":{"name": None, "split": "test", "filename": "commonsense_qa.csv"},
+    "fancyzhx/ag_news":{"name": None, "split": "test", "filename": "ag_news.csv"},
+    "gimmaru/glue-sst2":{"name": None, "split": "test", "filename": "glue-sst2.csv"},
+
 }
 
 output_dir = "dataset_files"

@@ -22,11 +22,89 @@ import json
 from sympy import sympify, simplify
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 DATASET_METADATA = {
+    # --- 数学与逻辑推理 ---
+    "gsm8k.csv": {
+        "id": "openai/gsm8k",
+        "creator": "OpenAI",
+        "name": "GSM8K",
+        "modality": "text",
+        "task": "Math Reasoning",
+        "downloads": "492k",
+        "likes": 985,
+    },
+    "math_competition.csv": {
+        "id": "hendrycks/competition_math",
+        "creator": "Hendrycks et al.",
+        "name": "MATH",
+        "modality": "text",
+        "task": "Competition Math",
+        "downloads": "115k",
+        "likes": 230,
+    },
+    "commonsense_qa.csv": {
+        "id": "tau/commonsense_qa",
+        "creator": "Tel Aviv University",
+        "name": "CommonsenseQA",
+        "modality": "text",
+        "task": "Commonsense Reasoning",
+        "downloads": "120k",
+        "likes": 115,
+    },
+    "squad_formatted.csv": { 
+        "id": "stanford/squad",
+        "creator": "Stanford",
+        "name": "SQuAD",
+        "modality": "text",
+        "task": "Reading Comprehension",
+        "downloads": "1M+",
+        "likes": "10k+",
+    },
+
+    # --- 文本分类 ---
+    "rotten_tomatoes.csv": {
+        "id": "rotten_tomatoes",
+        "creator": "Pang & Lee",
+        "name": "Rotten Tomatoes",
+        "modality": "text",
+        "task": "Sentiment Analysis",
+        "downloads": "500k+",
+        "likes": 89,
+    },
+    "ag_news.csv": {
+        "id": "fancyzhx/ag_news",
+        "creator": "AG's Corpus",
+        "name": "AG News",
+        "modality": "text",
+        "task": "Topic Classification",
+        "downloads": "1.5M+",
+        "likes": 150,
+    },
+    "glue-sst2.csv": {
+        "id": "gimmaru/glue-sst2",
+        "creator": "Stanford",
+        "name": "SST-2 (GLUE)",
+        "modality": "text",
+        "task": "Sentiment Analysis",
+        "downloads": "2M+",
+        "likes": "1k+",
+    },
+    "emotion.csv": {
+        "id": "dair-ai/emotion",
+        "creator": "Saravia et al.",
+        "name": "Emotion",
+        "modality": "text",
+        "task": "Emotion Classification",
+        "downloads": "300k+",
+        "likes": 210,
+    },
+
+    # --- 占位符/测试用 ---
     "test_math_small.csv": {
         "id": "local/test-math-small",
         "creator": "local",
         "name": "Small Math Test",
         "modality": "text",
+        "task": "Math Reasoning",
         "downloads": "1",
         "likes": 0,
     },
@@ -35,80 +113,9 @@ DATASET_METADATA = {
         "creator": "local",
         "name": "Small Sentiment Test",
         "modality": "text",
+        "task": "Sentiment Analysis",
         "downloads": "1",
         "likes": 0,
-    },
-    "PhysicalAI-Autonomous-Vehicles.csv": {
-        "id": "nvidia/PhysicalAI-Autonomous-Vehicles",
-        "creator": "nvidia",
-        "name": "PhysicalAI-Autonomous-Vehicles",
-        "modality": "robotics",
-        "downloads": "123k",
-        "likes": 403,
-    },
-    "LMSYS-Chat-GPT-5-Chat-Response.csv": {
-        "id": "ytz20/LMSYS-Chat-GPT-5-Chat-Response",
-        "creator": "ytz20",
-        "name": "LMSYS-Chat-GPT-5-Chat-Response",
-        "modality": "text",
-        "downloads": "705",
-        "likes": 55,
-    },
-    "agent-sft.csv": {
-        "id": "nex-agi/agent-sft",
-        "creator": "nex-agi",
-        "name": "agent-sft",
-        "modality": "synthetic",
-        "downloads": "357",
-        "likes": 47,
-    },
-    "SYNTH.csv": {
-        "id": "PleIAs/SYNTH",
-        "creator": "PleIAs",
-        "name": "SYNTH",
-        "modality": "synthetic",
-        "downloads": "47.9k",
-        "likes": 176,
-    },
-    "AICC.csv": {
-        "id": "opendatalab/AICC",
-        "creator": "opendatalab",
-        "name": "AICC (AI Challenger Corpus)",
-        "modality": "multimodal",
-        "downloads": "2.36k",
-        "likes": 31,
-    },
-    "sam-3d-body-dataset.csv": {
-        "id": "facebook/sam-3d-body-dataset",
-        "creator": "facebook",
-        "name": "sam-3d-body-dataset",
-        "modality": "image",
-        "downloads": "2.3k",
-        "likes": 26,
-    },
-    "omnilingual-asr-corpus.csv": {
-        "id": "facebook/omnilingual-asr-corpus",
-        "creator": "facebook",
-        "name": "omnilingual-asr-corpus",
-        "modality": "audio",
-        "downloads": "35.2k",
-        "likes": 157,
-    },
-    "squad_formatted.csv": { 
-        "id": "local/squad-formatted",
-        "creator": "Stanford",
-        "name": "SQuAD (Formatted)",
-        "modality": "text",
-        "downloads": "1M+",
-        "likes": "10k+",
-    },
-    "gsm8k.csv": {
-        "id": "openai/gsm8k",
-        "creator": "openai",
-        "name": "gsm8k",
-        "modality": "text",
-        "downloads": "492k",
-        "likes": 985,
     },
 }
 
@@ -680,7 +687,50 @@ class DatasetListView(APIView):
         except Exception as e:
             return Response({"error": f"无法读取数据集目录: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-# ... (在文件顶部添加这些导入)
+class DatasetPreviewView(APIView):
+    """为指定的数据集文件提供预览功能"""
+    permission_classes = [AllowAny]
+
+    def get(self, request, filename, *args, **kwargs):
+        # 定义预览的行数
+        PREVIEW_ROW_COUNT = 10
+
+        # 安全性检查：确保文件名不包含路径遍历字符
+        if ".." in filename or "/" in filename:
+            return Response({"error": "无效的文件名"}, status=status.HTTP_400_BAD_REQUEST)
+
+        dataset_path = settings.BASE_DIR / 'dataset_files' / filename
+        
+        if not os.path.exists(dataset_path):
+            return Response({"error": f"数据集文件 '{filename}' 不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            with open(dataset_path, mode='r', encoding='utf-8-sig') as f:
+                reader = csv.reader(f)
+                
+                # 读取表头
+                headers = next(reader, None)
+                if not headers:
+                    return Response({"error": "数据集为空或格式错误"}, status=status.HTTP_400_BAD_REQUEST)
+
+                # 读取前 N 行数据
+                rows = []
+                for i, row in enumerate(reader):
+                    if i >= PREVIEW_ROW_COUNT:
+                        break
+                    # 将每一行数据与表头组合成字典
+                    rows.append(dict(zip(headers, row)))
+            
+            # 返回结构化的 JSON 数据
+            return Response({
+                "filename": filename,
+                "headers": headers,
+                "rows": rows,
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({"error": f"读取文件时发生错误: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 import re
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 class EvaluateDatasetView(APIView):
