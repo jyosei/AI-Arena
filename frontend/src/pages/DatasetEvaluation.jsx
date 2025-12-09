@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Select, Button, Table, message, Spin, Typography, Alert, Card, Row, Col, Tag, Space, Statistic, Input, Modal } from 'antd';
-import { HddOutlined, DownloadOutlined, HeartOutlined, CheckCircleFilled, EyeOutlined } from '@ant-design/icons';
+import { Select, Button, Table, message, Spin, Typography, Alert, Card, Row, Col, Tag, Space, Statistic, Input, Progress ,Modal} from 'antd';
+import { HddOutlined, DownloadOutlined, HeartOutlined, CheckCircleFilled ,EyeOutlined} from '@ant-design/icons';
 import { useMode } from '../contexts/ModeContext';
 import request from '../api/request';
+import { useNavigate } from 'react-router-dom';
 
 const { Title, Text, Paragraph } = Typography;
 const { Option } = Select;
@@ -126,13 +127,18 @@ const DatasetCard = ({ dataset, isSelected, onSelect, onPreview }) => {
 
 export default function DatasetEvaluationPage() {
   const { models } = useMode();
+  const navigate = useNavigate();
   const [availableDatasets, setAvailableDatasets] = useState([]);
   const [selectedDataset, setSelectedDataset] = useState(null); 
   const [selectedModel, setSelectedModel] = useState(null);
-  const [loading, setLoading] = useState(false);
   const [loadingDatasets, setLoadingDatasets] = useState(true);
   const [benchmarkResult, setBenchmarkResult] = useState(null);
   const [userApiKey, setUserApiKey] = useState(localStorage.getItem('user_api_key') || '');
+  const [isEvaluating, setIsEvaluating] = useState(false);
+  const [progressState, setProgressState] = useState({ total: 0, completed: 0, elapsed: 0, metrics: {} });
+  const [progressLogs, setProgressLogs] = useState([]);
+  const [activeController, setActiveController] = useState(null);
+  const [latestEvaluationId, setLatestEvaluationId] = useState(null);
 
   // --- 新增：控制预览模态框的状态 ---
   const [previewingFile, setPreviewingFile] = useState(null);
@@ -171,6 +177,10 @@ export default function DatasetEvaluationPage() {
   };
 
   const handleStartEvaluation = async () => {
+    if (isEvaluating) {
+      message.warning('测评正在进行中');
+      return;
+    }
     if (!selectedDataset) {
       message.error('请选择一个数据集');
       return;
@@ -184,8 +194,10 @@ export default function DatasetEvaluationPage() {
       return;
     }
 
-    setLoading(true);
     setBenchmarkResult(null);
+    setProgressLogs([]);
+    setProgressState({ total: 0, completed: 0, elapsed: 0, metrics: {} });
+    setLatestEvaluationId(null);
 
     const payload = {
       dataset_name: selectedDataset.filename,
@@ -193,22 +205,287 @@ export default function DatasetEvaluationPage() {
       api_key: userApiKey,
     };
 
-    try {
-      const response = await request.post('/models/evaluate-dataset/', payload);
-      setBenchmarkResult(response.data);
-      message.success('测评完成！');
-    } catch (error) {
-      const errorMsg = error.response?.data?.error || '测评过程中发生未知错误';
-      message.error(errorMsg);
-    } finally {
-      setLoading(false);
+    const controller = new AbortController();
+    setActiveController(controller);
+    setIsEvaluating(true);
+
+    const baseURL = (request.defaults && request.defaults.baseURL) ? request.defaults.baseURL : '/api/';
+    const normalizedBaseURL = baseURL.endsWith('/') ? baseURL.slice(0, -1) : baseURL;
+    const streamEndpoint = `${normalizedBaseURL}/models/evaluate-dataset/stream/`;
+
+    const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+    const headers = {
+      'Content-Type': 'application/json',
+    };
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
     }
+
+    let summaryReceived = false;
+    let errorFromStream = false;
+
+    const processLine = (line) => {
+      if (!line.trim()) {
+        return;
+      }
+
+      let event;
+      try {
+        event = JSON.parse(line);
+      } catch (parseError) {
+        console.error('无法解析流式数据:', line);
+        return;
+      }
+
+      if (event.type === 'init') {
+        setProgressState(() => ({ total: event.total || 0, completed: 0, elapsed: 0, metrics: {} }));
+        if (event.evaluation_id) {
+          setLatestEvaluationId(event.evaluation_id);
+        }
+        return;
+      }
+
+      if (event.type === 'progress') {
+        setProgressState((prev) => ({
+          total: event.total ?? prev.total,
+          completed: event.index ?? prev.completed,
+          elapsed: typeof event.elapsed === 'number' ? event.elapsed : prev.elapsed,
+          metrics: event.running_metrics ? event.running_metrics : prev.metrics,
+        }));
+
+        setProgressLogs((prev) => {
+          const logEntry = {
+            key: event.index ?? prev.length,
+            index: event.index ?? prev.length,
+            prompt: event.prompt || '',
+            expected_answer: event.expected_answer || '',
+            model_response: event.model_response || '',
+            is_correct: Boolean(event.is_correct),
+            sample_time: event.sample_time ?? null,
+            included_in_metrics: event.included_in_metrics !== false,
+            skipped: Boolean(event.skipped),
+            message: event.message || '',
+          };
+
+          const next = [...prev, logEntry];
+          if (next.length > 100) {
+            next.shift();
+          }
+          return next;
+        });
+        return;
+      }
+
+      if (event.type === 'summary') {
+        summaryReceived = true;
+        const summary = event.result || {};
+        setBenchmarkResult(summary);
+        if (summary.evaluation_id) {
+          setLatestEvaluationId(summary.evaluation_id);
+        }
+        setProgressState((prev) => ({
+          total: summary.total_prompts ?? prev.total,
+          completed: summary.total_prompts ?? prev.completed,
+          elapsed: typeof summary.elapsed_seconds === 'number' ? summary.elapsed_seconds : prev.elapsed,
+          metrics: summary.metrics || prev.metrics,
+        }));
+        return;
+      }
+
+      if (event.type === 'error') {
+        errorFromStream = true;
+        const errMsg = event.message || '测评过程中发生错误';
+        message.error(errMsg);
+      }
+    };
+
+    try {
+      const response = await fetch(streamEndpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || '测评请求失败');
+      }
+
+      const reader = response.body && response.body.getReader ? response.body.getReader() : null;
+      if (!reader) {
+        throw new Error('浏览器不支持流式响应');
+      }
+
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        lines.forEach(processLine);
+      }
+
+      buffer += decoder.decode();
+      if (buffer) {
+        processLine(buffer);
+      }
+
+      if (summaryReceived && !errorFromStream) {
+        message.success('测评完成，结果已保存');
+      }
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        message.info('测评已取消');
+      } else if (!errorFromStream) {
+        const fallbackMessage = error.message || '测评过程中发生未知错误';
+        message.error(fallbackMessage);
+      }
+    } finally {
+      setIsEvaluating(false);
+      setActiveController(null);
+    }
+  };
+
+  const handleCancelEvaluation = () => {
+    if (activeController) {
+      activeController.abort();
+    }
+  };
+
+  const progressColumns = [
+    {
+      title: '#',
+      dataIndex: 'index',
+      key: 'index',
+      width: 70,
+    },
+    {
+      title: '状态',
+      key: 'status',
+      width: 100,
+      render: (_, record) => {
+        if (record.skipped) {
+          return <Tag>跳过</Tag>;
+        }
+        if (!record.included_in_metrics) {
+          return <Tag color="orange">异常</Tag>;
+        }
+        return record.is_correct ? <Tag color="green">正确</Tag> : <Tag color="red">错误</Tag>;
+      },
+    },
+    {
+      title: '提示词',
+      dataIndex: 'prompt',
+      key: 'prompt',
+      ellipsis: true,
+      render: (value) => <Text>{value || '--'}</Text>,
+    },
+    {
+      title: '模型输出',
+      dataIndex: 'model_response',
+      key: 'model_response',
+      ellipsis: true,
+      render: (value) => <Text>{value || '--'}</Text>,
+    },
+    {
+      title: '参考答案',
+      dataIndex: 'expected_answer',
+      key: 'expected_answer',
+      ellipsis: true,
+      render: (value) => <Text>{value || '--'}</Text>,
+    },
+    {
+      title: '耗时 (s)',
+      dataIndex: 'sample_time',
+      key: 'sample_time',
+      width: 100,
+      render: (value) => (typeof value === 'number' ? value.toFixed(3) : '-'),
+    },
+    {
+      title: '备注',
+      dataIndex: 'message',
+      key: 'message',
+      ellipsis: true,
+      render: (value) => <Text type="secondary">{value || '--'}</Text>,
+    },
+  ];
+
+  const renderProgressPanel = () => {
+    const total = progressState.total || 0;
+    const completed = progressState.completed || 0;
+    const hasProgress = isEvaluating || completed > 0 || progressLogs.length > 0;
+    if (!hasProgress) {
+      return null;
+    }
+
+    const percent = total ? Math.min(100, Math.round((completed / total) * 100)) : 0;
+    const metricsEntries = Object.entries(progressState.metrics || {});
+    const elapsedNumeric = typeof progressState.elapsed === 'number' ? progressState.elapsed : 0;
+    const evaluationId = latestEvaluationId;
+
+    return (
+      <Card title="实时测评进度" style={{ marginTop: 24 }}>
+        <Space direction="vertical" size="large" style={{ width: '100%' }}>
+          {evaluationId && (
+            <Space align="center" style={{ width: '100%', justifyContent: 'space-between' }}>
+              <Text type="secondary">记录 ID: {evaluationId}</Text>
+              <Button type="link" size="small" onClick={() => navigate(`/evaluate-dataset/history?highlight=${evaluationId}`)}>
+                查看历史记录
+              </Button>
+            </Space>
+          )}
+          <Progress percent={percent} status={isEvaluating ? 'active' : 'normal'} />
+          <Row gutter={[16, 16]}>
+            <Col xs={24} sm={12} md={6}>
+              <Statistic title="已完成" value={completed} suffix={total ? ` / ${total}` : ''} />
+            </Col>
+            <Col xs={24} sm={12} md={6}>
+              <Statistic title="累计耗时" value={Number(elapsedNumeric.toFixed(1))} suffix="s" />
+            </Col>
+            {metricsEntries.map(([key, value]) => (
+              <Col xs={12} sm={8} md={6} key={key}>
+                <Statistic title={key.replace('_', ' ').toUpperCase()} value={value || 0} suffix="%" />
+              </Col>
+            ))}
+          </Row>
+          <Table
+            size="small"
+            columns={progressColumns}
+            dataSource={progressLogs}
+            pagination={false}
+            scroll={{ x: 960, y: 260 }}
+          />
+        </Space>
+      </Card>
+    );
   };
 
   const renderBenchmarkResults = () => {
     if (!benchmarkResult) return null;
 
-    const { metrics, benchmark_type, error_samples } = benchmarkResult;
+    const {
+      metrics = {},
+      benchmark_type,
+      error_samples,
+      total_prompts,
+      evaluated_prompts,
+      correct_answers,
+      elapsed_seconds,
+      model_name,
+      dataset_name,
+      evaluation_id,
+    } = benchmarkResult;
+
+    const resolvedEvaluationId = evaluation_id || latestEvaluationId;
+    const historyButton = resolvedEvaluationId ? (
+      <Button type="link" onClick={() => navigate(`/evaluate-dataset/history?highlight=${resolvedEvaluationId}`)}>查看完整记录</Button>
+    ) : null;
 
     const errorColumns = [
       { title: '问题 (Prompt)', dataIndex: 'prompt', key: 'prompt', width: '40%' },
@@ -216,14 +493,43 @@ export default function DatasetEvaluationPage() {
       { title: '模型回答 (Response)', dataIndex: 'model_response', key: 'model_response', width: '40%' },
     ];
 
+    const generalStats = [
+      typeof total_prompts === 'number' ? { title: '总样本数', value: total_prompts } : null,
+      typeof evaluated_prompts === 'number' ? { title: '已评估样本', value: evaluated_prompts } : null,
+      typeof correct_answers === 'number' ? { title: '正确样本数', value: correct_answers } : null,
+      typeof elapsed_seconds === 'number' ? { title: '总耗时 (s)', value: Number(elapsed_seconds.toFixed(1)) } : null,
+    ].filter(Boolean);
+
     return (
-      <Card title="Benchmark 测评结果" style={{ marginTop: 24 }}>
+      <Card title="Benchmark 测评结果" style={{ marginTop: 24 }} extra={historyButton}>
         <Row gutter={[16, 24]}>
+          <Col span={24}>
+            <Space size="large">
+              {model_name && (
+                <>
+                  <Text strong>模型:</Text>
+                  <Text>{model_name}</Text>
+                </>
+              )}
+              {dataset_name && (
+                <>
+                  <Text strong>数据集:</Text>
+                  <Text>{dataset_name}</Text>
+                </>
+              )}
+            </Space>
+          </Col>
           <Col span={24}>
             <Text strong>测评任务类型: </Text>
             <Text>{benchmark_type}</Text>
           </Col>
-          
+
+          {generalStats.map((item) => (
+            <Col xs={12} sm={8} md={6} key={item.title}>
+              <Statistic title={item.title} value={item.value} />
+            </Col>
+          ))}
+
           {Object.entries(metrics).map(([key, value]) => (
             <Col xs={12} sm={8} md={6} key={key}>
               <Statistic title={key.replace('_', ' ').toUpperCase()} value={value} suffix="%" />
@@ -272,8 +578,16 @@ export default function DatasetEvaluationPage() {
           >
             {models.map(m => <Option key={m.id} value={m.name}>{m.name}</Option>)}
           </Select>
-          <Button type="primary" onClick={handleStartEvaluation} loading={loading} disabled={!selectedDataset || !selectedModel}>
-            开始测评
+          <Button
+            type="primary"
+            onClick={handleStartEvaluation}
+            loading={isEvaluating}
+            disabled={!selectedDataset || !selectedModel || isEvaluating}
+          >
+            {isEvaluating ? '测评进行中…' : '开始测评'}
+          </Button>
+          <Button danger onClick={handleCancelEvaluation} disabled={!isEvaluating}>
+            取消
           </Button>
         </div>
         {selectedDataset && <Alert message={`已选择数据集: ${selectedDataset.id}`} type="info" showIcon style={{ marginTop: 16 }}/>}
@@ -297,7 +611,7 @@ export default function DatasetEvaluationPage() {
         </Row>
       )}
       
-      {loading && <div style={{ textAlign: 'center', padding: '50px' }}><Spin size="large" /></div>}
+      {renderProgressPanel()}
       
       {renderBenchmarkResults()}
 

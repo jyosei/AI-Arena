@@ -1,12 +1,19 @@
-# filepath: /home/ubuntu/AI-Arena/.gitignore
 # Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.py[cod]
+*$py.class
+*.so
 
 # Django
+*.log
 db.sqlite3
+db.sqlite3-journal
+/backend/media/
+/backend/staticfiles/
+local_settings.py
 
 # Node.js / Frontend
 node_modules/
@@ -14,25 +21,91 @@ dist/
 build/
 .npm/
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+package-lock.json
 
-# Environment variables
+# 环境变量
 .env
-.env.*
+.env.local
+.env.*.local
+.env.production
+
+# 数据库
+*.db
+*.sqlite
+*.sqlite3
+backend/aiarena
+
+# Docker
+docker-compose.override.yml
 
 # IDE / Editor
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
 
 # OS generated files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
-\n+# Media uploads (user generated content, do not commit)
-backend/media/
-media/
+
+# Media uploads
+backend/media/users/
+backend/media/forum/
 
 # Logs & temp
 *.log
 tmp/
+temp/
+*.tmp
 
-# Cache bust artifacts (optional future)
-*.cache
+# Backup files
+*.bak
+*.save
+*.backup
+
+# Test files
+test-*.ps1
+test-*.sh
+test_*.js
+*_test.py
+
+# Coverage
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg

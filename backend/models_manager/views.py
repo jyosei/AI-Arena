@@ -4,15 +4,25 @@ from rest_framework.permissions import IsAuthenticated, AllowAny # 导入 AllowA
 from rest_framework.parsers import FormParser
 from rest_framework import status
 from rest_framework.parsers import JSONParser, MultiPartParser
+from django.http import StreamingHttpResponse
+from django.utils import timezone
+from django.db import transaction
+from django.shortcuts import get_object_or_404
 from .services import get_chat_model_service, get_evaluation_model_service, ELORatingSystem
-from .models import BattleVote, AIModel,BenchmarkScore
-from .models import ChatConversation
-from .models import ChatMessage
-from .serializers import ChatConversationSerializer, ChatMessageSerializer, AIModelSerializer,BenchmarkScoreSerializer
+from .models import (
+    BattleVote,
+    AIModel,
+    ChatConversation,
+    ChatMessage,
+    DatasetEvaluationResult,
+    DatasetEvaluationSample,
+)
+from .serializers import ChatConversationSerializer, ChatMessageSerializer, AIModelSerializer
 import random
 import time
 import base64
 import os
+import json
 from django.conf import settings
 import csv 
 import subprocess
@@ -126,7 +136,7 @@ class RecordVoteView(APIView):
 
     def post(self, request, *args, **kwargs):
         model_a = request.data.get('model_a')
-        model_b = request.data.get('model_b') # 可能是 null
+        model_b = request.data.get('model_b') # 可能是 null/空字符串
         prompt = request.data.get('prompt')
         winner = request.data.get('winner')
 
@@ -134,34 +144,70 @@ class RecordVoteView(APIView):
         if not all([model_a, prompt, winner]):
             return Response({'error': 'Missing required fields: model_a, prompt, winner'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 验证 winner 的值是否有效
-        # 允许 model_b 为 None 的情况
+        # 验证 winner 的值是否有效，并兼容前端的 'bad'/'good' 语义
+        # 允许 model_b 为 None 的情况（direct-chat 模式）
         valid_winners = [model_a]
         if model_b:
             valid_winners.append(model_b)
-        
+
         # 添加所有可能的投票选项
-        valid_winners.extend(['tie', 'both_bad'])
+        valid_winners.extend(['tie', 'both_bad', 'bad', 'good'])
 
         if winner not in valid_winners:
             return Response({'error': f'Invalid winner. Must be one of {valid_winners}'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # 将前端语义映射到后端存储：
+        # - 'bad' 统一存储为 'both_bad'
+        # - direct-chat 模式下的 'good' 映射为 model_a
+        if winner == 'bad':
+            winner_to_store = 'both_bad'
+        elif winner == 'good' and not model_b:
+            winner_to_store = model_a
+        else:
+            winner_to_store = winner
+
         # 创建并保存投票记录
+        # 确保 CharField 不接收 None，使用空字符串作为占位
+        safe_model_b = model_b or ""
         BattleVote.objects.create(
             model_a=model_a,
-            model_b=model_b,  # 可以为 null
+            model_b=safe_model_b,  # CharField 使用空字符串代表缺失
             prompt=prompt,
-            winner=winner,
+            winner=winner_to_store,
             voter=request.user if request.user.is_authenticated else None
         )
 
         # 如果是 battle 模式（model_b 存在），更新 ELO 评分
-        if model_b and winner in [model_a, model_b, 'tie', 'both_bad']:
+        if safe_model_b and winner_to_store in [model_a, safe_model_b, 'tie', 'both_bad']:
             try:
-                ELORatingSystem.process_battle(model_a, model_b, winner)
+                ELORatingSystem.process_battle(model_a, safe_model_b, winner_to_store)
             except Exception as e:
                 # 记录错误但不影响投票记录的保存
                 print(f"Error updating ELO ratings: {e}")
+
+        # 如果是 direct-chat 模式（model_b 缺失），更新单模型的统计以反映到排行榜
+        # 规则：
+        # - winner_to_store == model_a 视为一次“好评”，wins +1，total_battles +1
+        # - winner_to_store == 'tie'：改为“皆胜”策略，wins +1，total_battles +1
+        # - winner_to_store == 'both_bad'：记为“皆负”，losses +1，total_battles +1
+        # - 其他值忽略（不应出现），避免误更新
+        if not safe_model_b:
+            try:
+                from .models import AIModel
+                model, _ = AIModel.objects.get_or_create(name=model_a, defaults={"display_name": model_a})
+                model.total_battles += 1
+                if winner_to_store == model_a:
+                    model.wins += 1
+                elif winner_to_store == 'tie':
+                    model.wins += 1
+                elif winner_to_store == 'both_bad':
+                    model.losses += 1
+                else:
+                    # 非预期值，不更新 wins/losses/ties
+                    pass
+                model.save()
+            except Exception as e:
+                print(f"Error updating single-model stats: {e}")
 
         return Response(status=status.HTTP_200_OK)
 # 新增：模型列表视图
@@ -214,13 +260,21 @@ class EvaluateModelView(APIView):
         prompt = request.data.get("prompt", "") # 允许 prompt 为空
         image_file = request.FILES.get("image") # 3. 获取可选的图片文件
         conversation_id = request.data.get("conversation_id")
+        # 获取 save_user_message 参数，支持布尔值和字符串
+        save_user_message_raw = request.data.get("save_user_message", True)
+        if isinstance(save_user_message_raw, bool):
+            save_user_message = save_user_message_raw
+        elif isinstance(save_user_message_raw, str):
+            save_user_message = save_user_message_raw.lower() in ['true', '1', 'yes']
+        else:
+            save_user_message = True  # 默认保存
 
         # 4. 更新验证逻辑：prompt 和 image 不能同时为空
         if not model_name or (not prompt and not image_file):
             return Response({"error": "model_name 和 (prompt 或 image) 是必需的。"}, status=400)
 
         try:
-            model_service = get_model_service(model_name)
+            model_service = get_chat_model_service(model_name)
             
             # 获取或创建 conversation
             if conversation_id:
@@ -238,35 +292,47 @@ class EvaluateModelView(APIView):
                 )
             
             # --- 保存用户消息（包含可选的图片） ---
-            ChatMessage.objects.create(
-                conversation=conversation,
-                role='user',
-                content=prompt,
-                image=image_file # 如果 image_file 为 None，Django 会正确处理
-            )
+            # 根据参数决定是否保存用户消息
+            if save_user_message:
+                ChatMessage.objects.create(
+                    conversation=conversation,
+                    role='user',
+                    is_user=True,
+                    content=prompt,
+                    image=image_file
+                )
             
             # --- 构建包含完整历史（包括历史图片）的消息体 ---
             history_messages = []
-            for msg in conversation.messages.order_by('created_at'):
+            history_queryset = list(conversation.messages.order_by('created_at'))
+            if len(history_queryset) > 8:
+                history_queryset = history_queryset[-8:]
+
+            for msg in history_queryset:
                 if msg.role == 'user':
-                    user_content = [{"type": "text", "text": msg.content}]
                     if msg.image:
-                        msg.image.open('rb')
-                        image_data = msg.image.read()
-                        base64_image = base64.b64encode(image_data).decode('utf-8')
-                        # 动态获取 mime_type
-                        try:
-                            import magic
-                            mime_type = magic.from_buffer(image_data, mime=True)
-                        except (ImportError, NameError):
-                            mime_type = 'image/jpeg' # 回退方案
-                        
-                        image_url = f"data:{mime_type};base64,{base64_image}"
-                        user_content.append({"type": "image_url", "image_url": {"url": image_url}})
-                        msg.image.close()
-                    history_messages.append({"role": "user", "content": user_content})
-                else: # assistant
-                    history_messages.append({"role": "assistant", "content": msg.content})
+                        # 避免在历史消息中重复携带体积巨大的 Base64 图片数据
+                        history_messages.append({
+                            "role": "user",
+                            "content": [{
+                                "type": "text",
+                                "text": (msg.content or "") + "\n[用户之前发送了一张图片，已省略]"
+                            }]
+                        })
+                    else:
+                        history_messages.append({
+                            "role": "user",
+                            "content": msg.content
+                        })
+                else:  # assistant
+                    content = msg.content or ""
+                    if isinstance(content, str) and (len(content) > 4000 or content.startswith("data:")):
+                        history_messages.append({
+                            "role": "assistant",
+                            "content": "[上一次的图片结果已生成，请在历史消息中查看。]"
+                        })
+                    else:
+                        history_messages.append({"role": "assistant", "content": content})
 
             # --- 关键修改：转换当前上传的图片 ---
             current_image_base64 = None
@@ -286,12 +352,24 @@ class EvaluateModelView(APIView):
                 image_base64=current_image_base64, # <--- 使用 image_base64
                 mime_type=current_mime_type        # <--- 使用 mime_type
             )
+
+            if isinstance(response_text, (dict, list)):
+                response_text = json.dumps(response_text, ensure_ascii=False)
+            elif response_text is None:
+                response_text = ""
+            else:
+                response_text = str(response_text)
+
+            if not response_text:
+                response_text = "[模型未返回任何内容]"
             
             # --- 保存 AI 响应 ---
             ChatMessage.objects.create(
                 conversation=conversation,
                 role='assistant',
-                content=response_text
+                is_user=False,
+                content=response_text,
+                model_name=model_name
             )
             
             return Response({
@@ -314,9 +392,37 @@ class BattleModelView(APIView):
         prompt = request.data.get("prompt")
         is_direct_chat = request.data.get("is_direct_chat", False)
         model_name = request.data.get("model_name")  # 用于 Direct Chat 模式
+        conversation_id = request.data.get("conversation_id")  # 获取会话ID
+        mode = request.data.get("mode", "battle")  # 新增：获取模式，默认为 battle
 
         if not prompt:
             return Response({"error": "prompt is required."}, status=400)
+
+        # 获取或创建会话
+        conversation = None
+        if conversation_id:
+            try:
+                conversation = ChatConversation.objects.get(id=conversation_id)
+            except ChatConversation.DoesNotExist:
+                return Response({"error": "Conversation not found."}, status=404)
+        
+        # 如果没有提供conversation_id且用户已登录，创建新会话
+        if not conversation and request.user.is_authenticated:
+            # 根据模式确定model_name用于会话
+            if is_direct_chat:
+                conv_model_name = model_name or model_a_name
+                actual_mode = 'direct-chat'
+            else:
+                conv_model_name = f"{model_a_name} vs {model_b_name}" if model_a_name and model_b_name else None
+                # 使用前端传来的 mode，可能是 'battle' 或 'side-by-side'
+                actual_mode = mode if mode in ['battle', 'side-by-side'] else 'battle'
+            
+            conversation = ChatConversation.objects.create(
+                user=request.user,
+                title=prompt[:50],
+                model_name=conv_model_name,
+                mode=actual_mode
+            )
 
         # Direct Chat 模式
         if is_direct_chat:
@@ -325,8 +431,26 @@ class BattleModelView(APIView):
             try:
                 # 使用 model_name 或 model_a_name（为了兼容性）
                 model_name = model_name or model_a_name
-                model_service = get_model_service(model_name)
+                model_service = get_chat_model_service(model_name)
                 response_data = model_service.evaluate(prompt, model_name)
+
+                # 保存到数据库
+                if conversation:
+                    # 保存用户消息
+                    ChatMessage.objects.create(
+                        conversation=conversation,
+                        role='user',
+                        content=prompt,
+                        is_user=True
+                    )
+                    # 保存AI响应
+                    ChatMessage.objects.create(
+                        conversation=conversation,
+                        role='assistant',
+                        content=response_data,
+                        is_user=False,
+                        model_name=model_name
+                    )
 
                 return Response({
                     "prompt": prompt,
@@ -334,7 +458,8 @@ class BattleModelView(APIView):
                         {"model": model_name, "response": response_data}
                     ],
                     "is_anonymous": False,
-                    "is_direct_chat": True
+                    "is_direct_chat": True,
+                    "conversation_id": conversation.id if conversation else None
                 })
             except ValueError as e:
                 return Response({"error": str(e)}, status=400)
@@ -354,18 +479,83 @@ class BattleModelView(APIView):
             chosen_models = random.sample(available_models, 2)
             model_a_name, model_b_name = chosen_models[0], chosen_models[1]
 
+            # 如果已创建会话但尚未设置具体模型名，则在匿名对战确定模型后进行回填
+            if conversation and not conversation.model_name:
+                try:
+                    conversation.model_name = f"{model_a_name} vs {model_b_name}"
+                    conversation.save(update_fields=["model_name"])
+                except Exception as _:
+                    pass
+
         # 场景2：指定对战 (Side-by-Side)
         # 如果前端提供了 model_a 和 model_b，则代码会自然地执行到这里
         # 无需额外处理
 
         try:
             # 获取两个模型对应的服务实例
-            model_a_service = get_model_service(model_a_name)
-            model_b_service = get_model_service(model_b_name)
+            model_a_service = get_chat_model_service(model_a_name)
+            model_b_service = get_chat_model_service(model_b_name)
 
-            # 调用各自的 evaluate 方法 (后续可优化为并行)
-            response_a_data = model_a_service.evaluate(prompt, model_a_name)
-            response_b_data = model_b_service.evaluate(prompt, model_b_name)
+            # 构建历史上下文（如果有会话）：
+            # - 用户消息对两侧共享
+            # - 助手消息按模型名分别过滤，避免一侧模型收到另一侧的助手回答，导致上下文冲突
+            history_messages_a = []
+            history_messages_b = []
+            if conversation:
+                for msg in conversation.messages.order_by('created_at'):
+                    if msg.role == 'user':
+                        history_messages_a.append({"role": "user", "content": msg.content})
+                        history_messages_b.append({"role": "user", "content": msg.content})
+                    else:
+                        # 仅保留各自模型的助手消息
+                        if msg.model_name == model_a_name:
+                            history_messages_a.append({"role": "assistant", "content": msg.content})
+                        if msg.model_name == model_b_name:
+                            history_messages_b.append({"role": "assistant", "content": msg.content})
+
+            # 关键：在传给模型前，将当前用户输入也作为最后一条 user 消息加入上下文
+            # 部分模型需要完整的 messages 序列（包含当前 user）而不是通过单独 prompt 参数
+            if prompt:
+                history_messages_a.append({"role": "user", "content": prompt})
+                history_messages_b.append({"role": "user", "content": prompt})
+
+            # 调用各自的 evaluate 方法，带上历史上下文
+            response_a_data = model_a_service.evaluate(
+                prompt=prompt,
+                model_name=model_a_name,
+                messages=history_messages_a
+            )
+            response_b_data = model_b_service.evaluate(
+                prompt=prompt,
+                model_name=model_b_name,
+                messages=history_messages_b
+            )
+
+            # 保存到数据库
+            if conversation:
+                # 保存用户消息（先保存，保证下次有完整历史）
+                ChatMessage.objects.create(
+                    conversation=conversation,
+                    role='user',
+                    content=prompt,
+                    is_user=True
+                )
+                # 保存模型A的响应
+                ChatMessage.objects.create(
+                    conversation=conversation,
+                    role='assistant',
+                    content=response_a_data,
+                    is_user=False,
+                    model_name=model_a_name
+                )
+                # 保存模型B的响应
+                ChatMessage.objects.create(
+                    conversation=conversation,
+                    role='assistant',
+                    content=response_b_data,
+                    is_user=False,
+                    model_name=model_b_name
+                )
 
             # 准备返回结果
             battle_results = [
@@ -381,7 +571,8 @@ class BattleModelView(APIView):
             return Response({
                 "prompt": prompt,
                 "results": battle_results,
-                "is_anonymous": is_anonymous
+                "is_anonymous": is_anonymous,
+                "conversation_id": conversation.id if conversation else None
             })
         except ValueError as e:
             return Response({"error": str(e)}, status=400)
@@ -597,7 +788,7 @@ class AnalyzeImageView(APIView):
 
         try:
             # --- 1. 获取模型服务 (现在是统一的方式) ---
-            model_service = get_model_service(model_name)
+            model_service = get_chat_model_service(model_name)
 
             # --- 2. 获取或创建对话 ---
             if conversation_id:
@@ -832,46 +1023,90 @@ class EvaluateDatasetView(APIView):
             return match[-1].replace(',', '')
         return ""
 
-    def _evaluate_gsm8k(self, model_service, prompts,model_name:str):
+    def _evaluate_gsm8k(self, model_service, prompts, model_name: str):
         """处理 gsm8k 类型的数学推理任务"""
         correct = 0
+        evaluated = 0
         error_samples = []
-        
-        for row in prompts:
+        samples = []
+        started_at = time.perf_counter()
+
+        for idx, row in enumerate(prompts, start=1):
             question = row.get('question')
             true_answer_text = row.get('answer')
             if not question or not true_answer_text:
+                samples.append({
+                    "index": idx,
+                    "prompt": question or "",
+                    "expected_answer": "",
+                    "model_response": "",
+                    "is_correct": None,
+                    "included_in_metrics": False,
+                    "skipped": True,
+                    "sample_time": None,
+                    "message": "缺少 question 或 answer 字段",
+                })
                 continue
 
             true_final_answer = self._extract_final_answer(true_answer_text)
-            
-            # 使用思维链 Prompt
-            prompt_to_model = f"Question: {question}\n\nLet's think step by step, and then write the final answer in the format '#### <number>'."
-            
+
+            prompt_to_model = (
+                "Question: "
+                + question
+                + "\n\nLet's think step by step, and then write the final answer in the format '#### <number>'."
+            )
+
+            sample_started = time.perf_counter()
+            model_response = ""
+            sample_error = None
             try:
                 model_response = model_service.evaluate(prompt=prompt_to_model, model_name=model_name)
-                model_final_answer = self._extract_final_answer(model_response)
+            except Exception as exc:
+                sample_error = f"API Error: {exc}"
+                model_response = sample_error
 
-                if model_final_answer and true_final_answer and model_final_answer == true_final_answer:
-                    correct += 1
-                else:
-                    if len(error_samples) < 5:
-                        error_samples.append({
-                            "prompt": question,
-                            "expected_answer": true_final_answer,
-                            "model_response": model_response
-                        })
-            except Exception as e:
-                if len(error_samples) < 5:
-                    error_samples.append({"prompt": question, "expected_answer": true_final_answer, "model_response": f"API Error: {e}"})
+            sample_time = round(time.perf_counter() - sample_started, 3)
+            model_final_answer = self._extract_final_answer(model_response)
+            is_correct = bool(
+                model_final_answer and true_final_answer and model_final_answer == true_final_answer
+            ) if sample_error is None else None
+            included_in_metrics = sample_error is None
 
-        accuracy = (correct / len(prompts) * 100) if prompts else 0
+            if included_in_metrics:
+                evaluated += 1
+
+            if is_correct:
+                correct += 1
+            elif len(error_samples) < 5:
+                error_samples.append({
+                    "prompt": question,
+                    "expected_answer": true_final_answer,
+                    "model_response": model_response,
+                })
+
+            samples.append({
+                "index": idx,
+                "prompt": question,
+                "expected_answer": true_final_answer,
+                "model_response": model_response,
+                "is_correct": is_correct,
+                "included_in_metrics": included_in_metrics,
+                "skipped": False,
+                "sample_time": sample_time,
+                "message": sample_error or "",
+            })
+
+        total_elapsed = round(time.perf_counter() - started_at, 3)
+        accuracy = (correct / evaluated * 100) if evaluated else 0
         return {
             "benchmark_type": "Math Reasoning (GSM8K)",
             "metrics": {"accuracy": round(accuracy, 2)},
             "total_prompts": len(prompts),
+            "evaluated_prompts": evaluated,
             "correct_answers": correct,
             "error_samples": error_samples,
+            "elapsed_seconds": total_elapsed,
+            "samples": samples,
         }
     def _evaluate_generic_math(self, model_service, prompts, model_name: str):
         """处理像 MATH 这样的通用数学任务，V2版，支持识图"""
@@ -961,48 +1196,105 @@ class EvaluateDatasetView(APIView):
         predictions = []
         ground_truth = []
         error_samples = []
+        samples = []
+        started_at = time.perf_counter()
 
-        for row in prompts:
+        for idx, row in enumerate(prompts, start=1):
             text = row.get('text')
             label = row.get('label')
-            if not text or label is None:
+            if text is None or label is None:
+                samples.append({
+                    "index": idx,
+                    "prompt": text or "",
+                    "expected_answer": "",
+                    "model_response": "",
+                    "is_correct": None,
+                    "included_in_metrics": False,
+                    "skipped": True,
+                    "sample_time": None,
+                    "message": "缺少 text 或 label 字段",
+                })
                 continue
 
-            ground_truth.append(int(label))
-            
-            # 引导模型做选择题
-            prompt_to_model = f"Analyze the sentiment of the following movie review. Respond with only the word 'positive' or 'negative'.\n\nReview: '{text}'"
-            
+            try:
+                label_int = int(label)
+            except (ValueError, TypeError):
+                samples.append({
+                    "index": idx,
+                    "prompt": text,
+                    "expected_answer": str(label),
+                    "model_response": "",
+                    "is_correct": None,
+                    "included_in_metrics": False,
+                    "skipped": True,
+                    "sample_time": None,
+                    "message": "label 无法解析为整数",
+                })
+                continue
+
+            prompt_to_model = (
+                "Analyze the sentiment of the following movie review. Respond with only the word 'positive' or 'negative'.\n\nReview: '"
+                + text
+                + "'"
+            )
+
+            sample_started = time.perf_counter()
+            predicted_label = None
+            model_response = ""
+            sample_error = None
             try:
                 model_response = model_service.evaluate(prompt=prompt_to_model, model_name=model_name).lower()
-                
                 predicted_label = 1 if 'positive' in model_response else 0
-                predictions.append(predicted_label)
+            except Exception as exc:
+                sample_error = f"API Error: {exc}"
+                model_response = sample_error
 
-                if predicted_label != int(label) and len(error_samples) < 5:
+            sample_time = round(time.perf_counter() - sample_started, 3)
+
+            included_in_metrics = predicted_label is not None
+            is_correct = None
+
+            if included_in_metrics:
+                ground_truth.append(label_int)
+                predictions.append(predicted_label)
+                is_correct = predicted_label == label_int
+                if not is_correct and len(error_samples) < 5:
                     error_samples.append({
                         "prompt": text,
-                        "expected_answer": "positive" if int(label) == 1 else "negative",
-                        "model_response": model_response
+                        "expected_answer": "positive" if label_int == 1 else "negative",
+                        "model_response": model_response,
                     })
-            except Exception as e:
-                # 如果API出错，可以记为一个错误预测或跳过
-                predictions.append(-1) # -1 表示错误
+            else:
                 if len(error_samples) < 5:
-                    error_samples.append({"prompt": text, "expected_answer": "positive" if int(label) == 1 else "negative", "model_response": f"API Error: {e}"})
+                    error_samples.append({
+                        "prompt": text,
+                        "expected_answer": "positive" if label_int == 1 else "negative",
+                        "model_response": model_response,
+                    })
 
-        # 过滤掉API出错的-1
-        valid_indices = [i for i, p in enumerate(predictions) if p != -1]
-        predictions = [predictions[i] for i in valid_indices]
-        ground_truth = [ground_truth[i] for i in valid_indices]
+            samples.append({
+                "index": idx,
+                "prompt": text,
+                "expected_answer": "positive" if label_int == 1 else "negative",
+                "model_response": model_response,
+                "is_correct": is_correct,
+                "included_in_metrics": included_in_metrics,
+                "skipped": False,
+                "sample_time": sample_time,
+                "message": sample_error or "",
+            })
 
-        if not predictions:
-            return {"metrics": {"accuracy": 0, "precision": 0, "recall": 0, "f1_score": 0}}
+        total_elapsed = round(time.perf_counter() - started_at, 3)
 
-        accuracy = accuracy_score(ground_truth, predictions)
-        precision = precision_score(ground_truth, predictions, average='binary', zero_division=0)
-        recall = recall_score(ground_truth, predictions, average='binary', zero_division=0)
-        f1 = f1_score(ground_truth, predictions, average='binary', zero_division=0)
+        if ground_truth and predictions:
+            accuracy = accuracy_score(ground_truth, predictions)
+            precision = precision_score(ground_truth, predictions, average='binary', zero_division=0)
+            recall = recall_score(ground_truth, predictions, average='binary', zero_division=0)
+            f1 = f1_score(ground_truth, predictions, average='binary', zero_division=0)
+        else:
+            accuracy = precision = recall = f1 = 0
+
+        evaluated_prompts = len(predictions)
 
         return {
             "benchmark_type": "Sentiment Classification",
@@ -1013,9 +1305,71 @@ class EvaluateDatasetView(APIView):
                 "f1_score": round(f1 * 100, 2),
             },
             "total_prompts": len(prompts),
-            "evaluated_prompts": len(predictions),
+            "evaluated_prompts": evaluated_prompts,
+            "correct_answers": int(sum(1 for p, g in zip(predictions, ground_truth) if p == g)),
             "error_samples": error_samples,
+            "elapsed_seconds": total_elapsed,
+            "samples": samples,
         }
+
+    def _persist_evaluation(self, request, dataset_name, model_name, evaluation_mode, summary, samples):
+        user = request.user if request.user.is_authenticated else None
+        completed_at = timezone.now()
+        base_extra = summary.get('extra')
+        extra_payload = {'source': 'sync'}
+        if isinstance(base_extra, dict):
+            extra_payload.update(base_extra)
+
+        with transaction.atomic():
+            evaluation_record = DatasetEvaluationResult.objects.create(
+                user=user,
+                dataset_name=dataset_name,
+                model_name=model_name,
+                evaluation_mode=evaluation_mode,
+                benchmark_type=summary.get('benchmark_type', ''),
+                total_prompts=summary.get('total_prompts') or len(samples),
+                evaluated_prompts=summary.get('evaluated_prompts', 0),
+                correct_answers=summary.get('correct_answers', 0),
+                metrics=summary.get('metrics', {}),
+                error_samples=summary.get('error_samples', []),
+                elapsed_seconds=summary.get('elapsed_seconds', 0),
+                status='completed',
+                extra=extra_payload,
+                completed_at=completed_at,
+            )
+
+            sample_objects = []
+            for sample in samples:
+                sample_objects.append(
+                    DatasetEvaluationSample(
+                        result=evaluation_record,
+                        index=sample.get('index') or len(sample_objects) + 1,
+                        prompt=sample.get('prompt', ''),
+                        expected_answer=sample.get('expected_answer', ''),
+                        model_response=sample.get('model_response', ''),
+                        is_correct=sample.get('is_correct'),
+                        included_in_metrics=sample.get('included_in_metrics', True),
+                        skipped=sample.get('skipped', False),
+                        sample_time=sample.get('sample_time'),
+                        message=sample.get('message', ''),
+                        extra={k: v for k, v in sample.items() if k not in {
+                            'index',
+                            'prompt',
+                            'expected_answer',
+                            'model_response',
+                            'is_correct',
+                            'included_in_metrics',
+                            'skipped',
+                            'sample_time',
+                            'message',
+                        }},
+                    )
+                )
+
+            if sample_objects:
+                DatasetEvaluationSample.objects.bulk_create(sample_objects)
+
+        return evaluation_record
 
     def post(self, request, *args, **kwargs):
         dataset_name = request.data.get('dataset_name')
@@ -1050,6 +1404,17 @@ class EvaluateDatasetView(APIView):
             # 补充通用信息
             result['model_name'] = model_name
             result['dataset_name'] = dataset_name
+            samples = result.pop('samples', [])
+
+            evaluation_record = self._persist_evaluation(
+                request=request,
+                dataset_name=dataset_name,
+                model_name=model_name,
+                evaluation_mode=evaluation_mode,
+                summary=result,
+                samples=samples,
+            )
+            result['evaluation_id'] = evaluation_record.id
             
             return Response(result, status=status.HTTP_200_OK)
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layout, Menu, Dropdown, Button, Avatar, Space, Select, Typography, Form, Input, Modal, message, Tooltip } from 'antd';
+import { Layout, Menu, Dropdown, Button, Avatar, Space, Select, Typography, Form, Input, Modal, message, Tooltip, Divider } from 'antd';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useMode } from '../contexts/ModeContext';
 import { useChat } from '../contexts/ChatContext';
@@ -11,7 +11,10 @@ import {
   MessageOutlined, // <-- 确保这个图标已导入
   DownOutlined,
   DeleteOutlined,
-  CloseOutlined
+  CloseOutlined,
+  MenuOutlined,
+  UploadOutlined,
+  HistoryOutlined,
 } from '@ant-design/icons';
 import{
     Swords,
@@ -19,6 +22,7 @@ import{
     SendHorizontal,
 }from 'lucide-react';
 import RegisterModal from './RegisterModal';
+import GitHubLogin from './GitHubLogin.jsx';
 import NotificationBell from './NotificationBell.jsx';
 import { useIntl } from 'react-intl';
 import AuthContext from '../contexts/AuthContext.jsx';
@@ -39,9 +43,11 @@ const AppLayout = () => {
   const { chatHistory, clearHistory, addChat, deleteChat } = useChat();
   const [showRegister, setShowRegister] = React.useState(false);
   const [showLogin, setShowLogin] = React.useState(false);
+  const [mobileSiderOpen, setMobileSiderOpen] = React.useState(false);
   const intl = useIntl();
   const { login, logout, user } = React.useContext(AuthContext);
   const isLoggedIn = !!user;
+  // 取消弹窗式新建会话，改为跳转到首页
   const userEmail = user?.email || user?.username || '';
   const navigateToUserCenter = React.useCallback(() => {
     navigate('/user-center');
@@ -60,12 +66,18 @@ const AppLayout = () => {
     '/': '1',
     '/leaderboard': '2',
     '/forum': '3',
+    '/evaluate-dataset': '4',
+    '/evaluate-dataset/history': '5',
   };
   
   // 根据当前路径获取应高亮的 key
   let currentKey = '1'; // 默认
   if (location.pathname.startsWith('/chat/')) {
     currentKey = '1';
+  } else if (location.pathname === '/forum') {
+    currentKey = '3';
+  } else if (location.pathname.startsWith('/forum/')) {
+    currentKey = '3';
   } else {
     currentKey = pathKeyMap[location.pathname] || '1';
   }
@@ -79,31 +91,24 @@ const AppLayout = () => {
     message.success('已登出');
   };
 
+  // 原先弹窗相关逻辑已移除
+
+  // 仍需保留的辅助方法
+  const closeMobileSider = () => {
+    setMobileSiderOpen(false);
+  };
+
   const handleDeleteChat = async (e, chatId) => {
-    e.stopPropagation(); // 阻止事件冒泡，避免触发导航
+    e.stopPropagation();
     try {
       await deleteChat(chatId);
       message.success('已删除聊天记录');
-      // 如果删除的是当前正在查看的聊天，导航到首页
       if (location.pathname === `/chat/${chatId}`) {
         navigate('/');
       }
     } catch (error) {
       console.error('Failed to delete chat:', error);
       message.error('删除失败');
-    }
-  };
-
-  const handleNewChat = async () => {
-    try {
-      const modelName = leftModel || (models && models.length > 0 ? models[0].name : null);
-      const newChatId = await addChat('新会话', modelName, mode);
-      if (newChatId) {
-        navigate(`/chat/${newChatId}`);
-      }
-    } catch (error) {
-      console.error('Failed to create new chat:', error);
-      message.error('创建新会话失败');
     }
   };
 
@@ -186,13 +191,24 @@ const AppLayout = () => {
         <Form.Item>
           <Button type="primary" htmlType="submit" block loading={loading}>{intl.formatMessage({ id: 'login.button', defaultMessage: '登录' })}</Button>
         </Form.Item>
+        <Divider plain style={{ margin: '12px 0' }}>或</Divider>
+        <GitHubLogin buttonText="使用 GitHub 登录" buttonProps={{ type: 'default', style: { borderRadius: 20 } }} />
       </Form>
     );
   };
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Sider width={260} style={{ background: '#f7f7f8', borderRight: '1px solid #e8e8e8' }}>
+      {/* 移动端遮罩 */}
+      <div 
+        className={`mobile-sider-mask ${mobileSiderOpen ? 'visible' : ''}`}
+        onClick={closeMobileSider}
+      />
+      <Sider 
+        width={260} 
+        style={{ background: '#f7f7f8', borderRight: '1px solid #e8e8e8' }}
+        className={mobileSiderOpen ? 'mobile-sider-open' : ''}
+      >
         <div style={{ padding: '16px', height: '64px', display: 'flex', alignItems: 'center' }}>
           <Link to="/" style={{ fontSize: '20px', fontWeight: 'bold', color: '#000' }}>
             AI Arena
@@ -208,29 +224,37 @@ const AppLayout = () => {
             {
               key: '1',
               icon: <EditOutlined />,
-              // 使用 onClick 处理新建会话
-              label: <span onClick={handleNewChat}>New Chat / Models</span>,
+              // 将点击行为绑定到整块菜单项
+              onClick: () => { navigate('/'); closeMobileSider(); },
+              label: '新建会话',
             },
             {
               key: '2',
               icon: <TrophyOutlined />,
               // 使用 Link 组件包裹，使其可以点击跳转
-              label: <Link to="/leaderboard">Leaderboard</Link>,
+              label: <Link to="/leaderboard" onClick={closeMobileSider}>排行榜</Link>,
             },
             { // <-- 这是新添加的项
               key: '3',
               icon: <MessageOutlined />,
-              label: <Link to="/forum">社区论坛</Link>,
+              label: <Link to="/forum" onClick={closeMobileSider}>社区论坛</Link>,
             },
-            { // <-- 这是新添加的项
+            { // 上传数据集菜单项
               key: '4',
               icon: <MessageOutlined />,
               label: <Link to="/evaluate-dataset">数据集上传</Link>,
             },
             { // <-- 这是新添加的项
-              key: '5',
+              key: '6',
               icon: <MessageOutlined />,
               label: <Link to="/benchmark-leaderboard">客观排行榜</Link>,
+              icon: <UploadOutlined />,
+              label: <Link to="/evaluate-dataset" onClick={closeMobileSider}>数据集测评</Link>,
+            },
+            {
+              key: '5',
+              icon: <HistoryOutlined />,
+              label: <Link to="/evaluate-dataset/history" onClick={closeMobileSider}>测评历史</Link>,
             },
           ]}
           // ---
@@ -270,7 +294,7 @@ const AppLayout = () => {
               暂无聊天记录
             </div>
           ) : (
-            <div style={{ maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}>
+            <div className="chat-history-container" style={{ maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}>
               {chatHistory.map(chat => (
                 <div 
                   key={chat.id} 
@@ -284,7 +308,7 @@ const AppLayout = () => {
                     background: location.pathname === `/chat/${chat.id}` ? '#f0f0f0' : 'transparent'
                   }}
                   className="chat-history-item"
-                  onClick={() => navigate(`/chat/${chat.id}`)}
+                  onClick={() => { navigate(`/chat/${chat.id}`); closeMobileSider(); }}
                   onMouseEnter={(e) => {
                     if (location.pathname !== `/chat/${chat.id}`) {
                       e.currentTarget.style.background = '#f5f5f5';
@@ -343,8 +367,22 @@ const AppLayout = () => {
       </Sider>
       <Layout>
         <Header style={{ background: '#fff', padding: '0 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
-          <div style={{ fontSize: '18px', fontWeight: 600, color: '#000' }}>
-            AI Arena
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <Button
+              type="text"
+              icon={<MenuOutlined />}
+              onClick={() => setMobileSiderOpen(!mobileSiderOpen)}
+              style={{ 
+                fontSize: '20px',
+                width: '40px',
+                height: '40px',
+                display: 'none'
+              }}
+              className="mobile-menu-btn"
+            />
+            <div style={{ fontSize: '18px', fontWeight: 600, color: '#000' }}>
+              AI Arena
+            </div>
           </div>
 
           {isLoggedIn ? (
@@ -369,9 +407,9 @@ const AppLayout = () => {
                   tabIndex={0}
                 />
               </Tooltip>
-              <span style={{ fontWeight: 500, fontSize: 16 }}>{userEmail}</span>
+              <span className="header-user-email" style={{ fontWeight: 500, fontSize: 16 }}>{userEmail}</span>
               <Button icon={<LogoutOutlined />} shape="round" type="default" style={{ borderRadius: 20, fontWeight: 500 }} onClick={handleLogout}>
-                退出登录
+                <span className="logout-btn-text">退出登录</span>
               </Button>
             </div>
           ) : (
@@ -407,20 +445,18 @@ const AppLayout = () => {
               <LoginForm />
             </div>
           </Modal>
+          {/* 新建会话弹窗已删除，改为直接导航到首页 */}
         </Header>
         <Content style={{ 
           margin: '24px', 
-          background: '#fff', 
-          padding: '24px', 
-          borderRadius: '8px',
-          height: 'calc(100vh - 64px - 48px)', // 减去 Header 高度和 margin
-          overflowY: 'auto',
-          display: 'flex',
-          flexDirection: 'column'
+          padding: '0 0 32px',
+          minHeight: 'calc(100vh - 64px - 48px)',
+          background: 'transparent'
         }}>
-          {shouldShowModelSelectors && (
-            <div style={{ marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid #f0f0f0' }}>
-              <Space size="large">
+          <div className="app-content-shell">
+            {shouldShowModelSelectors && (
+              <div className="app-content-toolbar">
+              <Space size="large" className="model-selector-space">
                 <Dropdown overlay={menu}>
                   <Button size="large">
                     <Space align="center">
@@ -466,9 +502,12 @@ const AppLayout = () => {
                   />
                 )}
               </Space>
+              </div>
+            )}
+            <div className="app-content-body">
+              <Outlet />
             </div>
-          )}
-          <Outlet />
+          </div>
         </Content>
       </Layout>
     </Layout>
