@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Select, Button, Table, message, Spin, Typography, Alert, Card, Row, Col, Tag, Space, Statistic, Input, Progress } from 'antd';
-import { HddOutlined, DownloadOutlined, HeartOutlined, CheckCircleFilled } from '@ant-design/icons';
+import { Select, Button, Table, message, Spin, Typography, Alert, Card, Row, Col, Tag, Space, Statistic, Input, Progress ,Modal} from 'antd';
+import { HddOutlined, DownloadOutlined, HeartOutlined, CheckCircleFilled ,EyeOutlined} from '@ant-design/icons';
 import { useMode } from '../contexts/ModeContext';
 import request from '../api/request';
 import { useNavigate } from 'react-router-dom';
@@ -18,7 +18,74 @@ const modalityColors = {
   default: 'default',
 };
 
-const DatasetCard = ({ dataset, isSelected, onSelect }) => {
+// --- 优化版：数据集预览模态框组件 ---
+const DatasetPreviewModal = ({ filename, visible, onClose }) => {
+  const [previewData, setPreviewData] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!visible || !filename) {
+      // 关闭时重置数据，避免闪烁
+      if (!visible) setPreviewData(null);
+      return;
+    }
+
+    const fetchPreviewData = async () => {
+      setLoading(true);
+      try {
+        const response = await request.get(`/models/datasets/preview/${filename}/`);
+        setPreviewData(response.data);
+      } catch (err) {
+        message.error('无法加载数据集预览。');
+        console.error('Error fetching dataset preview:', err);
+        onClose(); // 出错时自动关闭
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPreviewData();
+  }, [visible, filename, onClose]);
+
+  // 动态计算列配置
+  const columns = previewData?.headers.map(header => ({
+    title: header,
+    dataIndex: header,
+    key: header,
+    width: 200, // 为每列设置一个基础宽度
+    ellipsis: true, // 内容过长时显示省略号
+  })) || [];
+
+  return (
+    <Modal
+      title={`预览: ${filename}`}
+      visible={visible}
+      onCancel={onClose}
+      footer={null}
+      width="80vw" // 模态框宽度
+      destroyOnClose
+    >
+      <Spin spinning={loading}>
+        {previewData && (
+          <Table
+            columns={columns}
+            dataSource={previewData.rows.map((row, index) => ({ ...row, key: index }))}
+            bordered
+            pagination={false}
+            // 关键改动：
+            // 1. tableLayout: 'fixed' 强制表格使用固定布局
+            // 2. scroll.x: '100%' 让表格内容宽度等于容器宽度，配合列宽实现缩略
+            tableLayout="fixed"
+            scroll={{ x: '100%' }} 
+          />
+        )}
+      </Spin>
+    </Modal>
+  );
+};
+
+// --- 修改：数据集卡片组件，增加预览按钮 ---
+const DatasetCard = ({ dataset, isSelected, onSelect, onPreview }) => {
   const color = modalityColors[dataset.modality] || modalityColors.default;
   
   return (
@@ -31,16 +98,16 @@ const DatasetCard = ({ dataset, isSelected, onSelect }) => {
         position: 'relative',
       }}
       onClick={() => onSelect(dataset)}
+      actions={[ // 在卡片底部添加操作按钮
+        <EyeOutlined key="preview" onClick={(e) => {
+          e.stopPropagation(); // 阻止事件冒泡到 Card 的 onClick
+          onPreview(dataset.filename);
+        }} />,
+      ]}
     >
       {isSelected && (
         <CheckCircleFilled 
-          style={{ 
-            position: 'absolute', 
-            top: 10, 
-            right: 10, 
-            color: '#1890ff',
-            fontSize: '20px'
-          }} 
+          style={{ position: 'absolute', top: 10, right: 10, color: '#1890ff', fontSize: '20px' }} 
         />
       )}
       <Title level={5} style={{ marginTop: 0, marginBottom: '8px' }}>
@@ -51,14 +118,8 @@ const DatasetCard = ({ dataset, isSelected, onSelect }) => {
         <Tag color={color}>{dataset.modality.toUpperCase()}</Tag>
       </Paragraph>
       <Space size="middle" style={{ color: '#8c8c8c' }}>
-        <span>
-          <DownloadOutlined style={{ marginRight: 4 }} />
-          {dataset.downloads}
-        </span>
-        <span>
-          <HeartOutlined style={{ marginRight: 4 }} />
-          {dataset.likes}
-        </span>
+        <span><DownloadOutlined style={{ marginRight: 4 }} />{dataset.downloads}</span>
+        <span><HeartOutlined style={{ marginRight: 4 }} />{dataset.likes}</span>
       </Space>
     </Card>
   );
@@ -79,6 +140,10 @@ export default function DatasetEvaluationPage() {
   const [activeController, setActiveController] = useState(null);
   const [latestEvaluationId, setLatestEvaluationId] = useState(null);
 
+  // --- 新增：控制预览模态框的状态 ---
+  const [previewingFile, setPreviewingFile] = useState(null);
+  const [isPreviewModalVisible, setIsPreviewModalVisible] = useState(false);
+
   useEffect(() => {
     const fetchDatasets = async () => {
       try {
@@ -93,6 +158,17 @@ export default function DatasetEvaluationPage() {
     };
     fetchDatasets();
   }, []);
+
+  // --- 新增：处理预览的函数 ---
+  const handlePreview = (filename) => {
+    setPreviewingFile(filename);
+    setIsPreviewModalVisible(true);
+  };
+
+  const handleClosePreview = () => {
+    setIsPreviewModalVisible(false);
+    setPreviewingFile(null);
+  };
 
   const handleApiKeyChange = (e) => {
     const key = e.target.value;
@@ -528,6 +604,7 @@ export default function DatasetEvaluationPage() {
                 dataset={dataset} 
                 isSelected={selectedDataset?.id === dataset.id}
                 onSelect={setSelectedDataset}
+                onPreview={handlePreview} // 传递预览处理函数
               />
             </Col>
           ))}
@@ -537,6 +614,13 @@ export default function DatasetEvaluationPage() {
       {renderProgressPanel()}
       
       {renderBenchmarkResults()}
+
+      {/* --- 新增：渲染预览模态框 --- */}
+      <DatasetPreviewModal
+        filename={previewingFile}
+        visible={isPreviewModalVisible}
+        onClose={handleClosePreview}
+      />
     </div>
   );
 }
