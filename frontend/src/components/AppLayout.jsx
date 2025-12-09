@@ -244,10 +244,13 @@ const AppLayout = () => {
               icon: <MessageOutlined />,
               label: <Link to="/evaluate-dataset">数据集上传</Link>,
             },
-            { // <-- 这是新添加的项
+            { // 客观排行榜
               key: '6',
               icon: <MessageOutlined />,
-              label: <Link to="/benchmark-leaderboard">客观排行榜</Link>,
+              label: <Link to="/benchmark-leaderboard" onClick={closeMobileSider}>客观排行榜</Link>,
+            },
+            { // 数据集测评
+              key: '7',
               icon: <UploadOutlined />,
               label: <Link to="/evaluate-dataset" onClick={closeMobileSider}>数据集测评</Link>,
             },

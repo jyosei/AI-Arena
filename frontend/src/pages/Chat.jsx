@@ -181,16 +181,6 @@ export default function ChatPage() {
 
       try {
         const res = await request.get(`models/chat/conversation/${id}/messages/`);
-        const adapted = res.data.map(msg => ({
-          id: msg.id,
-          content: msg.content,
-          isUser: msg.is_user,
-          model_name: msg.model_name,
-          created_at: msg.created_at,
-          // --- 关键修改: 加载历史图片 ---
-          image: msg.image || null,
-          animate: false, // 历史消息不启用打字机
-        }));
         const imageModelNames = imageModels.map(model => model.name);
         const adapted = res.data.map(msg => {
           const rawContent = msg.content ?? '';
@@ -497,7 +487,6 @@ export default function ChatPage() {
       try {
         // evaluateModel 会自动保存用户消息和AI回复
         const res = await evaluateModel(model.name, currentPrompt, id, currentImage, true);
-        const aiMessage = { id: Date.now() + 1, content: res.data.response, isUser: false, model_name: model.name, animate: true };
         const rawResponse = res.data?.response;
         const looksLikeImage = typeof rawResponse === 'string' && (
           rawResponse.startsWith('data:image') ||
