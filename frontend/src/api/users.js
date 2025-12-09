@@ -34,3 +34,31 @@ export function markNotificationRead(id) {
 export function markAllNotificationsRead() {
   return request.post('users/notifications/mark-all-read/');
 }
+
+export function getFollowStatus(userId) {
+  return request.get(`users/follows/${userId}/`);
+}
+
+export function followUser(userId) {
+  return request.post(`users/follows/${userId}/`);
+}
+
+export function unfollowUser(userId) {
+  return request.delete(`users/follows/${userId}/`);
+}
+
+export function getFollowList(type = 'following') {
+  return request.get('users/follows/', { params: { type } });
+}
+
+export function getPrivateChatThreads() {
+  return request.get('users/private-chats/');
+}
+
+export function getPrivateChatMessages(userId) {
+  return request.get(`users/private-chats/${userId}/`);
+}
+
+export function sendPrivateChatMessage(userId, content) {
+  return request.post(`users/private-chats/${userId}/`, { content });
+}

@@ -38,11 +38,11 @@ services:
     # 关键修改：
     # 1. 使用 bash -c 来确保脚本由 bash 执行
     # 2. 确保 wait-for-db.sh 脚本在本地 ./backend 文件夹中存在
-    command: >
-      bash -c "dos2unix wait-for-db.sh 2>/dev/null || sed -i 's/\r$//' wait-for-db.sh &&
-               chmod +x wait-for-db.sh &&
-               ./wait-for-db.sh db python manage.py migrate &&
-               python manage.py runserver 0.0.0.0:8000 --noreload"
+    #command: >
+    #  bash -c "dos2unix wait-for-db.sh 2>/dev/null || sed -i 's/\r$//' wait-for-db.sh &&
+    #           chmod +x wait-for-db.sh &&
+    #           ./wait-for-db.sh db python manage.py migrate &&
+    #           python manage.py runserver 0.0.0.0:8000 --noreload"
 
   api:
     build:

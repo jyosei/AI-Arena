@@ -51,6 +51,8 @@ import {
   deleteForumComment,
 } from '../api/forum';
 import ShareModal from '../components/ShareModal';
+import FollowButton from '../components/FollowButton.jsx';
+import PrivateChatDrawer from '../components/PrivateChatDrawer.jsx';
 import { getPublicOrigin } from '../utils/media';
 import { formatDateTime } from '../utils/time.js';
 
@@ -248,6 +250,35 @@ export default function ForumPost() {
   const hasInitializedCollapse = useRef(false); // 标记是否已初始化折叠状态
   const textAreaRef = useRef(null);
   const [emojiPopoverOpen, setEmojiPopoverOpen] = useState(false);
+  const [followStatus, setFollowStatus] = useState(null);
+  const [chatDrawerOpen, setChatDrawerOpen] = useState(false);
+
+  const privateChatTarget = useMemo(() => {
+    if (!post?.author?.id) return null;
+    const avatar = post.author.avatar_url || post.author.avatar || '';
+    return {
+      id: post.author.id,
+      username: post.author.username,
+      avatar_url: avatar,
+      avatar,
+      description: post.author.description,
+    };
+  }, [post?.author]);
+
+  const handleFollowStatusChange = useCallback((nextStatus) => {
+    setFollowStatus(nextStatus);
+    if (!nextStatus?.mutual && chatDrawerOpen) {
+      setChatDrawerOpen(false);
+    }
+  }, [chatDrawerOpen]);
+
+  const canFollowAuthor = Boolean(post?.author?.id) && (!user || user.id !== post.author.id);
+
+  useEffect(() => {
+    if (!canFollowAuthor && followStatus) {
+      setFollowStatus(null);
+    }
+  }, [canFollowAuthor, followStatus]);
 
   // 自动折叠超过3层的楼中楼（仅在首次加载时执行一次）
   useEffect(() => {
@@ -702,7 +733,7 @@ export default function ForumPost() {
   const categoryMeta = getCategoryMeta(post.category || post.category_obj);
 
   return (
-    <div>
+    <div className="aa-post-page">
       {/* 分享弹窗 */}
       <ShareModal
         visible={shareModalVisible}
@@ -712,12 +743,12 @@ export default function ForumPost() {
       />
 
       {/* 头部导航 */}
-      <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
+      <Row justify="space-between" align="middle" className="aa-post-toolbar">
         <Col>
-          <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/forum')}>返回论坛</Button>
+          <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/forum')} className="aa-ghost-btn">返回论坛</Button>
         </Col>
         <Col>
-          <Space>
+          <Space size="middle" wrap className="aa-post-actions">
             <Tooltip title={post.user_reactions?.like ? '取消点赞' : '点赞'}>
               <Button type={post.user_reactions?.like ? 'primary' : 'default'} icon={<LikeOutlined />} onClick={() => handleReactToPost('like')}>
                 点赞 ({post.like_count ?? 0})
@@ -746,8 +777,8 @@ export default function ForumPost() {
         </Col>
       </Row>
 
-      <Card>
-        <div style={{ marginBottom: 16 }}>
+      <Card className="aa-post-surface">
+        <div className="aa-post-tags">
           <Space size="middle" wrap>
             {categoryMeta.label && (
               <Space size={4}>
@@ -769,23 +800,52 @@ export default function ForumPost() {
           </Space>
         </div>
 
-        <Title level={2} style={{ marginBottom: 16 }}>{post.title}</Title>
+        <Title level={2} className="aa-post-title">{post.title}</Title>
 
-        <div style={{ marginBottom: 24 }}>
-          <Space size="middle" align="start">
-            <Avatar src={post.author?.avatar} size="large" icon={<UserOutlined />} />
-            <div>
-              <div><Text strong>{post.author?.username || '匿名用户'}</Text></div>
-              <div>
-                <Text type="secondary">
-                  <ClockCircleOutlined /> {formatDateTime(post.created_at)} ·{' '}
-                  <EyeOutlined style={{ marginLeft: 8 }} /> {post.view_count ?? 0} 浏览 ·{' '}
-                  <MessageOutlined style={{ marginLeft: 8 }} /> {post.comment_count ?? 0} 回复
-                </Text>
-              </div>
-              {post.author?.description && <Text type="secondary" style={{ display: 'block', marginTop: 4 }}>{post.author.description}</Text>}
+        <div className="aa-post-author-card">
+          <Avatar src={post.author?.avatar} size={64} icon={<UserOutlined />} className="aa-author-avatar" />
+          <div className="aa-author-meta">
+            <div className="aa-author-heading">
+              <Text strong className="aa-author-name">{post.author?.username || '匿名用户'}</Text>
+              {(canFollowAuthor || followStatus?.mutual) ? (
+                <div className="aa-author-actions">
+                  {canFollowAuthor ? (
+                    <FollowButton
+                      targetUserId={post.author.id}
+                      size="middle"
+                      onStatusChange={handleFollowStatusChange}
+                    />
+                  ) : null}
+                  {followStatus?.mutual ? (
+                    <Button
+                      size="middle"
+                      icon={<MessageOutlined />}
+                      onClick={() => setChatDrawerOpen(true)}
+                      className="aa-primary-outline"
+                    >
+                      私聊
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
-          </Space>
+            <div className="aa-author-stats">
+              <Text type="secondary">
+                <ClockCircleOutlined /> {formatDateTime(post.created_at)} ·{' '}
+                <EyeOutlined style={{ marginLeft: 8 }} /> {post.view_count ?? 0} 浏览 ·{' '}
+                <MessageOutlined style={{ marginLeft: 8 }} /> {post.comment_count ?? 0} 回复
+              </Text>
+            </div>
+            {post.author?.description && (
+              <Text type="secondary" className="aa-author-desc">{post.author.description}</Text>
+            )}
+            {followStatus ? (
+              <Text type="secondary" className="aa-author-follow-stats">
+                粉丝 {followStatus.follower_count ?? 0} · 关注 {followStatus.following_count ?? 0}
+                {followStatus.mutual ? ' · 已互相关注' : ''}
+              </Text>
+            ) : null}
+          </div>
         </div>
 
         <Paragraph style={{ fontSize: '16px', lineHeight: '1.8', whiteSpace: 'pre-line' }}>{post.content}</Paragraph>
@@ -1047,6 +1107,11 @@ export default function ForumPost() {
           </Form>
         </div>
       </Card>
+      <PrivateChatDrawer
+        open={chatDrawerOpen}
+        targetUser={privateChatTarget}
+        onClose={() => setChatDrawerOpen(false)}
+      />
     </div>
   );
 }

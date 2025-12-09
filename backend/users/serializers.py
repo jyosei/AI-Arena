@@ -2,7 +2,7 @@
 from django.utils.text import Truncator
 from rest_framework import serializers
 
-from .models import Notification, User
+from .models import Notification, PrivateChatThread, PrivateMessage, User, UserFollow
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -114,3 +114,51 @@ class NotificationSerializer(serializers.ModelSerializer):
         if not content:
             return ""
         return Truncator(content).chars(60)
+
+
+class PublicUserSerializer(serializers.ModelSerializer):
+    avatar_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "username",
+            "description",
+            "avatar_url",
+        ]
+        read_only_fields = fields
+
+    def get_avatar_url(self, obj: User) -> str:  # type: ignore[override]
+        return obj.avatar_url
+
+
+class FollowRelationSerializer(serializers.Serializer):
+    user = PublicUserSerializer()
+    since = serializers.DateTimeField()
+    is_mutual = serializers.BooleanField()
+    direction = serializers.ChoiceField(choices=["following", "follower"], default="following")
+
+
+class PrivateMessageSerializer(serializers.ModelSerializer):
+    sender = PublicUserSerializer(read_only=True)
+
+    class Meta:
+        model = PrivateMessage
+        fields = [
+            "id",
+            "thread",
+            "sender",
+            "content",
+            "is_read",
+            "created_at",
+        ]
+        read_only_fields = ["id", "thread", "sender", "is_read", "created_at"]
+
+
+class PrivateChatThreadSerializer(serializers.Serializer):
+    thread_id = serializers.IntegerField()
+    partner = PublicUserSerializer()
+    unread_count = serializers.IntegerField()
+    latest_message = PrivateMessageSerializer(allow_null=True)
+    updated_at = serializers.DateTimeField()

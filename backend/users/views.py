@@ -1,11 +1,17 @@
+from django.db.models import Prefetch, Q
+from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from .models import User, Notification
+from .models import Notification, PrivateChatThread, PrivateMessage, User, UserFollow
 from .serializers import (
     UserSerializer,
     ChangePasswordSerializer,
     NotificationSerializer,
+    PublicUserSerializer,
+    FollowRelationSerializer,
+    PrivateChatThreadSerializer,
+    PrivateMessageSerializer,
 )
 
 
@@ -97,3 +103,185 @@ class NotificationMarkAllReadView(APIView):
     def post(self, request):
         Notification.objects.filter(recipient=request.user, is_read=False).update(is_read=True)
         return Response({'detail': '全部已标记为已读'})
+
+
+class FollowView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, user_id):
+        target = get_object_or_404(User, pk=user_id)
+        is_following = UserFollow.is_following(request.user, target)
+        is_followed = UserFollow.is_following(target, request.user)
+        mutual = is_following and is_followed
+        follower_count = UserFollow.objects.filter(following=target).count()
+        following_count = UserFollow.objects.filter(follower=target).count()
+        return Response(
+            {
+                'following': is_following,
+                'followed_by_target': is_followed,
+                'mutual': mutual,
+                'follower_count': follower_count,
+                'following_count': following_count,
+            }
+        )
+
+    def post(self, request, user_id):
+        target = get_object_or_404(User, pk=user_id)
+        if target.pk == request.user.pk:
+            return Response({'detail': '不能关注自己'}, status=status.HTTP_400_BAD_REQUEST)
+
+        relation, created = UserFollow.objects.get_or_create(
+            follower=request.user,
+            following=target,
+        )
+        mutual = UserFollow.is_mutual(request.user, target)
+
+        if created:
+            Notification.create(recipient=target, actor=request.user, action_type='follow')
+            if mutual:
+                Notification.create(recipient=request.user, actor=target, action_type='mutual_follow')
+                Notification.create(recipient=target, actor=request.user, action_type='mutual_follow')
+                try:
+                    PrivateChatThread.get_or_create_between(request.user, target)
+                except ValueError:
+                    pass
+
+        return Response({'following': True, 'mutual': mutual})
+
+    def delete(self, request, user_id):
+        target = get_object_or_404(User, pk=user_id)
+        UserFollow.objects.filter(follower=request.user, following=target).delete()
+        return Response({'following': False, 'mutual': False})
+
+
+class FollowListView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        mode = request.query_params.get('type', 'following')
+        if mode not in {'following', 'followers', 'mutual'}:
+            return Response({'detail': 'type 参数仅支持 following、followers 或 mutual'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = request.user
+        following_relations = list(
+            UserFollow.objects.filter(follower=user)
+            .select_related('following')
+            .order_by('-created_at')
+        )
+        follower_relations = list(
+            UserFollow.objects.filter(following=user)
+            .select_related('follower')
+            .order_by('-created_at')
+        )
+
+        follower_id_set = {rel.follower_id for rel in follower_relations}
+        following_id_set = {rel.following_id for rel in following_relations}
+
+        payload: list[dict] = []
+
+        if mode == 'following':
+            for rel in following_relations:
+                payload.append(
+                    {
+                        'user': rel.following,
+                        'since': rel.created_at,
+                        'is_mutual': rel.following_id in follower_id_set,
+                        'direction': 'following',
+                    }
+                )
+        elif mode == 'followers':
+            for rel in follower_relations:
+                payload.append(
+                    {
+                        'user': rel.follower,
+                        'since': rel.created_at,
+                        'is_mutual': rel.follower_id in following_id_set,
+                        'direction': 'follower',
+                    }
+                )
+        else:  # mutual
+            mutual_ids = follower_id_set & following_id_set
+            for rel in following_relations:
+                if rel.following_id in mutual_ids:
+                    payload.append(
+                        {
+                            'user': rel.following,
+                            'since': rel.created_at,
+                            'is_mutual': True,
+                            'direction': 'following',
+                        }
+                    )
+
+        serializer = FollowRelationSerializer(payload, many=True, context={'request': request})
+        return Response({'type': mode, 'count': len(serializer.data), 'results': serializer.data})
+
+
+class PrivateChatThreadsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        threads = (
+            PrivateChatThread.objects.filter(Q(user_a=user) | Q(user_b=user))
+            .select_related('user_a', 'user_b')
+            .prefetch_related(
+                Prefetch('messages', queryset=PrivateMessage.objects.order_by('-created_at'))
+            )
+            .order_by('-updated_at')
+        )
+
+        results = []
+        for thread in threads:
+            partner = thread.other_participant(user)
+            if partner is None:
+                continue
+            messages = list(thread.messages.all())
+            latest_message = messages[0] if messages else None
+            unread_count = PrivateMessage.objects.filter(thread=thread, is_read=False).exclude(sender=user).count()
+            results.append(
+                {
+                    'thread_id': thread.pk,
+                    'partner': partner,
+                    'unread_count': unread_count,
+                    'latest_message': latest_message,
+                    'updated_at': thread.updated_at,
+                }
+            )
+
+        serializer = PrivateChatThreadSerializer(results, many=True, context={'request': request})
+        return Response({'results': serializer.data})
+
+
+class PrivateChatMessagesView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, user_id):
+        target = get_object_or_404(User, pk=user_id)
+        if target.pk == request.user.pk:
+            return Response({'detail': '无法查看与自己的私聊'}, status=status.HTTP_400_BAD_REQUEST)
+        if not UserFollow.is_mutual(request.user, target):
+            return Response({'detail': '仅限互相关注的用户之间私聊'}, status=status.HTTP_403_FORBIDDEN)
+
+        thread, _ = PrivateChatThread.get_or_create_between(request.user, target)
+        thread.messages.filter(sender=target, is_read=False).update(is_read=True)
+        messages = thread.messages.select_related('sender').order_by('created_at')
+        serializer = PrivateMessageSerializer(messages, many=True, context={'request': request})
+        partner_data = PublicUserSerializer(target, context={'request': request}).data
+        return Response({'thread_id': thread.pk, 'partner': partner_data, 'messages': serializer.data})
+
+    def post(self, request, user_id):
+        target = get_object_or_404(User, pk=user_id)
+        if target.pk == request.user.pk:
+            return Response({'detail': '无法给自己发送私聊'}, status=status.HTTP_400_BAD_REQUEST)
+        if not UserFollow.is_mutual(request.user, target):
+            return Response({'detail': '仅限互相关注的用户之间私聊'}, status=status.HTTP_403_FORBIDDEN)
+
+        content = (request.data.get('content') or '').strip()
+        if not content:
+            return Response({'detail': '消息内容不能为空'}, status=status.HTTP_400_BAD_REQUEST)
+
+        thread, _ = PrivateChatThread.get_or_create_between(request.user, target)
+        message = PrivateMessage.objects.create(thread=thread, sender=request.user, content=content)
+        Notification.create(recipient=target, actor=request.user, action_type='private_message')
+        serializer = PrivateMessageSerializer(message, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_201_CREATED)

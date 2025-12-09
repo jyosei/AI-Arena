@@ -1,3 +1,6 @@
+import json
+
+from django.contrib.auth import get_user_model
 from django.db.models import Count, F, Max, Q
 from django.db.models.functions import Coalesce, Greatest
 from django.utils.decorators import method_decorator
@@ -13,14 +16,21 @@ from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
-import qrcode
 from io import BytesIO
+
+try:
+    import qrcode  # type: ignore
+except ImportError:  # pragma: no cover - 环境缺失时回退
+    qrcode = None
 
 # 尝试兼容可选的模型/权限/序列化器
 try:
-    from users.models import Notification
+    from users.models import Notification, PrivateChatThread, PrivateMessage, UserFollow
 except Exception:
     Notification = None
+    PrivateChatThread = None
+    PrivateMessage = None
+    UserFollow = None
 
 from . import models as forum_models
 
@@ -39,6 +49,9 @@ ForumCommentImage = getattr(forum_models, "ForumCommentImage", None)
 ForumShareLog = getattr(forum_models, "ForumShareLog", None)
 ForumPostFavorite = getattr(forum_models, "ForumPostFavorite", None)
 ForumPostViewHistory = getattr(forum_models, "ForumPostViewHistory", None)
+ForumPostShare = getattr(forum_models, "ForumPostShare", None)
+
+UserModel = get_user_model()
 
 try:
     from .permissions import IsAuthorOrReadOnly
@@ -153,13 +166,16 @@ class ForumPostViewSet(viewsets.ModelViewSet):
     pagination_class = ForumPostPagination
 
     def get_permissions(self):
+        action = getattr(self, "action", None)
+        if action in {"share", "increment_view"}:
+            return [permissions.AllowAny()]
         # 优先使用更严格的权限类（如果存在），否则回退为 AllowAny / IsAuthenticated
         if IsAuthorOrReadOnly is not None:
             base = [IsAuthorOrReadOnly()]
         else:
             base = [permissions.AllowAny()]
 
-        if self.action in {"create", "like", "reactions", "comments"}:
+        if action in {"create", "like", "reactions", "comments"}:
             return [permissions.IsAuthenticated()]
         return base
 
@@ -306,6 +322,126 @@ class ForumPostViewSet(viewsets.ModelViewSet):
                 post = ForumPost.objects.get(pk=pk)
                 return Response({"view_count": post.views})
         return Response({"detail": "更新失败"}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=["post"], url_path="share", permission_classes=[permissions.AllowAny])
+    def share(self, request, pk=None):
+        # 避免触发对象级权限限制，直接按主键获取帖子
+        post = get_object_or_404(ForumPost.objects.select_related("author"), pk=pk)
+        raw_targets = request.data.get("targets")
+        if raw_targets in (None, "", []):
+            raw_targets = request.data.get("target_ids")
+        channel_raw = request.data.get("channel")
+        channel = (str(channel_raw).strip()[:32]) if channel_raw else ""
+
+        def normalize_targets(value):
+            if value in (None, "", [], (), {}):
+                return []
+            if isinstance(value, (list, tuple)):
+                return list(value)
+            if isinstance(value, str):
+                candidate = value.strip()
+                if not candidate:
+                    return []
+                try:
+                    parsed = json.loads(candidate)
+                except json.JSONDecodeError:
+                    # 回退：用逗号分割简单列表或视为单个ID
+                    if "," in candidate:
+                        return [item.strip() for item in candidate.split(",") if item.strip()]
+                    return [candidate]
+                if isinstance(parsed, (list, tuple)):
+                    return list(parsed)
+                if parsed in (None, ""):
+                    return []
+                return [parsed]
+            return [value]
+
+        targets = normalize_targets(raw_targets)
+        # 兼容旧版：没有 targets 时仅统计分享次数
+        if not targets:
+            try:
+                ForumPost.objects.filter(pk=post.pk).update(share_count=Coalesce(F("share_count"), 0) + 1)
+                post.refresh_from_db(fields=["share_count"])
+                if ForumShareLog is not None:
+                    try:
+                        ForumShareLog.objects.create(
+                            post=post,
+                            user=request.user if request.user.is_authenticated else None,
+                            channel=channel,
+                        )
+                    except Exception:
+                        pass
+                return Response({"share_count": post.share_count})
+            except Exception:
+                return Response({"detail": "分享计数失败"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if ForumPostShare is None or UserFollow is None:
+            return Response({"detail": "当前环境未启用好友分享扩展"}, status=status.HTTP_501_NOT_IMPLEMENTED)
+
+        if not request.user.is_authenticated:
+            return Response({"detail": "请先登录后再指定好友分享"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            target_ids = [int(t) for t in targets if str(t).strip()]
+        except (TypeError, ValueError):
+            return Response({"detail": "targets 参数包含非法ID"}, status=status.HTTP_400_BAD_REQUEST)
+
+        note = (request.data.get("note") or "").strip()
+        candidates = (
+            UserModel.objects.filter(id__in=target_ids)
+            .exclude(id=request.user.id)
+        )
+
+        valid_targets = [user for user in candidates if UserFollow.is_mutual(request.user, user)]
+        if not valid_targets:
+            return Response({"detail": "请选择互相关注的好友进行分享"}, status=status.HTTP_400_BAD_REQUEST)
+
+        created_records = []
+        for target in valid_targets:
+            share_record = ForumPostShare.objects.create(
+                post=post,
+                sender=request.user,
+                receiver=target,
+                note=note,
+            )
+            created_records.append(share_record)
+            if Notification is not None:
+                Notification.create(recipient=target, actor=request.user, action_type="post_share", post=post)
+            if PrivateChatThread is not None and PrivateMessage is not None:
+                try:
+                    thread, _ = PrivateChatThread.get_or_create_between(request.user, target)
+                    content_parts = [f"{request.user.username} 向你分享了帖子《{post.title}》 (ID: {post.pk})"]
+                    if note:
+                        content_parts.append("")
+                        content_parts.append(note)
+                    PrivateMessage.objects.create(
+                        thread=thread,
+                        sender=request.user,
+                        content="\n".join(content_parts),
+                    )
+                except Exception:
+                    pass
+
+        ForumPost.objects.filter(pk=post.pk).update(share_count=Coalesce(F("share_count"), 0) + len(created_records))
+        if ForumShareLog is not None:
+            for record in created_records:
+                try:
+                    ForumShareLog.objects.create(
+                        post=post,
+                        user=request.user,
+                        channel=channel,
+                    )
+                except Exception:
+                    continue
+
+        response_payload = [
+            {
+                "receiver_id": record.receiver_id,
+                "created_at": record.created_at,
+            }
+            for record in created_records
+        ]
+        return Response({"shared": len(created_records), "results": response_payload})
 
     def perform_create(self, serializer):
         post = serializer.save(author=getattr(self.request, "user", None))
@@ -508,6 +644,8 @@ class ForumPostViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="qrcode", permission_classes=[permissions.AllowAny])
     def qrcode_image(self, request, pk=None):
         """生成帖子的二维码图片"""
+        if qrcode is None:
+            return Response({"detail": "未安装 qrcode 库，无法生成二维码"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         post = self.get_object()
         # 构建分享链接
         host = request.get_host()
@@ -535,33 +673,6 @@ class ForumPostViewSet(viewsets.ModelViewSet):
         response = HttpResponse(buffer, content_type='image/png')
         response['Content-Disposition'] = f'inline; filename="qrcode-post-{post.id}.png"'
         return response
-
-    @action(detail=True, methods=["post"], url_path="share", permission_classes=[permissions.AllowAny])
-    def share(self, request, pk=None):
-        """分享计数接口：增加帖子 share_count 并返回最新计数。"""
-        post = self.get_object()
-        try:
-            ForumPost.objects.filter(pk=post.pk).update(share_count=F("share_count") + 1)
-            post.refresh_from_db(fields=["share_count"]) 
-        except Exception:
-            pass
-        # 若存在分享日志模型可选择记录（可选，不强制）
-        try:
-            if Notification is not None and getattr(post, "author_id", None) and request.user.is_authenticated and post.author_id != request.user.id:
-                # 可选：给作者发个分享通知，忽略任何错误
-                try:
-                    Notification.create(
-                        recipient=post.author,
-                        actor=request.user,
-                        action_type="post_share",
-                        post=post,
-                    )
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        return Response({"share_count": getattr(post, "share_count", 0)})
-
 
 class ForumCommentListCreateView(APIView):
     # 兼容旧路由：保留 APIView 方式
