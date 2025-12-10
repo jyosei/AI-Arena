@@ -14,8 +14,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import remarkBreaks from 'remark-breaks';
 import MarkdownTypewriter from '../components/MarkdownTypewriter';
-import { Plus, Globe, Image as ImageIcon, Code } from 'lucide-react';
-// 与 ChatDialog 一致：将 \(...\)/\[...\] 转为 $...$/$$..$$ ，保持代码块原样
+import { Plus, Globe, Image as ImageIcon, Code, X } from 'lucide-react';// 与 ChatDialog 一致：将 \(...\)/\[...\] 转为 $...$/$$..$$ ，保持代码块原样
 function normalizeTexDelimiters(text) {
   if (!text) return '';
   const segments = text.split(/(```[\s\S]*?```)/g);
@@ -389,7 +388,6 @@ export default function ChatPage() {
     }
   }, [shouldAutoSend, loadingHistory, loading, modelReady, inputValue, uploadedImage]);
 
-  // --- 关键修改 2: 添加图片选择和移除的处理函数 ---
   const handleImageUpload = (event) => {
     const file = event.target.files[0];
     if (file) {
@@ -401,6 +399,7 @@ export default function ChatPage() {
   const removeImage = () => {
     setUploadedImage(null);
   };
+
   const toggleImageGeneration = () => {
     setIsGeneratingImage(prev => {
       const nextState = !prev;
@@ -422,8 +421,8 @@ export default function ChatPage() {
       return nextState;
     });
   };
+
   const handleSend = async () => {
-    // --- 关键修改 3: 更新发送条件 ---
     if (!inputValue.trim() && !uploadedImage) return;
 
     const currentPrompt = inputValue;
@@ -433,7 +432,6 @@ export default function ChatPage() {
     setUploadedImage(null); // 发送后清空
     setLoading(true);
 
-    // --- 关键修改 4: 创建包含图片预览 URL 的用户消息 ---
     const userMessage = { 
       id: Date.now(), 
       content: currentPrompt, 
@@ -449,9 +447,7 @@ export default function ChatPage() {
       }
       setMessages(prev => [...prev, userMessage]);
       try {
-        // 调用 evaluateModel，后端应能处理图片生成任务
         const res = await evaluateModel(model.name, currentPrompt, id, null, true); // 图片生成不上传图片，保存用户消息
-        // 假设后端返回的 response 是图片 URL
         const imagePayload = res.data?.image_url || res.data?.response;
         const aiMessage = { 
           id: Date.now() + 1, 
@@ -461,7 +457,6 @@ export default function ChatPage() {
           rawContent: imagePayload,
         };
         setMessages(prev => [...prev, aiMessage]);
-        // (可选) 保存AI消息到后端，需要后端支持保存图片URL
       } catch (err) {
         console.error('Image generation failed:', err);
         const errMsg = { id: Date.now() + 1, content: `图片生成失败: ${err.response?.data?.error || err.message}`, isUser: false, isError: true };
@@ -482,10 +477,7 @@ export default function ChatPage() {
       setDirectChatVoted(false);
       setMessages(prev => [...prev, userMessage]);
 
-      // 不需要手动保存用户消息，evaluateModel 会自动保存
-
       try {
-        // evaluateModel 会自动保存用户消息和AI回复
         const res = await evaluateModel(model.name, currentPrompt, id, currentImage, true);
         const rawResponse = res.data?.response;
         const looksLikeImage = typeof rawResponse === 'string' && (
@@ -502,8 +494,6 @@ export default function ChatPage() {
           rawContent: rawResponse,
         };
         setMessages(prev => [...prev, aiMessage]);
-
-        // 不需要手动保存AI消息，后端已自动保存
       } catch (err) {
         console.error('Evaluate failed:', err);
         const errMsg = { id: Date.now() + 1, content: `请求失败: ${err.response?.data?.error || err.message}`, isUser: false, isError: true };
@@ -527,13 +517,9 @@ export default function ChatPage() {
       setRightMessages(prev => [...prev, userMessage]);
 
       try {
-        // 使用统一的 battleModels API,mode 参数设置为 'side-by-side'
         const response = await battleModels(leftModel, rightModel, currentPrompt, id, 'side-by-side');
-        
-        // 解析响应 - 后端返回 { prompt, results: [{model, response}, {model, response}], conversation_id }
         const { results, conversation_id } = response.data;
         
-        // 根据模型名称分配响应到左右两侧
         results.forEach(result => {
           const aiMessage = { 
             id: Date.now() + Math.random(), 
@@ -550,7 +536,6 @@ export default function ChatPage() {
           }
         });
 
-        // 如果这是新创建的会话,更新URL
         if (!id && conversation_id) {
           navigate(`/chat/${conversation_id}`, { replace: true });
         }
@@ -571,14 +556,12 @@ export default function ChatPage() {
       return;
     }
 
-    // Battle 模式 - 在已保存的会话中，不重新随机选择模型，而是使用已选择的模型
+    // Battle 模式
     if (mode === 'battle') {
       let modelA = leftModel;
       let modelB = rightModel;
       
-      // 如果还没有选择模型，随机选择
       if (!modelA || !modelB) {
-        // 过滤掉图片和视频模型
         const requiredCapability = currentImage ? 'vision' : 'chat';
         const filteredModels = models.filter(m => m.capabilities.includes(requiredCapability));
 
@@ -588,7 +571,6 @@ export default function ChatPage() {
           return;
         }
 
-        // 随机选择两个不重复的模型
         const modelIndices = new Set();
         while (modelIndices.size < 2) {
           modelIndices.add(Math.floor(Math.random() * filteredModels.length));
@@ -608,22 +590,16 @@ export default function ChatPage() {
       setRightMessages(prev => [...prev, userMessage]);
 
       try {
-        // 使用统一的 battleModels API
         const response = await battleModels(modelA, modelB, currentPrompt, id, 'battle');
-        
-        // 解析响应
         const { results, conversation_id, is_anonymous } = response.data;
         
-        // 如果是匿名对战,results 顺序已被打乱,需要显示但不透露模型名
-        // 如果不是匿名,按模型名分配
         if (is_anonymous) {
-          // 匿名对战:不知道哪个是哪个,按顺序显示
           const [result1, result2] = results;
           setLeftMessages(prev => [...prev, { 
             id: Date.now(), 
             content: result1.response, 
             isUser: false,
-            model_name: result1.model, // 保存真实模型名,但界面不显示
+            model_name: result1.model, 
             animate: true
           }]);
           setRightMessages(prev => [...prev, { 
@@ -634,7 +610,6 @@ export default function ChatPage() {
             animate: true
           }]);
         } else {
-          // 非匿名:根据模型名分配
           results.forEach(result => {
             const aiMessage = { 
               id: Date.now() + Math.random(), 
@@ -652,7 +627,6 @@ export default function ChatPage() {
           });
         }
 
-        // 如果这是新创建的会话,更新URL
         if (!id && conversation_id) {
           navigate(`/chat/${conversation_id}`, { replace: true });
         }
@@ -675,7 +649,6 @@ export default function ChatPage() {
   };
 
   const handleVote = async (winnerChoice) => {
-    // 从消息历史中找到最后一个用户消息作为 prompt
     const lastUserMessage = leftMessages.filter(m => m.isUser).pop();
 
     if (!lastUserMessage || !lastUserMessage.content) {
@@ -683,8 +656,6 @@ export default function ChatPage() {
       return;
     }
 
-    // 在匿名 battle 模式下，leftModel/rightModel 可能未设置；
-    // 使用左右侧最新 AI 消息的真实 model_name 作为提交的模型名。
     const lastLeftAi = [...leftMessages].reverse().find(m => !m.isUser && !m.isError && m.model_name);
     const lastRightAi = [...rightMessages].reverse().find(m => !m.isUser && !m.isError && m.model_name);
     const modelAName = lastLeftAi?.model_name || leftModel;
@@ -699,7 +670,7 @@ export default function ChatPage() {
     const voteData = {
       model_a: modelAName,
       model_b: modelBName,
-      prompt: lastUserMessage.content, // 使用从历史记录中找到的 prompt
+      prompt: lastUserMessage.content, 
       winner: normalizedWinner,
     };
 
@@ -724,12 +695,8 @@ export default function ChatPage() {
     }
     let winnerValue;
     if (choice === 'good') {
-      // 用户觉得好：direct-chat 模式将当前模型作为胜者
       winnerValue = directModel || model?.name || leftModel;
     } else {
-      // 用户觉得不好：统一传递 'bad'，后端映射为 'both_bad'
-      winnerValue = 'bad';
-      // 如果用户觉得不好，反馈为双方都不佳
       winnerValue = 'both_bad';
     }
     const voteData = {
@@ -749,7 +716,6 @@ export default function ChatPage() {
     }
   };
 
-  // --- 关键修改 7: 封装消息渲染逻辑以便复用 ---
   const renderMessageContent = (message) => (
     <>
       {message.image && (
@@ -780,7 +746,6 @@ export default function ChatPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)' }}>
-      {/* 页面标题部分 (保持不变) */}
       <div style={{ marginBottom: 12 }}>
         <h2 style={{ margin: 0 }}>{title}</h2>
         <div style={{ color: '#8c8c8c', marginTop: 4 }}>
@@ -904,25 +869,48 @@ export default function ChatPage() {
         </div>
       )}
 
-        <div style={{ flexShrink: 0, padding: '0 20px 20px 20px' }}>
-        {uploadedImage && (
-          <div style={{ maxWidth: '800px', margin: '0 auto 12px auto', position: 'relative', display: 'inline-block' }}>
-            <img src={URL.createObjectURL(uploadedImage)} alt="preview" style={{ height: 60, borderRadius: 4, border: '1px solid #d9d9d9' }} />
-            <Button icon={<CloseCircleFilled />} size="small" shape="circle" danger onClick={removeImage} style={{ position: 'absolute', top: -8, right: -8 }} />
-          </div>
-        )}
+      <div style={{ padding: '0 20px 20px 20px', flexShrink: 0 }}>
         <div style={{ 
-          border: '1px solid #e0e0e0',
-          borderRadius: '18px',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-lg)',
           padding: '12px',
-          background: '#fff',
+          background: 'var(--panel)',
+          boxShadow: 'var(--shadow-sm)',
           maxWidth: '800px',
           margin: '0 auto',
           display: 'flex',
-          flexDirection: 'column', // 垂直布局
-          gap: '12px' // 文本框和按钮行的间距
+          flexDirection: 'column',
+          gap: '12px'
         }}>
-          {/* 文本输入框 */}
+          {uploadedImage && (
+            <div style={{ position: 'relative', maxWidth: '120px', margin: '0 8px' }}>
+              <img
+                src={URL.createObjectURL(uploadedImage)}
+                alt="Preview"
+                style={{ width: '100%', height: 'auto', borderRadius: 'var(--radius-md)' }}
+              />
+              <Button
+                shape="circle"
+                icon={<X size={14} />} // 使用 lucide-react 的 X 图标
+                onClick={removeImage}
+                style={{
+                  position: 'absolute',
+                  top: '-8px',
+                  right: '-8px',
+                  background: 'var(--muted)',
+                  color: 'var(--background)',
+                  border: 'none',
+                  width: '24px',
+                  height: '24px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer' // 添加手型光标
+                }}
+              />
+            </div>
+          )}
+
           <TextArea
             autoSize={{ minRows: 1, maxRows: 6 }}
             value={inputValue}
@@ -940,10 +928,8 @@ export default function ChatPage() {
             onPressEnter={e => !e.shiftKey && (e.preventDefault(), handleSend())}
           />
 
-          {/* 隐藏的文件输入 */}
           <input type="file" accept="image/*" ref={imageInputRef} onChange={handleImageUpload} style={{ display: 'none' }} />
 
-          {/* 功能按钮行 */}
           <div style={{ display: 'flex', gap: '8px' }}>
             <Tooltip title="上传文件 (占位)">
               <Button style={iconButtonStyle} icon={<Plus size={20} />} />
@@ -962,11 +948,13 @@ export default function ChatPage() {
             <Tooltip title="生成图片">
               <Button 
                 style={iconButtonStyle} 
-                icon={<Code size={20} />} // 使用 Code 图标代表生成
+                icon={<Code size={20} />}
                 onClick={toggleImageGeneration}
                 type={isGeneratingImage ? 'primary' : 'default'}
               />
             </Tooltip>
+            <div style={{ flex: 1 }} />
+            <Button type="primary" onClick={handleSend} loading={loading}>发送</Button>
           </div>
         </div>
       </div>

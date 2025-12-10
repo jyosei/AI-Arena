@@ -1,7 +1,7 @@
 ﻿import React, { useState, useRef } from 'react';
 import { Input, Button, Typography, message, Tooltip } from 'antd';
 // --- 关键修改 1: 导入新的、更匹配的图标 ---
-import { Plus, Globe, Image as ImageIcon, Code } from 'lucide-react';
+import { Plus, Globe, Image as ImageIcon, Code, X } from 'lucide-react';
 import { useMode } from '../contexts/ModeContext';
 import { useChat } from '../contexts/ChatContext';
 import { useNavigate } from 'react-router-dom';
@@ -23,6 +23,11 @@ export default function ArenaPage() {
       setUploadedImage(file);
     }
     event.target.value = null;
+  };
+
+  // --- 关键修改 2: 添加一个移除图片的函数 ---
+  const handleRemoveImage = () => {
+    setUploadedImage(null);
   };
 
   const startBattle = async () => {
@@ -56,7 +61,7 @@ export default function ArenaPage() {
     }
   };
 
-  // --- 关键修改 2: 定义统一的按钮样式 ---
+  // --- 关键修改 3: 定义统一的按钮样式 ---
   const iconButtonStyle = {
     width: '40px',
     height: '40px',
@@ -101,6 +106,35 @@ export default function ArenaPage() {
           flexDirection: 'column', // 垂直布局
           gap: '12px' // 文本框和按钮行的间距
         }}>
+          {/* --- 关键修改 4: 添加图片预览区域 --- */}
+          {uploadedImage && (
+            <div style={{ position: 'relative', maxWidth: '120px', margin: '0 8px' }}>
+              <img
+                src={URL.createObjectURL(uploadedImage)}
+                alt="Preview"
+                style={{ width: '100%', height: 'auto', borderRadius: 'var(--radius-md)' }}
+              />
+              <Button
+                shape="circle"
+                icon={<X size={14} />}
+                onClick={handleRemoveImage}
+                style={{
+                  position: 'absolute',
+                  top: '-8px',
+                  right: '-8px',
+                  background: 'var(--muted)',
+                  color: 'var(--background)',
+                  border: 'none',
+                  width: '24px',
+                  height: '24px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              />
+            </div>
+          )}
+
           {/* 文本输入框 */}
           <Input.TextArea
             autoSize={{ minRows: 1, maxRows: 6 }}

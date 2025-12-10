@@ -701,7 +701,7 @@ class ConversationMessagesView(APIView):
             return Response({'error': 'Conversation not found'}, status=status.HTTP_404_NOT_FOUND)
         
         messages = conv.messages.all()
-        serializer = ChatMessageSerializer(messages, many=True)
+        serializer = ChatMessageSerializer(messages, many=True,context={'request': request})
         return Response(serializer.data)
 
 
