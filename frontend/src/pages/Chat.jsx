@@ -421,6 +421,26 @@ export default function ChatPage() {
       return nextState;
     });
   };
+  const leftModelObject = useMemo(() => models.find(m => m.name === leftModel), [models, leftModel]);
+  const rightModelObject = useMemo(() => models.find(m => m.name === rightModel), [models, rightModel]);
+
+  const canUploadImage = useMemo(() => {
+    if (savedMode === 'direct-chat') {
+      return model?.capabilities.includes('vision') ?? false;
+    }
+    if (savedMode === 'side-by-side' || savedMode === 'battle') {
+      // 在比较模式下，必须两个模型都支持 vision
+      return (leftModelObject?.capabilities.includes('vision') ?? false) && 
+             (rightModelObject?.capabilities.includes('vision') ?? false);
+    }
+    return false;
+  }, [savedMode, model, leftModelObject, rightModelObject]);
+
+  const canGenerateImage = useMemo(() => {
+    // 生成图片功能只在 direct-chat 模式下有意义
+    if (savedMode !== 'direct-chat') return false;
+    return model?.capabilities.includes('image_generation') ?? false;
+  }, [savedMode, model]);
 
   const handleSend = async () => {
     if (!inputValue.trim() && !uploadedImage) return;
@@ -931,26 +951,21 @@ export default function ChatPage() {
           <input type="file" accept="image/*" ref={imageInputRef} onChange={handleImageUpload} style={{ display: 'none' }} />
 
           <div style={{ display: 'flex', gap: '8px' }}>
-            <Tooltip title="上传文件 (占位)">
-              <Button style={iconButtonStyle} icon={<Plus size={20} />} />
-            </Tooltip>
-            <Tooltip title="搜索网络 (占位)">
-              <Button style={iconButtonStyle} icon={<Globe size={20} />} />
-            </Tooltip>
-            <Tooltip title="上传图片">
+          <Tooltip title={canUploadImage ? "上传图片" : "当前模型不支持图片上传"}>
               <Button 
                 style={iconButtonStyle} 
-                icon={<ImageIcon size={20} />} 
+                icon={<Plus size={20} />}
                 onClick={() => imageInputRef.current.click()}
-                disabled={isGeneratingImage}
+                disabled={isGeneratingImage || !canUploadImage} 
               />
             </Tooltip>
-            <Tooltip title="生成图片">
+            <Tooltip title={canGenerateImage ? "生成图片" : "当前模型不支持图片生成"}>
               <Button 
                 style={iconButtonStyle} 
-                icon={<Code size={20} />}
+                icon={<ImageIcon size={20} />}
                 onClick={toggleImageGeneration}
                 type={isGeneratingImage ? 'primary' : 'default'}
+                disabled={!!uploadedImage || !canGenerateImage || savedMode !== 'direct-chat'}
               />
             </Tooltip>
             <div style={{ flex: 1 }} />
