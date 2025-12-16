@@ -507,12 +507,13 @@ export default function ForumPost() {
 
   const flattenedComments = useMemo(() => flattenComments(comments, 0, collapsedComments), [comments, collapsedComments]);
 
+  const { openLogin } = useContext(AuthContext);
   const requireAuth = useCallback(() => {
     if (user) return true;
     message.info('请先登录后再操作');
-    navigate('/login', { state: { from: `/forum/post/${id}` } });
+    if (openLogin) openLogin();
     return false;
-  }, [user, navigate, id]);
+  }, [user, openLogin]);
 
   const handleReactToPost = async (type) => {
     if (!requireAuth()) return;

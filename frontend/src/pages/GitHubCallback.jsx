@@ -1,11 +1,13 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useContext } from 'react';
 import { Spin, message } from 'antd';
 import { useSearchParams, useNavigate } from 'react-router-dom';
+import AuthContext from '../contexts/AuthContext.jsx';
 import apiClient from '../api/apiClient';
 
 export default function GitHubCallback() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { openLogin } = useContext(AuthContext);
 
   useEffect(() => {
     const access_token = searchParams.get('access_token');
@@ -37,12 +39,12 @@ export default function GitHubCallback() {
             window.location.reload();
           } else {
             message.error('GitHub 登录失败：后端未返回令牌');
-            navigate('/login');
+            if (openLogin) openLogin();
           }
         } catch (e) {
           console.error(e);
           message.error('GitHub 登录失败：交换令牌出错');
-          navigate('/login');
+          if (openLogin) openLogin();
         }
       })();
       return;
@@ -50,7 +52,7 @@ export default function GitHubCallback() {
 
     // 情况 3：参数不完整
     message.error('GitHub 登录失败：缺少必要参数');
-    navigate('/login');
+    if (openLogin) openLogin();
   }, [searchParams, navigate]);
 
   return (
