@@ -352,10 +352,11 @@ export default function Forum() {
     await loadPosts({ page: 1 });
   };
 
+  const { openLogin } = useContext(AuthContext);
   const handleOpenPostForm = () => {
     if (!user) {
       message.info('请先登录后再发帖');
-      navigate('/login', { state: { from: '/forum' } });
+      if (openLogin) openLogin();
       return;
     }
     setShowPostForm(true);

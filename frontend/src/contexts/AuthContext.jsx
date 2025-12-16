@@ -12,6 +12,8 @@ export const AuthProvider = ({ children }) => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true); // 初始化认证状态
+  // 提供全局打开登录弹窗的能力（由 AppLayout 注册）
+  const [openLoginModalFn, setOpenLoginModalFn] = useState(null);
 
   const applyAccessToken = (access) => {
     apiClient.defaults.headers.common['Authorization'] = `Bearer ${access}`;
@@ -153,6 +155,18 @@ export const AuthProvider = ({ children }) => {
     loadNotifications,
     loadingProfile,
     isInitializing,
+    // 触发登录弹窗
+    openLogin: () => {
+      try {
+        if (typeof openLoginModalFn === 'function') {
+          openLoginModalFn();
+        }
+      } catch (e) {
+        console.warn('openLogin 调用失败', e);
+      }
+    },
+    // 由 AppLayout 注入打开登录弹窗的方法
+    setOpenLoginHandler: setOpenLoginModalFn,
   };
 
   return (

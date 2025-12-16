@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { Select, Button, Table, message, Spin, Typography, Alert, Card, Row, Col, Tag, Space, Statistic, Input, Progress ,Modal} from 'antd';
 import { HddOutlined, DownloadOutlined, HeartOutlined, CheckCircleFilled ,EyeOutlined} from '@ant-design/icons';
 import { useMode } from '../contexts/ModeContext';
+import AuthContext from '../contexts/AuthContext.jsx';
 import request from '../api/request';
 import { useNavigate } from 'react-router-dom';
 
@@ -127,6 +128,7 @@ const DatasetCard = ({ dataset, isSelected, onSelect, onPreview }) => {
 
 export default function DatasetEvaluationPage() {
   const { models } = useMode();
+  const { user, openLogin } = useContext(AuthContext);
   const navigate = useNavigate();
   const [availableDatasets, setAvailableDatasets] = useState([]);
   const [selectedDataset, setSelectedDataset] = useState(null); 
@@ -177,6 +179,12 @@ export default function DatasetEvaluationPage() {
   };
 
   const handleStartEvaluation = async () => {
+    // 未登录提示并跳转登录
+    if (!user) {
+      message.info('请先登录后再进行数据集测评');
+      if (typeof openLogin === 'function') openLogin();
+      return;
+    }
     if (isEvaluating) {
       message.warning('测评正在进行中');
       return;

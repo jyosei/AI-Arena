@@ -48,7 +48,7 @@ export default function ChatPage() {
   const location = useLocation();
   const { chatHistory } = useChat();
   const { mode, setMode, models, leftModel, rightModel, setLeftModel, setRightModel } = useMode();
-  const { user } = React.useContext(AuthContext);
+  const { user, openLogin } = React.useContext(AuthContext);
   // Direct Chat 独立模型选择，避免影响 battle/side-by-side 的左右模型
   const [directModel, setDirectModel] = useState(null);
 
@@ -443,6 +443,12 @@ export default function ChatPage() {
   }, [savedMode, model]);
 
   const handleSend = async () => {
+    // 未登录时提示并跳转登录，不清空输入
+    if (!user) {
+      antdMessage.info('请先登录后再使用对话功能');
+      if (typeof openLogin === 'function') openLogin();
+      return;
+    }
     if (!inputValue.trim() && !uploadedImage) return;
 
     const currentPrompt = inputValue;
@@ -669,6 +675,11 @@ export default function ChatPage() {
   };
 
   const handleVote = async (winnerChoice) => {
+    if (!user) {
+      antdMessage.info('请先登录后再投票');
+      if (typeof openLogin === 'function') openLogin();
+      return;
+    }
     const lastUserMessage = leftMessages.filter(m => m.isUser).pop();
 
     if (!lastUserMessage || !lastUserMessage.content) {
@@ -706,6 +717,11 @@ export default function ChatPage() {
   };
 
   const handleDirectChatVote = async (choice) => {
+    if (!user) {
+      antdMessage.info('请先登录后再反馈');
+      if (typeof openLogin === 'function') openLogin();
+      return;
+    }
     const lastUserMessage = messages.filter(m => m.isUser).pop();
     const lastAiMessage = messages.filter(m => !m.isUser && !m.isError).pop();
 

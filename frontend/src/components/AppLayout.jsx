@@ -47,7 +47,7 @@ const AppLayout = () => {
   const [showLogin, setShowLogin] = React.useState(false);
   const [mobileSiderOpen, setMobileSiderOpen] = React.useState(false);
   const intl = useIntl();
-  const { login, logout, user } = React.useContext(AuthContext);
+  const { login, logout, user, setOpenLoginHandler } = React.useContext(AuthContext);
   const isLoggedIn = !!user;
   // 取消弹窗式新建会话，改为跳转到首页
   const userEmail = user?.email || user?.username || '';
@@ -93,6 +93,17 @@ const AppLayout = () => {
     logout();
     message.success('已登出');
   };
+  // 将打开登录弹窗的方法注册到 AuthContext，便于其他页面调用
+  React.useEffect(() => {
+    if (typeof setOpenLoginHandler === 'function') {
+      setOpenLoginHandler(() => () => setShowLogin(true));
+    }
+    return () => {
+      if (typeof setOpenLoginHandler === 'function') {
+        setOpenLoginHandler(null);
+      }
+    };
+  }, [setOpenLoginHandler]);
 
   // 原先弹窗相关逻辑已移除
 
