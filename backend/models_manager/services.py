@@ -42,15 +42,38 @@ def get_evaluation_model_service(model_name: str, api_key: str) -> BaseEvaluatio
     # API 地址映射表
     BASE_URL_MAP = {
         # 官方地址
-        "gpt-": "https://jeniya.cn/v1",
-        "glm-": "https://jeniya.cn/v1",
-        "deepseek-": "https://api.deepseek.com",
-        # ... 在这里添加其他模型的官方 base_url ...
-
-        # --- 您的国内代理地址 ---
-        # 我们可以为一些模型指定走您的代理
-        "qwen-": "https://jeniya.cn/v1",
-        "moonshot-": "https://jeniya.cn/v1",
+        "gpt-": "https://api.openai.com/v1",
+        
+        # Anthropic
+        "claude-": "https://api.anthropic.com/v1",
+        
+        # Google
+        "gemini-": "https://generativelanguage.googleapis.com/v1beta", # 注意：Gemini 的 SDK 调用方式可能不同，但这是 REST API 地址
+        
+        # Zhipu AI (智谱)
+        "glm-": "https://open.bigmodel.cn/api/paas/v4",
+        
+        # DeepSeek
+        "deepseek-": "https://api.deepseek.com/v1",
+        
+        # Moonshot AI (月之暗面)
+        "moonshot-": "https://api.moonshot.cn/v1",
+        
+        # Alibaba (通义千问)
+        "qwen-": "https://dashscope.aliyuncs.com/api/v1",
+        
+        # Baidu (文心一言)
+        "ERNIE-": "https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop", # 注意：文心 API 路径较特殊
+        
+        # Tencent (混元)
+        "hunyuan-": "https://hunyuan.cloud.tencent.com/hyllm/v1", # 实际地址可能更复杂，取决于 SDK
+        
+        # ByteDance (豆包)
+        "doubao-": "https://ark.cn-beijing.volces.com/api/v3",
+        
+        # Llama (通常通过第三方服务访问，如 Groq, Replicate, 或本地)
+        # 这里我们假设通过一个兼容 OpenAI 的本地服务访问
+        "llama-": "http://localhost:11434/v1",
     }
 
     # 查找模型前缀对应的 base_url

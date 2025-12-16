@@ -38,7 +38,7 @@ DATASET_METADATA = {
         "id": "openai/gsm8k",
         "creator": "OpenAI",
         "name": "GSM8K",
-        "modality": "text",
+        "modality": "math", # <-- 修改
         "task": "Math Reasoning",
         "downloads": "492k",
         "likes": 985,
@@ -47,7 +47,7 @@ DATASET_METADATA = {
         "id": "hendrycks/competition_math",
         "creator": "Hendrycks et al.",
         "name": "MATH",
-        "modality": "text",
+        "modality": "math", # <-- 修改
         "task": "Competition Math",
         "downloads": "115k",
         "likes": 230,
@@ -56,7 +56,7 @@ DATASET_METADATA = {
         "id": "tau/commonsense_qa",
         "creator": "Tel Aviv University",
         "name": "CommonsenseQA",
-        "modality": "text",
+        "modality": "reasoning", # <-- 修改
         "task": "Commonsense Reasoning",
         "downloads": "120k",
         "likes": 115,
@@ -65,7 +65,7 @@ DATASET_METADATA = {
         "id": "stanford/squad",
         "creator": "Stanford",
         "name": "SQuAD",
-        "modality": "text",
+        "modality": "reading", # <-- 修改
         "task": "Reading Comprehension",
         "downloads": "1M+",
         "likes": "10k+",
@@ -76,7 +76,7 @@ DATASET_METADATA = {
         "id": "rotten_tomatoes",
         "creator": "Pang & Lee",
         "name": "Rotten Tomatoes",
-        "modality": "text",
+        "modality": "classification", # <-- 修改
         "task": "Sentiment Analysis",
         "downloads": "500k+",
         "likes": 89,
@@ -85,7 +85,7 @@ DATASET_METADATA = {
         "id": "fancyzhx/ag_news",
         "creator": "AG's Corpus",
         "name": "AG News",
-        "modality": "text",
+        "modality": "classification", # <-- 修改
         "task": "Topic Classification",
         "downloads": "1.5M+",
         "likes": 150,
@@ -94,7 +94,7 @@ DATASET_METADATA = {
         "id": "gimmaru/glue-sst2",
         "creator": "Stanford",
         "name": "SST-2 (GLUE)",
-        "modality": "text",
+        "modality": "classification", # <-- 修改
         "task": "Sentiment Analysis",
         "downloads": "2M+",
         "likes": "1k+",
@@ -103,7 +103,7 @@ DATASET_METADATA = {
         "id": "dair-ai/emotion",
         "creator": "Saravia et al.",
         "name": "Emotion",
-        "modality": "text",
+        "modality": "classification", # <-- 修改
         "task": "Emotion Classification",
         "downloads": "300k+",
         "likes": 210,
@@ -114,7 +114,7 @@ DATASET_METADATA = {
         "id": "local/test-math-small",
         "creator": "local",
         "name": "Small Math Test",
-        "modality": "text",
+        "modality": "math", # <-- 修改
         "task": "Math Reasoning",
         "downloads": "1",
         "likes": 0,
@@ -123,13 +123,12 @@ DATASET_METADATA = {
         "id": "local/test-sentiment-small",
         "creator": "local",
         "name": "Small Sentiment Test",
-        "modality": "text",
+        "modality": "classification", # <-- 修改
         "task": "Sentiment Analysis",
         "downloads": "1",
         "likes": 0,
     },
 }
-
 
 class RecordVoteView(APIView):
     """接收并记录一次对战的投票结果"""
@@ -232,10 +231,8 @@ class ModelListView(APIView):
             {"id": 12, "name": "claude-haiku-4-5-20251001", "owner_name": "Anthropic", "capabilities": ["chat", "vision"]},
             {"id": 13, "name": "claude-opus-4-20245014-thinking", "owner_name": "Anthropic", "capabilities": ["chat", "vision"]},
             {"id": 14, "name": "claude-3-sonnet-20240229", "owner_name": "Anthropic", "capabilities": ["chat", "vision"]},
-            {"id": 15, "name": "veo_3_1-fast", "owner_name": "google", "capabilities": ["chat"]},
             {"id": 16, "name": "gemini-2.0-flash", "owner_name": "Google", "capabilities": ["chat", "vision"]},
             {"id": 17, "name": "gemini-2.5-flash", "owner_name": "Google", "capabilities": ["chat", "vision"]},
-            {"id": 18, "name": "gemini-2.5-flash-image", "owner_name": "Google", "capabilities": ["chat", "vision","image_generation"]},
             {"id": 19, "name": "gemini-2.5-pro", "owner_name": "Google", "capabilities": ["chat", "vision"]},
             {"id": 20, "name": "glm-4", "owner_name": "ZhipuAI", "capabilities": ["chat", "vision"]},
             {"id": 21, "name": "glm-4.5", "owner_name": "ZhipuAI", "capabilities": ["chat", "vision"]},

@@ -103,10 +103,6 @@ export default function ArenaPage() {
       message.warning('请输入您的问题或上传图片');
       return;
     }
-    if (mode !== 'direct-chat' && (!leftModel || !rightModel)) {
-      message.warning('请选择两个模型进行比较');
-      return;
-    }
     if (mode === 'direct-chat' && !leftModel) {
       message.warning('请选择一个模型进行对话');
       return;
