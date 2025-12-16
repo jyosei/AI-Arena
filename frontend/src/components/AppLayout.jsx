@@ -15,6 +15,8 @@ import {
   MenuOutlined,
   UploadOutlined,
   HistoryOutlined,
+  DashboardOutlined, // 用于“模型测评”主菜单
+  BarChartOutlined, 
 } from '@ant-design/icons';
 import{
     Swords,
@@ -242,12 +244,12 @@ const AppLayout = () => {
             },
             { // 上传数据集菜单项
               key: '4',
-              icon: <MessageOutlined />,
-              label: <Link to="/evaluate-dataset">数据集上传</Link>,
+              icon: <DashboardOutlined />,
+              label: <Link to="/evaluate-dataset">数据集测评</Link>,
             },
             { // 客观排行榜
               key: '6',
-              icon: <MessageOutlined />,
+              icon: <BarChartOutlined />,
               label: <Link to="/benchmark-leaderboard" onClick={closeMobileSider}>客观排行榜</Link>,
             },
             {
