@@ -817,8 +817,8 @@ export default function ChatPage() {
                 </Title>
               </div>
             ) : (
-              <Row gutter={16} style={{ height: '100%' }}>
-                <Col span={12} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+              <Row gutter={[16, 16]} style={{ height: '100%' }}>
+                <Col xs={24} sm={24} md={12} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                   <div style={{ marginBottom: '16px', paddingBottom: '12px', borderBottom: '2px solid #f0f0f0', fontWeight: 'bold', fontSize: '16px', flexShrink: 0 }}>
                     {mode === 'side-by-side' ? (leftModel || 'Model A') : '模型 A'}
                   </div>
@@ -840,7 +840,7 @@ export default function ChatPage() {
                     )}
                   </div>
                 </Col>
-                <Col span={12} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                <Col xs={24} sm={24} md={12} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                   <div style={{ marginBottom: '16px', paddingBottom: '12px', borderBottom: '2px solid #f0f0f0', fontWeight: 'bold', fontSize: '16px', flexShrink: 0 }}>
                     {mode === 'side-by-side' ? (rightModel || 'Model B') : '模型 B'}
                   </div>
