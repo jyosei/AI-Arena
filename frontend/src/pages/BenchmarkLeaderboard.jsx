@@ -156,15 +156,17 @@ export default function BenchmarkLeaderboard() {
   }
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div style={{ padding: '16px' }}>
       <Title level={2}>客观基准测评排行榜</Title>
-      <Table
-        columns={columns}
-        dataSource={scores}
-        bordered
-        pagination={{ pageSize: 10 }}
-        scroll={{ x: 'max-content' }}
-      />
+      <div style={{ overflowX: 'auto' }}>
+        <Table
+          columns={columns}
+          dataSource={scores}
+          bordered
+          pagination={{ pageSize: 10 }}
+          scroll={{ x: 'max-content' }}
+        />
+      </div>
     </div>
   );
 }

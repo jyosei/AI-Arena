@@ -393,24 +393,24 @@ export default function Forum() {
   return (
     <div className="container">
     <Card title="社区论坛" bordered>
-      <Row justify="space-between" align="middle" style={{ marginBottom: 24 }}>
-        <Col>
-          <Space wrap size="middle">
-            <Select value={searchParams.category} onChange={handleCategoryChange} style={{ width: 140 }}>
+      <Row justify="space-between" align="middle" gutter={[16, 16]} style={{ marginBottom: 24 }}>
+        <Col xs={24} md={18}>
+          <Space wrap size="middle" style={{ width: '100%' }}>
+            <Select value={searchParams.category} onChange={handleCategoryChange} style={{ minWidth: 140 }}>
               {categoryOptions.map((cat) => (
                 <Select.Option key={cat.value} value={cat.value}>{cat.label}</Select.Option>
               ))}
             </Select>
-            <Select value={searchParams.sort} onChange={handleSortChange} style={{ width: 180 }}>
+            <Select value={searchParams.sort} onChange={handleSortChange} style={{ minWidth: 180 }}>
               <Select.Option value="latest"><ClockCircleOutlined /> 最新回复</Select.Option>
               <Select.Option value="newest"><PlusOutlined /> 最新发布</Select.Option>
               <Select.Option value="hot"><FireOutlined /> 热门帖子</Select.Option>
             </Select>
-            <Search placeholder="搜索帖子标题或内容..." onSearch={handleSearch} style={{ width: 320 }} allowClear />
+            <Search placeholder="搜索帖子标题或内容..." onSearch={handleSearch} style={{ width: '100%', maxWidth: 320 }} allowClear />
           </Space>
         </Col>
-        <Col>
-          <Button type="primary" size="large" icon={<PlusOutlined />} onClick={handleOpenPostForm}>
+        <Col xs={24} md={6} style={{ textAlign: 'right' }}>
+          <Button type="primary" size="large" icon={<PlusOutlined />} onClick={handleOpenPostForm} block>
             发布新帖
           </Button>
         </Col>

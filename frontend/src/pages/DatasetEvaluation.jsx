@@ -558,38 +558,42 @@ export default function DatasetEvaluationPage() {
       <Title level={2}>数据集批量测评</Title>
       
       <Card style={{ marginBottom: 24 }}>
-        <div style={{ marginBottom: 16 }}>
-          <Text strong>您的API Key:</Text>
-          <Input
-            style={{ width: 400, marginLeft: 8 }}
-            placeholder="请输入您的 API Key (sk-...)"
-            value={userApiKey}
-            onChange={handleApiKeyChange}
-            type="password"
-          />
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <Text strong>选择模型:</Text>
-          <Select
-            style={{ width: 250 }}
-            placeholder="选择要测评的模型"
-            onChange={(value) => setSelectedModel(value)}
-            allowClear
-          >
-            {models.map(m => <Option key={m.id} value={m.name}>{m.name}</Option>)}
-          </Select>
-          <Button
-            type="primary"
-            onClick={handleStartEvaluation}
-            loading={isEvaluating}
-            disabled={!selectedDataset || !selectedModel || isEvaluating}
-          >
-            {isEvaluating ? '测评进行中…' : '开始测评'}
-          </Button>
-          <Button danger onClick={handleCancelEvaluation} disabled={!isEvaluating}>
-            取消
-          </Button>
-        </div>
+        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <div>
+            <Text strong style={{ display: 'block', marginBottom: 8 }}>您的API Key:</Text>
+            <Input
+              style={{ width: '100%', maxWidth: 400 }}
+              placeholder="请输入您的 API Key (sk-...)"
+              value={userApiKey}
+              onChange={handleApiKeyChange}
+              type="password"
+            />
+          </div>
+          <div>
+            <Text strong style={{ display: 'block', marginBottom: 8 }}>选择模型:</Text>
+            <Select
+              style={{ width: '100%', maxWidth: 250 }}
+              placeholder="选择要测评的模型"
+              onChange={(value) => setSelectedModel(value)}
+              allowClear
+            >
+              {models.map(m => <Option key={m.id} value={m.name}>{m.name}</Option>)}
+            </Select>
+          </div>
+          <Space wrap>
+            <Button
+              type="primary"
+              onClick={handleStartEvaluation}
+              loading={isEvaluating}
+              disabled={!selectedDataset || !selectedModel || isEvaluating}
+            >
+              {isEvaluating ? '测评进行中…' : '开始测评'}
+            </Button>
+            <Button danger onClick={handleCancelEvaluation} disabled={!isEvaluating}>
+              取消
+            </Button>
+          </Space>
+        </Space>
         {selectedDataset && <Alert message={`已选择数据集: ${selectedDataset.id}`} type="info" showIcon style={{ marginTop: 16 }}/>}
       </Card>
 
