@@ -235,7 +235,7 @@ class ModelListView(APIView):
             {"id": 15, "name": "veo_3_1-fast", "owner_name": "google", "capabilities": ["chat"]},
             {"id": 16, "name": "gemini-2.0-flash", "owner_name": "Google", "capabilities": ["chat", "vision"]},
             {"id": 17, "name": "gemini-2.5-flash", "owner_name": "Google", "capabilities": ["chat", "vision"]},
-            {"id": 18, "name": "gemini-2.5-flash-image", "owner_name": "Google", "capabilities": ["chat", "vision"]},
+            {"id": 18, "name": "gemini-2.5-flash-image", "owner_name": "Google", "capabilities": ["chat", "vision","image_generation"]},
             {"id": 19, "name": "gemini-2.5-pro", "owner_name": "Google", "capabilities": ["chat", "vision"]},
             {"id": 20, "name": "glm-4", "owner_name": "ZhipuAI", "capabilities": ["chat", "vision"]},
             {"id": 21, "name": "glm-4.5", "owner_name": "ZhipuAI", "capabilities": ["chat", "vision"]},
@@ -931,7 +931,7 @@ class EvaluateDatasetView(APIView):
 
     def _check_math_answer(self, model_answer, correct_answer):
         """
-        更强大的答案校验函数，V7版，增强元组和 LaTeX 解析。
+        更强大的答案校验函数，V8版，增强提取、归一化和元组比较。
         """
         print("\n--- [DEBUG] New Answer Check ---")
         print(f"[DEBUG] Raw Model Answer: {repr(model_answer)}")
@@ -939,44 +939,73 @@ class EvaluateDatasetView(APIView):
 
         model_answer, correct_answer = str(model_answer), str(correct_answer)
 
-        # 1. 增强的答案提取逻辑
-        boxed_match = re.search(r'\\boxed\{(.*?)\}', model_answer, re.DOTALL) 
-        if boxed_match:
-            model_final_answer = boxed_match.group(1).strip()
-            print(f"[DEBUG] Extracted from \\boxed: {repr(model_final_answer)}")
-        else:
-            # (保留原来的启发式提取逻辑)
-            lines = model_answer.strip().split('\n')
-            last_line = lines[-1].strip()
-            if "####" in last_line:
-                model_final_answer = last_line.split("####")[-1].strip()
-            else:
-                model_final_answer = last_line
-            print(f"[DEBUG] Heuristically extracted: {repr(model_final_answer)}")
-
-        # 2. 升级的 normalize_latex 函数
+        # 1. 升级的 normalize_latex 函数
         def normalize_latex(text):
+            # 去除 \left 和 \right
             text = re.sub(r'\\left|\\right', '', text)
+            # 去除 \text{...}
             text = re.sub(r'\\text\{.*?\}', '', text)
-            text = re.sub(r'\\boxed\{(.*?)\}', r'\1', text)
+            # 将 \frac{a}{b} 转为 (a)/(b)
             text = re.sub(r'\\frac\{([^}]+)\}\{([^}]+)\}', r'(\1)/(\2)', text)
+            # 将 \sqrt{...} 转为 sqrt(...)
             text = re.sub(r'\\sqrt\{([^}]+)\}', r'sqrt(\1)', text)
+            # 统一乘号
             text = re.sub(r'\\cdot|\\times', '*', text)
-            text = text.replace(r'\pi', 'pi') # 将 \pi 替换为 sympy 可识别的 'pi'
-            return text.strip()
+            # 统一 pi
+            text = text.replace(r'\pi', 'pi')
+            # 去除单位，如 $
+            text = text.replace('$', '')
+            # 去除多余的 LaTeX 命令和空格
+            text = text.strip()
+            return text
 
-        model_final_answer = normalize_latex(model_final_answer)
-        correct_answer = normalize_latex(correct_answer)
-        print(f"[DEBUG] Normalized Model Answer: {repr(model_final_answer)}")
-        print(f"[DEBUG] Normalized Correct Answer: {repr(correct_answer)}")
+        # 2. 增强的答案提取逻辑
+        def extract_final_answer(text):
+            # 优先匹配 \boxed{}
+            boxed_match = re.search(r'\\boxed\{(.*?)\}', text, re.DOTALL)
+            if boxed_match:
+                return boxed_match.group(1).strip()
+            
+            # 其次匹配 ####
+            hash_match = re.search(r'####\s*(.*)', text)
+            if hash_match:
+                return hash_match.group(1).strip()
 
-        # 3. 核心升级：强大的元组/表达式比较函数
+            # 尝试从 "The answer is ..." 中提取
+            ans_is_match = re.search(r'[Tt]he\s+(?:final\s+)?answer\s+is\s*\:?\s*(.*)', text)
+            if ans_is_match:
+                return ans_is_match.group(1).strip()
+
+            # 降级策略：如果答案在开头，后面跟着解释
+            # 匹配一个数字、分数或元组开头的行
+            potential_answer_match = re.match(r'^(-?[\d\./\(\),]+|[a-zA-Z])\b.*', text.strip())
+            if potential_answer_match:
+                # 检查后面是否有常见的解释性词语
+                if re.search(r'\b(Explanation|Solution|Proof|Since|Because)\b', text, re.IGNORECASE):
+                    # 取第一个换行符之前的内容作为答案
+                    return text.split('\n')[0].strip()
+
+            # 最终降级：取最后一行非空行
+            lines = [line.strip() for line in text.strip().split('\n') if line.strip()]
+            return lines[-1] if lines else text
+
+        model_final_answer = extract_final_answer(model_answer)
+        print(f"[DEBUG] Extracted Model Answer: {repr(model_final_answer)}")
+
+        # 3. 对提取出的答案和标准答案进行归一化
+        norm_model_ans = normalize_latex(model_final_answer)
+        norm_correct_ans = normalize_latex(correct_answer)
+        print(f"[DEBUG] Normalized Model Answer: {repr(norm_model_ans)}")
+        print(f"[DEBUG] Normalized Correct Answer: {repr(norm_correct_ans)}")
+
+        # 4. 强大的元组/表达式比较函数
         def compare_expressions(expr1_str, expr2_str):
             try:
                 # 检查是否为元组
-                if expr1_str.startswith('(') and expr1_str.endswith(')') and \
-                   expr2_str.startswith('(') and expr2_str.endswith(')'):
-                    
+                is_tuple1 = expr1_str.startswith('(') and expr1_str.endswith(')')
+                is_tuple2 = expr2_str.startswith('(') and expr2_str.endswith(')')
+
+                if is_tuple1 and is_tuple2:
                     # 分割元组元素，处理嵌套括号
                     elements1 = re.split(r',\s*(?![^()]*\))', expr1_str[1:-1])
                     elements2 = re.split(r',\s*(?![^()]*\))', expr2_str[1:-1])
@@ -992,24 +1021,31 @@ class EvaluateDatasetView(APIView):
 
                 # 如果不是元组，作为单个表达式比较
                 local_dict = {"pi": sympify("pi")}
-                expr1 = sympify(expr1_str, locals=local_dict)
-                expr2 = sympify(expr2_str, locals=local_dict)
+                expr1 = sympify(expr1_str, locals=local_dict, convert_xor=True)
+                expr2 = sympify(expr2_str, locals=local_dict, convert_xor=True)
                 
+                # 使用 simplify 比较差值是否为0
                 if simplify(expr1 - expr2) == 0:
                     return True
                 return False
             except Exception as e:
                 print(f"[DEBUG] Comparison Error: {e}")
-                # 如果解析失败，回退到字符串比较
+                # 如果解析失败，回退到字符串的精确比较
                 return expr1_str.strip() == expr2_str.strip()
 
-        # 4. 使用新的比较函数进行最终判断
-        if compare_expressions(model_final_answer, correct_answer):
+        # 5. 使用新的比较函数进行最终判断
+        if compare_expressions(norm_model_ans, norm_correct_ans):
             print("[DEBUG] RESULT: TRUE (Advanced comparison match)")
             return True
+        
+        # 6. 最后的保险：如果 sympy 失败，再尝试一次简单的字符串包含检查
+        if norm_correct_ans in norm_model_ans:
+             print("[DEBUG] RESULT: TRUE (Substring fallback match)")
+             return True
 
         print("[DEBUG] RESULT: FALSE (All checks failed)")
         return False
+
     def _extract_final_answer(self, text: str) -> str:
         """从文本中提取 #### 后面的数字答案"""
         match = re.search(r'####\s*([\d,.-]+)', text)
@@ -1111,7 +1147,7 @@ class EvaluateDatasetView(APIView):
             "samples": samples,
         }
     def _evaluate_generic_math(self, model_service, prompts, model_name: str):
-        """处理像 MATH 这样的通用数学任务，V2版，支持识图"""
+        """处理像 MATH 这样的通用数学任务 - 纯文本版本"""
         correct = 0
         error_samples = []
         
@@ -1121,53 +1157,14 @@ class EvaluateDatasetView(APIView):
             if not question or not true_answer:
                 continue
 
+            # --- 关键修改：不再处理图片，直接使用原始问题 ---
             prompt_to_model = question
-            image_base64 = None
-            mime_type = "image/png" # Asymptote 默认生成 PNG
-
-            # 1. 检测并提取 [asy] 代码
-            asy_match = re.search(r'\[asy\](.*?)\[/asy\]', question, re.DOTALL)
-            if asy_match:
-                asy_code = asy_match.group(1)
-                # 从问题文本中移除 asy 代码块，使其更干净
-                prompt_to_model = re.sub(r'\[asy\].*?\[/asy\]', '', question, flags=re.DOTALL).strip()
-
-                # 2. 动态渲染图片
-                try:
-                    # 创建临时文件来保存 asy 代码和输出的 png 图片
-                    with tempfile.NamedTemporaryFile(mode='w+', suffix='.asy', delete=True) as asy_file, \
-                         tempfile.NamedTemporaryFile(suffix='.png', delete=True) as png_file:
-                        
-                        asy_file.write(asy_code)
-                        asy_file.flush() # 确保所有内容都写入文件
-
-                        # 构造并执行 asy 命令
-                        # asy [asy_file_path] -f png -o [png_file_path]
-                        command = ['asy', asy_file.name, '-f', 'png', '-o', png_file.name]
-                        subprocess.run(command, check=True, timeout=15, capture_output=True)
-
-                        # 3. 读取渲染好的图片并编码为 Base64
-                        with open(png_file.name, 'rb') as f_img:
-                            image_base64 = base64.b64encode(f_img.read()).decode('utf-8')
-                        
-                        print(f"[DEBUG] Successfully rendered image for prompt.")
-
-                except FileNotFoundError:
-                    print("[ERROR] 'asy' command not found. Please install Asymptote in your backend environment.")
-                    # 选择降级处理：不带图片继续测评
-                    image_base64 = None
-                except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
-                    print(f"[ERROR] Asymptote rendering failed: {e.stderr.decode() if e.stderr else e}")
-                    # 降级处理
-                    image_base64 = None
             
-            # 4. 调用模型服务 (现在可能包含图片)
             try:
+                # --- 关键修改：调用模型服务时不再传递任何图片参数 ---
                 model_response = model_service.evaluate(
                     prompt=prompt_to_model, 
-                    model_name=model_name,
-                    image_base64=image_base64, # 传递图片
-                    mime_type=mime_type if image_base64 else None
+                    model_name=model_name
                 )
                 
                 if self._check_math_answer(model_response, true_answer):
@@ -1178,7 +1175,6 @@ class EvaluateDatasetView(APIView):
                             "prompt": prompt_to_model,
                             "expected_answer": true_answer,
                             "model_response": model_response,
-                            "image_base64": image_base64 # (可选) 将图片也存入错误样本，方便前端展示
                         })
             except Exception as e:
                 if len(error_samples) < 5:
@@ -1186,13 +1182,13 @@ class EvaluateDatasetView(APIView):
 
         accuracy = (correct / len(prompts) * 100) if prompts else 0
         return {
-            "benchmark_type": "General Math (with Vision)",
+            "benchmark_type": "General Math", # 移除了 (with Vision)
             "metrics": {"accuracy": round(accuracy, 2)},
             "total_prompts": len(prompts),
             "correct_answers": correct,
             "error_samples": error_samples,
         }
-    
+
     def _evaluate_classification(self, model_service, prompts,model_name:str):
         """处理 rotten_tomatoes 类型的分类任务"""
         predictions = []
@@ -1943,9 +1939,6 @@ class EvaluateDatasetStreamView(EvaluateDatasetView):
                 continue
 
             prompt_to_model = question
-            image_base64 = None
-            mime_type = "image/png"
-
             # Asymptote 渲染（可选）
             asy_match = re.search(r'\[asy\](.*?)\[/asy\]', question, re.DOTALL)
             if asy_match:
@@ -1971,8 +1964,6 @@ class EvaluateDatasetStreamView(EvaluateDatasetView):
                 model_response = model_service.evaluate(
                     prompt=prompt_to_model,
                     model_name=model_name,
-                    image_base64=image_base64,
-                    mime_type=mime_type if image_base64 else None
                 )
             except Exception as exc:
                 sample_error = f"API Error: {exc}"

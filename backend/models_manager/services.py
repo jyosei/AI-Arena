@@ -177,9 +177,64 @@ class DeepSeekModel(OpenAIModel):
     pass
 class GeminiModel(OpenAIModel):
     """
-    Gemini与OpenAI兼容，直接继承就可以。
+    Gemini与OpenAI兼容。
+    我们在这里重写 evaluate 方法，以添加对 'gemini-2.5-flash-image' 的特殊处理，
+    使其行为与 DALL-E 一致。
     """
-    pass
+    def evaluate(self, prompt: str, model_name: str, messages=None, image_base64=None, mime_type=None) -> str:
+        # --- 关键修改：检查是否为图片生成模型 ---
+        if model_name == "gemini-2.5-flash-image":
+            try:
+                # 复用 OpenAIModel 中处理 DALL-E 的逻辑
+                # 1. 初始化一个可以调用图片生成接口的 client
+                #    注意：Gemini 的图片生成可能需要不同的 client 或 API 调用方式。
+                #    这里我们假设它与 DALL-E 兼容，都使用 client.images.generate
+                client = OpenAI(
+                    api_key=self.api_key,
+                    base_url="https://jeniya.cn/v1" # 假设 Gemini 图片生成也走这个代理
+                )
+
+                # 2. 从 messages 中获取最终的 prompt
+                final_prompt = prompt
+                if messages and isinstance(messages, list) and len(messages) > 0:
+                    last_user_message = next((msg['content'] for msg in reversed(messages) if msg['role'] == 'user'), None)
+                    if last_user_message:
+                        if isinstance(last_user_message, list):
+                            text_part = next((item['text'] for item in last_user_message if item['type'] == 'text'), None)
+                            if text_part:
+                                final_prompt = text_part
+                        else:
+                            final_prompt = last_user_message
+                
+                # 3. 调用图片生成接口
+                response = client.images.generate(
+                    model=model_name, # 使用 'gemini-2.5-flash-image'
+                    prompt=final_prompt,
+                    n=1,
+                    size="1024x1024" # 或 Gemini 支持的尺寸
+                )
+
+                # 4. 处理返回结果，提取图片 URL 或 Base64 数据
+                image_data = response.data[0]
+                image_url = getattr(image_data, "url", None)
+                if not image_url:
+                    b64_image = getattr(image_data, "b64_json", None) or getattr(image_data, "b64_image", None)
+                    if b64_image:
+                        image_url = f"data:image/png;base64,{b64_image}"
+                
+                if not image_url:
+                    raise ValueError("Image generation succeeded but no image payload was returned.")
+                
+                # 5. 直接返回可供前端渲染的 URL
+                return image_url
+
+            except Exception as e:
+                # 如果图片生成失败，返回错误信息
+                return f"图片生成失败: {str(e)}"
+
+        # --- 如果不是图片生成模型，则调用父类（OpenAIModel）的 evaluate 方法处理普通聊天 ---
+        return super().evaluate(prompt, model_name, messages, image_base64, mime_type)
+
 class AnthropicModel(OpenAIModel):
     """
     claude与OpenAI兼容，直接继承就可以。
