@@ -5,12 +5,12 @@ import request from '../api/request';
 
 const { Title, Text } = Typography;
 
-// 根据分数返回条形图的颜色
+// 根据分数返回条形图的颜色 - 简约柔和配色
 const getBarColor = (score) => {
-  if (score > 80) return '#52c41a'; // 优异 (绿色)
-  if (score > 50) return '#1890ff'; // 良好 (蓝色)
-  if (score > 30) return '#faad14'; // 一般 (橙色)
-  return '#f5222d'; // 较差 (红色)
+  if (score > 80) return '#8c9eff'; // 优异 (柔和蓝紫)
+  if (score > 50) return '#90a4ae'; // 良好 (蓝灰)
+  if (score > 30) return '#b0bec5'; // 一般 (浅蓝灰)
+  return '#cfd8dc'; // 较差 (淡灰蓝)
 };
 
 export default function BenchmarkLeaderboard() {
@@ -53,7 +53,7 @@ export default function BenchmarkLeaderboard() {
           const scoreValue = score.toFixed(2);
           return (
             // 容器 div，用于相对定位
-            <div style={{ position: 'relative', height: '24px', backgroundColor: '#f0f0f0', borderRadius: '4px', overflow: 'hidden' }}>
+            <div style={{ position: 'relative', height: '24px', backgroundColor: '#f5f5f5', borderRadius: '4px', overflow: 'hidden' }}>
               {/* 颜色条 div，宽度根据分数变化 */}
               <div style={{
                 width: `${scoreValue}%`,
@@ -94,7 +94,7 @@ export default function BenchmarkLeaderboard() {
       title: 'Type',
       key: 'type',
       align: 'center',
-      render: () => <MessageOutlined style={{ color: '#9c88ff' }} />,
+      render: () => <MessageOutlined style={{ color: '#78909c' }} />,
     },
     {
       title: 'Model',
@@ -119,7 +119,7 @@ export default function BenchmarkLeaderboard() {
         }
         const scoreValue = score.toFixed(2);
         return (
-          <div style={{ position: 'relative', height: '24px', backgroundColor: '#f0f0f0', borderRadius: '4px', overflow: 'hidden' }}>
+          <div style={{ position: 'relative', height: '24px', backgroundColor: '#f5f5f5', borderRadius: '4px', overflow: 'hidden' }}>
             <div style={{
               width: `${scoreValue}%`,
               height: '100%',
@@ -156,15 +156,17 @@ export default function BenchmarkLeaderboard() {
   }
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div style={{ padding: '16px' }}>
       <Title level={2}>客观基准测评排行榜</Title>
-      <Table
-        columns={columns}
-        dataSource={scores}
-        bordered
-        pagination={{ pageSize: 10 }}
-        scroll={{ x: 'max-content' }}
-      />
+      <div style={{ overflowX: 'auto' }}>
+        <Table
+          columns={columns}
+          dataSource={scores}
+          bordered
+          pagination={{ pageSize: 10 }}
+          scroll={{ x: 'max-content' }}
+        />
+      </div>
     </div>
   );
 }
