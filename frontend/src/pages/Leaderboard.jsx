@@ -21,7 +21,7 @@ export default function Leaderboard() {
         id: item.id ?? idx,
         rank: item.rank ?? idx + 1,
         name: item.name || item.display_name || item.model_name || item.id || `模型-${idx + 1}`,
-        owner_name: item.owner_name || item.owner || '-',
+        owner_name: item.owner_name || item.owner || '',
         value: item.value ?? item.score ?? '-',
         elo: item.elo_rating !== undefined && item.elo_rating !== null ? Number(item.elo_rating).toFixed(2) : '-',
         win_rate: item.win_rate !== undefined ? `${item.win_rate.toFixed(1)}%` : '-',
@@ -38,7 +38,6 @@ export default function Leaderboard() {
   const columns = [
     { title: '排名', dataIndex: 'rank', key: 'rank', width: 60, sorter: (a,b)=>a.rank-b.rank, align: 'center' },
     { title: '模型', dataIndex: 'name', key: 'name', width: 200, ellipsis: true, render: (text,row) => <span>{text} {row.task !== '-' && <Tag color="blue" style={{marginLeft:4}}>{row.task}</Tag>}</span> },
-    { title: '作者', dataIndex: 'owner_name', key: 'owner', width: 120, ellipsis: true },
     { title: 'ELO', dataIndex: 'elo', key: 'elo', width: 90, align: 'right', sorter: (a,b)=> (a.elo=== '-'?0:a.elo) - (b.elo==='-'?0:b.elo) },
     { title: '胜率', dataIndex: 'win_rate', key: 'win_rate', width: 80, align: 'right', sorter: (a,b)=> parseFloat(a.win_rate)-parseFloat(b.win_rate) },
     { title: '对战数', dataIndex: 'battles', key: 'battles', width: 80, align: 'right', sorter: (a,b)=> a.battles - b.battles },
