@@ -1,4 +1,5 @@
 import os
+import logging
 from pathlib import Path
 from datetime import timedelta
 
@@ -70,22 +71,41 @@ MEDIA_ROOT = BASE_DIR / 'media'
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': os.environ.get('DB_NAME'),
-        'USER': os.environ.get('DB_USER'),
-        'PASSWORD': os.environ.get('DB_PASSWORD'),
-        'HOST': os.environ.get('DB_HOST'),
-        'PORT': os.environ.get('DB_PORT'),
-        'OPTIONS': {
-            'charset': 'utf8mb4',
+db_engine = os.getenv('DB_ENGINE', 'mysql').lower()
+db_name = os.getenv('DB_NAME')
+db_user = os.getenv('DB_USER')
+db_password = os.getenv('DB_PASSWORD')
+db_host = os.getenv('DB_HOST')
+db_port = os.getenv('DB_PORT')
+
+should_use_mysql = (
+    db_engine in {'mysql', 'mariadb'}
+    and all([db_name, db_user, db_password, db_host, db_port])
+)
+
+if should_use_mysql:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.mysql',
+            'NAME': db_name,
+            'USER': db_user,
+            'PASSWORD': db_password,
+            'HOST': db_host,
+            'PORT': db_port,
+            'OPTIONS': {
+                'charset': 'utf8mb4',
+            }
         }
     }
-}
-
-# NOTE: SQLite fallback removed — this project uses MySQL. Ensure the following
-# environment variables are set: DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT.
+else:
+    if db_engine not in {'sqlite', 'sqlite3'}:
+        logging.warning("MySQL 环境变量缺失，自动回退到 SQLite，本地开发请确认数据库配置。")
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 # 告诉 Django 使用你的自定义用户模型
 AUTH_USER_MODEL = 'users.User'

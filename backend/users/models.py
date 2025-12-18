@@ -2,6 +2,7 @@ from pathlib import Path
 
 from django.contrib.auth.models import AbstractUser, Group, Permission
 from django.db import models
+from django.db.models.functions import Now
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
@@ -82,6 +83,10 @@ class Notification(models.Model):
         ("comment_reply", "评论被回复"),
         ("comment_like", "评论被点赞"),
         ("post_favorite", "帖子被收藏"),
+        ("follow", "获得新关注"),
+        ("mutual_follow", "互相关注"),
+        ("post_share", "帖子被分享"),
+        ("private_message", "收到私聊消息"),
     )
 
     recipient = models.ForeignKey(
@@ -133,6 +138,14 @@ class Notification(models.Model):
             return f"{actor_name} 点赞了你的评论"
         if self.action_type == "post_favorite" and self.post:
             return f"{actor_name} 收藏了你的帖子《{self.post.title}》"
+        if self.action_type == "follow":
+            return f"{actor_name} 关注了你"
+        if self.action_type == "mutual_follow":
+            return f"你和 {actor_name} 已互相关注，可以开始私聊啦"
+        if self.action_type == "post_share" and self.post:
+            return f"{actor_name} 向你分享了帖子《{self.post.title}》"
+        if self.action_type == "private_message":
+            return f"{actor_name} 给你发送了新的私聊消息"
         return "收到新通知"
 
     @classmethod
@@ -157,3 +170,134 @@ class Notification(models.Model):
         except Exception:
             # 记录失败但不中断主流程（可扩展为 logging）
             return cls()  # 返回空对象以兼容调用方
+
+
+class UserFollow(models.Model):
+    follower = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="following_relations",
+    )
+    following = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="follower_relations",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["follower", "following"],
+                name="unique_follow_relation",
+            ),
+            models.CheckConstraint(
+                check=~models.Q(follower=models.F("following")),
+                name="prevent_self_follow",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["follower"]),
+            models.Index(fields=["following"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"follow {getattr(self, 'follower_id', None)} -> {getattr(self, 'following_id', None)}"
+
+    @classmethod
+    def is_following(cls, follower: User, followee: User) -> bool:
+        if not follower or not followee or getattr(follower, "pk", None) is None:
+            return False
+        return cls.objects.filter(follower=follower, following=followee).exists()
+
+    @classmethod
+    def is_mutual(cls, user_a: User, user_b: User) -> bool:
+        if not user_a or not user_b or getattr(user_a, "pk", None) is None or getattr(user_b, "pk", None) is None:
+            return False
+        if user_a.pk == user_b.pk:
+            return False
+        return cls.objects.filter(follower=user_a, following=user_b).exists() and cls.objects.filter(
+            follower=user_b, following=user_a
+        ).exists()
+
+
+class PrivateChatThread(models.Model):
+    user_a = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="private_chat_threads_a",
+    )
+    user_b = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="private_chat_threads_b",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["user_a", "user_b"], name="unique_private_chat_pair"),
+        ]
+        indexes = [
+            models.Index(fields=["user_a", "updated_at"]),
+            models.Index(fields=["user_b", "updated_at"]),
+        ]
+
+    def save(self, *args, **kwargs):  # type: ignore[override]
+        if getattr(self, "user_a_id", None) and getattr(self, "user_b_id", None):
+            if self.user_a_id == self.user_b_id:
+                raise ValueError("无法创建与自己私聊的会话")
+            if self.user_a_id > self.user_b_id:
+                self.user_a, self.user_b = self.user_b, self.user_a
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def get_or_create_between(cls, user1: User, user2: User) -> tuple["PrivateChatThread", bool]:
+        if getattr(user1, "pk", None) is None or getattr(user2, "pk", None) is None:
+            raise ValueError("非法用户，无法创建私聊")
+        if user1.pk == user2.pk:
+            raise ValueError("无法与自己创建私聊会话")
+        user_a, user_b = (user1, user2) if user1.pk < user2.pk else (user2, user1)
+        thread, created = cls.objects.get_or_create(user_a=user_a, user_b=user_b)
+        return thread, created
+
+    def participants(self) -> tuple[User, User]:
+        return self.user_a, self.user_b
+
+    def other_participant(self, user: User) -> User | None:
+        if getattr(user, "pk", None) == self.user_a_id:
+            return self.user_b
+        if getattr(user, "pk", None) == self.user_b_id:
+            return self.user_a
+        return None
+
+
+class PrivateMessage(models.Model):
+    thread = models.ForeignKey(
+        PrivateChatThread,
+        on_delete=models.CASCADE,
+        related_name="messages",
+    )
+    sender = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="sent_private_messages",
+    )
+    content = models.TextField()
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        indexes = [
+            models.Index(fields=["thread", "created_at"]),
+            models.Index(fields=["thread", "is_read"]),
+        ]
+
+    def save(self, *args, **kwargs):  # type: ignore[override]
+        super().save(*args, **kwargs)
+        PrivateChatThread.objects.filter(pk=self.thread_id).update(updated_at=Now())
+
+    def __str__(self) -> str:  # pragma: no cover - 简单表示
+        return f"PrivateMessage {self.pk} in thread {getattr(self, 'thread_id', None)}"

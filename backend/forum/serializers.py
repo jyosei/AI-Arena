@@ -280,6 +280,7 @@ class ForumPostListSerializer(serializers.ModelSerializer):
     favorites_count = serializers.IntegerField(read_only=True)
     is_favorited = serializers.SerializerMethodField()
     thumbnail = serializers.SerializerMethodField()  # 列表页小图预览
+    share_count = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = ForumPost
@@ -298,6 +299,7 @@ class ForumPostListSerializer(serializers.ModelSerializer):
             "like_count",  # 兼容
             "share_count",
             "favorites_count",
+            "share_count",
             "author",
             "excerpt",
             "is_favorited",
@@ -383,6 +385,7 @@ class ForumPostDetailSerializer(serializers.ModelSerializer):
     is_liked = serializers.SerializerMethodField()
     favorites_count = serializers.IntegerField(read_only=True)
     is_favorited = serializers.SerializerMethodField()
+    share_count = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = ForumPost
@@ -405,6 +408,7 @@ class ForumPostDetailSerializer(serializers.ModelSerializer):
             "comment_count",  # 兼容
             "share_count",
             "is_liked",
+            "share_count",
             "favorites_count",
             "is_favorited",
             "category_obj",

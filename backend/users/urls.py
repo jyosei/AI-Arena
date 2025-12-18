@@ -6,6 +6,10 @@ from .views import (
     NotificationListView,
     NotificationMarkReadView,
     NotificationMarkAllReadView,
+    FollowView,
+    FollowListView,
+    PrivateChatThreadsView,
+    PrivateChatMessagesView,
 )
 from .github_views import (
     GitHubLoginURLView,
@@ -20,6 +24,10 @@ urlpatterns = [
     path('notifications/', NotificationListView.as_view(), name='notifications'),
     path('notifications/<int:pk>/read/', NotificationMarkReadView.as_view(), name='notification-read'),
     path('notifications/mark-all-read/', NotificationMarkAllReadView.as_view(), name='notifications-mark-all-read'),
+    path('follows/<int:user_id>/', FollowView.as_view(), name='user-follow'),
+    path('follows/', FollowListView.as_view(), name='follow-list'),
+    path('private-chats/', PrivateChatThreadsView.as_view(), name='private-chat-threads'),
+    path('private-chats/<int:user_id>/', PrivateChatMessagesView.as_view(), name='private-chat-messages'),
 
     # GitHub 登录
     path('github/login-url/', GitHubLoginURLView.as_view(), name='github-login-url'),

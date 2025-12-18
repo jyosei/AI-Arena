@@ -423,7 +423,45 @@ class ForumPostViewHistory(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"PostViewHistory user={getattr(self, 'user_id', None)} post={getattr(self, 'post_id', None)} count={self.view_count}"
+        return (
+            f"PostViewHistory user={getattr(self, 'user_id', None)} "
+            f"post={getattr(self, 'post_id', None)} count={self.view_count}"
+        )
+
+
+class ForumPostShare(models.Model):
+    """帖子分享记录，用于跟踪互关好友之间的分享行为。"""
+
+    post = models.ForeignKey(
+        ForumPost,
+        on_delete=models.CASCADE,
+        related_name="shares",
+    )
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="sent_post_shares",
+    )
+    receiver = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="received_post_shares",
+    )
+    note = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-created_at",)
+        indexes = [
+            models.Index(fields=["sender", "created_at"]),
+            models.Index(fields=["receiver", "created_at"]),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover - 简单表示
+        return (
+            f"ForumPostShare post={getattr(self, 'post_id', None)} "
+            f"sender={getattr(self, 'sender_id', None)} receiver={getattr(self, 'receiver_id', None)}"
+        )
 
 
 # 信号：自动更新帖子统计
