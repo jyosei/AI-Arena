@@ -7,7 +7,7 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('forum', '0002_remove_forumsharelog_post_remove_forumsharelog_user_and_more'),
+        ('forum', '0002_initial'),
     ]
 
     operations = []
