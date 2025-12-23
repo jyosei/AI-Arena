@@ -1,8 +1,34 @@
+
 ````markdown
 # 📦 AI-Arena 综合测试套件 - 文件清单
 
-本文件列出了所有已创建和修改的文件（已迁移至 `documentation/` 与 `tests/`）。
+本文件列出了所有已创建和修改的文件。
 
-（原内容已复制并归档）
+## 🎁 已创建的新文件
+
+### 1. 核心测试文件
+
+#### `backend/test_suite.py` (1000+ 行)
+**描述**: 完整的 Django 测试套件  
+**内容**:
+- 15 个单元测试
+- 25+ 个集成测试
+- 2 个端到端测试
+- 3 个性能测试
+- 3 个错误处理测试
+- 2 个并发测试
+
+**可以测试**:
+```python
+# 运行方式
+python manage.py test test_suite
+python manage.py test test_suite.UserModelTests
+cd backend && python test_suite.py
+```
+
+---
+
+...（原内容已迁移至根目录副本，此处为集中文档）
 
 ````
+
