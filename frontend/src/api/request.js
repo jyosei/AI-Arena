@@ -2,10 +2,9 @@
 
 import axios from 'axios';
 
-// 计算 API base URL：优先使用 Vite 的 VITE_API_BASE 构建时变量，其次回退到 REACT_APP_API_BASE（兼容旧配置），最后使用相对路径 '/api/'，方便在 nginx 反向代理下工作。
+// 计算 API base URL：优先使用 Vite 的 VITE_API_BASE 构建时变量，其次回退到 REACT_APP_API_BASE（兼容旧配置），最后使用相对路径 '/api/'。
 const getBaseURL = () => {
 	try {
-		// Vite 提供 import.meta.env
 		if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE) {
 			return import.meta.env.VITE_API_BASE;
 		}
@@ -15,56 +14,73 @@ const getBaseURL = () => {
 	if (typeof process !== 'undefined' && process.env && process.env.REACT_APP_API_BASE) {
 		return process.env.REACT_APP_API_BASE;
 	}
-	// 最安全的默认：在同域下使用相对路径
 	return '/api/';
 };
 
-const request = axios.create({ baseURL: getBaseURL() });
+const baseURL = getBaseURL();
+const request = axios.create({ baseURL });
 
-// request interceptor: attach token if available
-request.interceptors.request.use((config) => {
-	const token = localStorage.getItem('access_token');
-	if (token) {
-		config.headers = config.headers || {};
-		config.headers.Authorization = `Bearer ${token}`;
-	}
-	return config;
-}, (error) => {
-	return Promise.reject(error);
-});
+// 请求拦截器：统一附上 access token（使用统一的 localStorage key）
+request.interceptors.request.use(
+	(config) => {
+		const token = localStorage.getItem('access_token');
+		if (token) {
+			config.headers = config.headers || {};
+			config.headers.Authorization = `Bearer ${token}`;
+		}
+		return config;
+	},
+	(error) => Promise.reject(error)
+);
 
-// 响应拦截器
+// 响应拦截器：处理 401 并尝试刷新 token
 request.interceptors.response.use(
 	(response) => response,
 	async (error) => {
-		const originalRequest = error.config;
-		
-		// 如果是 401 错误并且不是刷新 token 的请求
-		if (error.response.status === 401 && !originalRequest._retry) {
+		const originalRequest = error.config || {};
+
+		// 保护性检查：确保有 response
+		if (error && error.response && error.response.status === 401 && !originalRequest._retry) {
+			// 防止对刷新请求本身进行重试
+			const refreshPaths = ['/token/refresh/', 'token/refresh/', `${baseURL}token/refresh/`];
+			const reqUrl = originalRequest.url || '';
+			if (refreshPaths.includes(reqUrl) || refreshPaths.includes(originalRequest.url)) {
+				// 刷新请求本身已失败，直接登出
+				localStorage.removeItem('access_token');
+				localStorage.removeItem('refresh_token');
+				return Promise.reject(error);
+			}
+
 			originalRequest._retry = true;
-			
+
 			try {
-				// 尝试使用 refresh token 获取新的 access token
 				const refreshToken = localStorage.getItem('refresh_token');
-				if (refreshToken) {
-					const res = await axios.post('api/token/refresh/', {
-						refresh: refreshToken
-					});
-					
-					if (res.data.access) {
-						localStorage.setItem('token', res.data.access);
-						// 更新原始请求的 Authorization header
-						originalRequest.headers.Authorization = `Bearer ${res.data.access}`;
-						return request(originalRequest);
-					}
+				if (!refreshToken) {
+					return Promise.reject(error);
 				}
-			} catch (error) {
-				// 如果刷新失败，清除所有 token
-				localStorage.removeItem('token');
-				localStorage.removeItem('refresh');
+
+				// 使用绝对路径调用刷新接口，避免 baseURL 拼接导致的问题
+				const refreshUrl = baseURL.replace(/\/$/, '') + '/token/refresh/';
+				const res = await axios.post(refreshUrl, { refresh: refreshToken });
+
+				if (res && res.data && res.data.access) {
+					const newAccess = res.data.access;
+					localStorage.setItem('access_token', newAccess);
+					// 更新当前实例与原始请求的 header
+					request.defaults.headers.common['Authorization'] = `Bearer ${newAccess}`;
+					originalRequest.headers = originalRequest.headers || {};
+					originalRequest.headers.Authorization = `Bearer ${newAccess}`;
+					return request(originalRequest);
+				}
+			} catch (e) {
+				// 刷新失败 -> 清理并让上层处理
+				console.error('Token refresh failed in request.js:', e);
+				localStorage.removeItem('access_token');
+				localStorage.removeItem('refresh_token');
+				return Promise.reject(e);
 			}
 		}
-		
+
 		return Promise.reject(error);
 	}
 );
