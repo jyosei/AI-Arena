@@ -14,7 +14,6 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('auth', '0012_alter_user_first_name_max_length'),
-        ('forum', '0001_initial'),
     ]
 
     operations = [
@@ -49,21 +48,5 @@ class Migration(migrations.Migration):
                 ('objects', django.contrib.auth.models.UserManager()),
             ],
         ),
-        migrations.CreateModel(
-            name='Notification',
-            fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('action_type', models.CharField(choices=[('post_like', '帖子被点赞'), ('post_comment', '帖子收到评论'), ('comment_reply', '评论被回复'), ('comment_like', '评论被点赞'), ('post_favorite', '帖子被收藏')], max_length=32)),
-                ('is_read', models.BooleanField(default=False)),
-                ('created_at', models.DateTimeField(default=django.utils.timezone.now)),
-                ('actor', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='actions', to=settings.AUTH_USER_MODEL)),
-                ('comment', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to='forum.forumcomment')),
-                ('post', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to='forum.forumpost')),
-                ('recipient', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='notifications', to=settings.AUTH_USER_MODEL)),
-            ],
-            options={
-                'ordering': ['-created_at'],
-                'indexes': [models.Index(fields=['recipient', 'is_read'], name='users_notif_recipie_2469dd_idx'), models.Index(fields=['action_type'], name='users_notif_action__57f5d9_idx')],
-            },
-        ),
+        # Notification model moved to a later migration to avoid circular migration dependency with forum
     ]
