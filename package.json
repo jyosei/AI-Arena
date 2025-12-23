@@ -4,8 +4,8 @@
   "description": "My App",
   "main": "app.js",
   "scripts": {
-    "test": "node test-e2e.js",
-    "test:e2e": "node test-e2e.js",
+    "test": "node tests/test-e2e.js",
+    "test:e2e": "node tests/test-e2e.js",
     "test:backend": "cd backend && python manage.py test test_suite --verbosity=2",
     "test:backend:unit": "cd backend && python run_comprehensive_tests.py --unit",
     "test:backend:integration": "cd backend && python run_comprehensive_tests.py --integration",
