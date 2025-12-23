@@ -88,7 +88,7 @@ class ForumTagSerializer(serializers.ModelSerializer):
 
 class ForumAttachmentSerializer(serializers.ModelSerializer):
     url = serializers.SerializerMethodField()
-    file = serializers.ImageField(write_only=True, required=True)
+    file = serializers.FileField(write_only=True, required=True)
 
     class Meta:
         model = ForumAttachment
@@ -105,7 +105,9 @@ class ForumAttachmentSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "url", "width", "height", "content_type", "size", "created_at")
 
     def validate_file(self, value):
-        if not (getattr(value, "content_type", "") or "").startswith("image/"):
+        # Accept file uploads but prefer image content-types; keep size limit.
+        ct = (getattr(value, "content_type", "") or "")
+        if ct and not ct.startswith("image/"):
             raise serializers.ValidationError("仅支持上传图片文件。")
         if getattr(value, "size", 0) > 5 * 1024 * 1024:
             raise serializers.ValidationError("单张图片大小不能超过 5MB。")

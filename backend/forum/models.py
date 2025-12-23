@@ -3,6 +3,7 @@ from django.db import models
 from django.utils import timezone
 from django.utils.text import slugify
 from uuid import uuid4
+from django.db.models import F
 
 
 def forum_attachment_upload_to(instance, filename):
@@ -126,6 +127,12 @@ class ForumPost(models.Model):
         return self.title
 
     def save(self, *args, **kwargs):
+        is_create = not getattr(self, 'pk', None)
+
+        # Ensure initial created_at is set before save attempt (helps with fallback)
+        if is_create and not getattr(self, 'created_at', None):
+            self.created_at = timezone.now()
+
         if not self.slug:
             base_slug = slugify(self.title)[:50] or uuid4().hex[:8]
             slug_candidate = base_slug
@@ -136,7 +143,17 @@ class ForumPost(models.Model):
             self.slug = slug_candidate
         if not self.last_activity_at:
             self.last_activity_at = timezone.now()
+
         super().save(*args, **kwargs)
+
+        # After initial insert, ensure updated_at exactly matches created_at (avoid microsecond drift)
+        if is_create:
+            try:
+                ForumPost.objects.filter(pk=self.pk).update(updated_at=F('created_at'))
+                # Refresh instance value
+                self.updated_at = self.created_at
+            except Exception:
+                pass
 
 
 class ForumPostImage(models.Model):
