@@ -1,0 +1,34 @@
+Starting DB write capability test v3 (savepoint rollback)
+users: 45 46
+
+--- Testing app: users models count= 5
+
+Testing users.User
+  created id= 47
+
+Testing users.Notification
+  created id= 13
+
+Testing users.UserFollow
+  created UserFollow id= 2
+
+Testing users.PrivateChatThread
+  create failed generic: ValueError('无法创建与自己私聊的会话')
+
+Testing users.PrivateMessage
+  skipping, no rows for FK thread <class 'users.models.PrivateChatThread'>
+
+--- Testing app: models_manager models count= 9
+
+... (truncated) ...
+
+=== SUMMARY v3 ===
+Success: 20
+Skipped: 4
+Failed: 3
+Failures:
+ - ('users.PrivateChatThread', "ValueError('无法创建与自己私聊的会话')")
+ - ('forum.ForumPostFavorite', "IntegrityError(1062, \"Duplicate entry '2-1' for key 'forum_forumpostfavorite.post_id'\")")
+ - ('forum.ForumPostViewHistory', "IntegrityError(1062, \"Duplicate entry '2-1' for key 'forum_forumpostviewhistory.post_id'\")")
+
+Done
