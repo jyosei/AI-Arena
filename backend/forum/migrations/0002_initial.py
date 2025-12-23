@@ -15,11 +15,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AddField(
-            model_name='forumattachment',
-            name='uploader',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='forum_attachments', to=settings.AUTH_USER_MODEL),
-        ),
+        # `uploader` 已合并至 0001_initial 的 CreateModel 中，避免重复添加列导致迁移在已有数据库上失败。
         migrations.AddField(
             model_name='forumcomment',
             name='author',

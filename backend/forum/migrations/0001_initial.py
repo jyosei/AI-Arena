@@ -2,6 +2,8 @@
 
 import django.utils.timezone
 import forum.models
+import django.db.models.deletion
+from django.conf import settings
 from django.db import migrations, models
 
 
@@ -17,6 +19,7 @@ class Migration(migrations.Migration):
             name='ForumAttachment',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('uploader', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='forum_attachments', to=settings.AUTH_USER_MODEL)),
                 ('file', models.ImageField(upload_to=forum.models.forum_attachment_upload_to)),
                 ('content_type', models.CharField(blank=True, max_length=64)),
                 ('size', models.PositiveIntegerField(default=0)),
