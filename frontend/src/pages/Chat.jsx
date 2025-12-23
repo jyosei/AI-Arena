@@ -582,32 +582,27 @@ export default function ChatPage() {
       return;
     }
 
-    // Battle 模式
+    // Battle 模式 — 强制每次对战随机选择两个模型，避免继承上一次的选择
     if (mode === 'battle') {
-      let modelA = leftModel;
-      let modelB = rightModel;
-      
-      if (!modelA || !modelB) {
-        const requiredCapability = currentImage ? 'vision' : 'chat';
-        const filteredModels = models.filter(m => m.capabilities.includes(requiredCapability));
+      const requiredCapability = currentImage ? 'vision' : 'chat';
+      const filteredModels = models.filter(m => m.capabilities.includes(requiredCapability));
 
-        if (filteredModels.length < 2) {
-          antdMessage.error('当前模式下可用模型不足 (<2)，无法开始对战');
-          setLoading(false);
-          return;
-        }
-
-        const modelIndices = new Set();
-        while (modelIndices.size < 2) {
-          modelIndices.add(Math.floor(Math.random() * filteredModels.length));
-        }
-        const [indexA, indexB] = Array.from(modelIndices);
-        modelA = filteredModels[indexA].name;
-        modelB = filteredModels[indexB].name;
-        
-        setLeftModel(modelA);
-        setRightModel(modelB);
+      if (filteredModels.length < 2) {
+        antdMessage.error('当前模式下可用模型不足 (<2)，无法开始对战');
+        setLoading(false);
+        return;
       }
+
+      const modelIndices = new Set();
+      while (modelIndices.size < 2) {
+        modelIndices.add(Math.floor(Math.random() * filteredModels.length));
+      }
+      const [indexA, indexB] = Array.from(modelIndices);
+      const modelA = filteredModels[indexA].name;
+      const modelB = filteredModels[indexB].name;
+
+      // 注意：不要立即写回全局 left/right 模型以避免触发历史重载覆盖当前临时消息。
+      // 全局模型将在收到服务器响应或需要保持持久时再同步。
 
       setVoted(false);
       setBattleError(null);

@@ -750,9 +750,9 @@ html, body {
 }
 
 .aa-chat-bubble.me {
-  background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+  background: linear-gradient(135deg, #8C9EFF 0%, #8C9EFF 100%);
   color: #ffffff;
-  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.28);
+  box-shadow: 0 6px 14px rgba(140, 158, 255, 0.12);
 }
 
 .aa-chat-text {
@@ -795,9 +795,9 @@ html, body {
 }
 
 .aa-chat-input:focus {
-  border-color: #2563eb !important;
+  border-color: #8C9EFF !important;
   background: #fff !important;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1) !important;
+  box-shadow: 0 0 0 4px rgba(140, 158, 255, 0.08) !important;
 }
 
 .aa-chat-input::placeholder {
@@ -805,7 +805,7 @@ html, body {
 }
 
 .aa-chat-send-btn {
-  background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+  background: linear-gradient(135deg, #8C9EFF 0%, #8C9EFF 100%);
   border: none;
   border-radius: 8px;
   color: #fff;
@@ -813,8 +813,8 @@ html, body {
   padding: 8px 16px;
   height: auto;
   cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+  transition: all 0.18s ease;
+  box-shadow: 0 4px 10px rgba(140, 158, 255, 0.14);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -824,12 +824,12 @@ html, body {
 
 .aa-chat-send-btn:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35);
+  box-shadow: 0 6px 14px rgba(140, 158, 255, 0.18);
 }
 
 .aa-chat-send-btn:active:not(:disabled) {
   transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+  box-shadow: 0 2px 8px rgba(140, 158, 255, 0.12);
 }
 
 .aa-chat-send-btn:disabled {
