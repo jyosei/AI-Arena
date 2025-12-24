@@ -146,9 +146,17 @@ class RecordVoteView(APIView):
         prompt = request.data.get('prompt')
         winner = request.data.get('winner')
 
-        # --- 修改验证逻辑 ---
-        if not all([model_a, prompt, winner]):
-            return Response({'error': 'Missing required fields: model_a, prompt, winner'}, status=status.HTTP_400_BAD_REQUEST)
+        # --- 修改验证逻辑：如果缺少必需字段，记录请求体以便排查并返回明确的错误信息 ---
+        missing = [name for name, val in (('model_a', model_a), ('prompt', prompt), ('winner', winner)) if not val]
+        if missing:
+            # 记录详细请求数据（仅限调试用途）
+            import logging
+            logger = logging.getLogger(__name__)
+            try:
+                logger.warning('RecordVote missing fields %s. payload=%s', missing, dict(request.data))
+            except Exception:
+                logger.warning('RecordVote missing fields %s. (payload could not be serialized)', missing)
+            return Response({'error': f"Missing required fields: {', '.join(missing)}"}, status=status.HTTP_400_BAD_REQUEST)
 
         # 验证 winner 的值是否有效，并兼容前端的 'bad'/'good' 语义
         # 允许 model_b 为 None 的情况（direct-chat 模式）

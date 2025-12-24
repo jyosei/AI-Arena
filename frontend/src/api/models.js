@@ -82,10 +82,20 @@ export const recordVote = (data) => {
   const truncatedPrompt = data.prompt && data.prompt.length > 500 
     ? data.prompt.substring(0, 500) 
     : data.prompt;
+  // 客户端校验：确保必须字段存在
+  if (!data || !data.model_a) {
+    return Promise.reject(new Error('缺少参数: model_a'));
+  }
+  if (!truncatedPrompt || typeof truncatedPrompt !== 'string' || !truncatedPrompt.trim()) {
+    return Promise.reject(new Error('缺少参数: prompt'));
+  }
+  if (!data.winner) {
+    return Promise.reject(new Error('缺少参数: winner'));
+  }
 
   const payload = {
     model_a: data.model_a,
-    model_b: data.model_b,
+    model_b: data.model_b || null,
     prompt: truncatedPrompt, // 使用截断后的 prompt
     winner: data.winner,
   };

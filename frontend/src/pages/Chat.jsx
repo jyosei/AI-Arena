@@ -691,7 +691,12 @@ export default function ChatPage() {
       antdMessage.error('无法确定参与对战的模型名称。请重新开始对战。');
       return;
     }
-    const normalizedWinner = winnerChoice === 'bad' ? 'both_bad' : winnerChoice;
+    // 如果传入 'left'/'right'，将其映射为实际模型名
+    let resolvedWinner = winnerChoice;
+    if (winnerChoice === 'left') resolvedWinner = modelAName;
+    else if (winnerChoice === 'right') resolvedWinner = modelBName;
+
+    const normalizedWinner = resolvedWinner === 'bad' ? 'both_bad' : resolvedWinner;
 
     const voteData = {
       model_a: modelAName,
@@ -883,11 +888,11 @@ export default function ChatPage() {
         <div style={{ marginTop: 12, textAlign: 'center' }}>
           {battleError && <Alert message={battleError} type="error" closable onClose={() => setBattleError(null)} style={{ marginBottom: 8 }} />}
           <Title level={5}>哪个模型的回答更好？</Title>
-          <Space wrap size={[8,8]} style={{ justifyContent: 'center' }}>
-            <Button style={{ minWidth: 120 }} onClick={() => handleVote(leftModel)} disabled={voted}>← 左边更好</Button>
+            <Space wrap size={[8,8]} style={{ justifyContent: 'center' }}>
+            <Button style={{ minWidth: 120 }} onClick={() => handleVote('left')} disabled={voted}>← 左边更好</Button>
             <Button style={{ minWidth: 120 }} onClick={() => handleVote('tie')} disabled={voted}>不分上下</Button>
             <Button style={{ minWidth: 120 }} onClick={() => handleVote('bad')} disabled={voted}>都很差</Button>
-            <Button style={{ minWidth: 120 }} onClick={() => handleVote(rightModel)} disabled={voted}>→ 右边更好</Button>
+            <Button style={{ minWidth: 120 }} onClick={() => handleVote('right')} disabled={voted}>→ 右边更好</Button>
           </Space>
         </div>
       )}
