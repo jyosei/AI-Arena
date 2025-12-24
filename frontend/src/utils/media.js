@@ -83,5 +83,5 @@ export function getPublicOrigin() {
   } catch (_) {}
   
   // 最后的降级方案
-  return '';
+  return 'http://82.157.56.206';
 }
