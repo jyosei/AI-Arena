@@ -146,12 +146,18 @@ class FollowView(APIView):
                 except ValueError:
                     pass
 
-        return Response({'following': True, 'mutual': mutual})
+        # 如果是新建关注，返回 201 Created；否则返回 200 OK
+        status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        return Response({'following': True, 'mutual': mutual}, status=status_code)
 
     def delete(self, request, user_id):
         target = get_object_or_404(User, pk=user_id)
-        UserFollow.objects.filter(follower=request.user, following=target).delete()
-        return Response({'following': False, 'mutual': False})
+        # 删除关注关系，按测试预期在成功删除时返回 204 No Content
+        deleted, _ = UserFollow.objects.filter(follower=request.user, following=target).delete()
+        if deleted:
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        # 如果没有关系存在，仍然返回 404 以和测试兼容
+        return Response({'detail': '关注关系不存在'}, status=status.HTTP_404_NOT_FOUND)
 
 
 class FollowListView(APIView):

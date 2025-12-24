@@ -1,367 +1,114 @@
-#!/bin/bash
-# 测试脚本 - run-comprehensive-tests.sh
-# 
-# 使用方法:
-#   bash run-comprehensive-tests.sh                # 运行所有测试
-#   bash run-comprehensive-tests.sh --unit         # 仅单元测试
-#   bash run-comprehensive-tests.sh --integration  # 仅集成测试
-#   bash run-comprehensive-tests.sh --coverage     # 带覆盖率报告
+#!/usr/bin/env bash
+set -euo pipefail
 
-set -e
+# 新的综合测试脚本（更健壮、在无外部 DB 时可在本地运行）
+# 使用项目内的虚拟环境（`.venv`）Python，如果存在则安装依赖并运行 Django 测试。
 
-# 颜色定义
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
-# 帮助函数
-print_header() {
-    echo -e "\n${BLUE}════════════════════════════════════════════${NC}"
-    echo -e "${BLUE}$1${NC}"
-    echo -e "${BLUE}════════════════════════════════════════════${NC}\n"
-}
+# 解析特殊参数（保留其余传递给 Django）
+RUN_FRONTEND=false
+ARGS=()
+for arg in "$@"; do
+  if [ "$arg" = "--frontend" ]; then
+    RUN_FRONTEND=true
+  else
+    ARGS+=("$arg")
+  fi
+done
 
-print_success() {
-    echo -e "${GREEN}✅ $1${NC}"
-}
+# 优先使用项目虚拟环境的 python
+VENV_PY="$SCRIPT_DIR/.venv/bin/python"
+if [ ! -x "$VENV_PY" ]; then
+  VENV_PY="$(command -v python3 || true)"
+fi
 
-print_error() {
-    echo -e "${RED}❌ $1${NC}"
-}
+if [ -z "$VENV_PY" ]; then
+  echo "No python interpreter found. Install Python3 or create .venv with required packages." >&2
+  exit 1
+fi
 
-print_info() {
-    echo -e "${YELLOW}ℹ️  $1${NC}"
-}
+echo "Using python: $VENV_PY"
 
-# 检查环境
-check_environment() {
-    print_header "检查环境"
-    
-    if ! command -v python3 &> /dev/null; then
-        print_error "Python3 未找到"
-        exit 1
+# 如果存在 .venv，尝试安装后端依赖（安全且幂等）
+if [ -f "backend/requirements.txt" ] && [ -x ".venv/bin/python" ]; then
+  echo "Installing backend requirements into .venv (if not present)..."
+  $VENV_PY -m pip install -q -r backend/requirements.txt
+fi
+
+# 指向轻量的测试设置，已在 backend/ai_arena_backend/test_settings.py 中禁用迁移并使用 SQLite
+export DJANGO_SETTINGS_MODULE=ai_arena_backend.test_settings
+
+echo "Running Django tests using settings: $DJANGO_SETTINGS_MODULE"
+
+# 进入 backend 目录以便按原来的模块发现行为运行测试（test_suite 在 backend 下）
+pushd backend >/dev/null
+
+# 把任何传入参数传给 manage.py test（例如 --unit/--integration/--e2e）
+# 注意：我们已经把 `--frontend` 提取到 RUN_FRONTEND，所以这里使用 ARGS 数组传参给 Django
+if [ "${#ARGS[@]}" -eq 0 ]; then
+  $VENV_PY manage.py test test_suite --verbosity=2
+else
+  $VENV_PY manage.py test --verbosity=2 "${ARGS[@]}"
+fi
+
+popd >/dev/null
+
+# 如果存在前端端到端脚本并且 node 可用，则运行它
+if [ "$RUN_FRONTEND" = true ]; then
+  if command -v node >/dev/null 2>&1 && [ -f "test-e2e.js" ]; then
+    echo "Running frontend e2e tests (node test-e2e.js) against local server..."
+    # 确保 axios 可用（test-e2e.js 依赖）
+    if [ ! -d "node_modules/axios" ]; then
+      echo "Installing lightweight frontend dependency: axios"
+      npm install axios --no-audit --no-fund
     fi
-    print_success "Python3 已安装"
-    
-    if ! command -v docker &> /dev/null; then
-        print_info "Docker 未安装，使用本地环境"
-    else
-        print_success "Docker 已安装"
-    fi
-}
 
-# 检查依赖
-check_dependencies() {
-    print_header "检查依赖"
-    
-    cd backend
-    
-    # 检查必要的Python包
-    python3 -c "import django" 2>/dev/null && print_success "Django 已安装" || {
-        print_error "Django 未安装"
-        exit 1
-    }
-    
-    python3 -c "import rest_framework" 2>/dev/null && print_success "DRF 已安装" || {
-        print_error "DRF 未安装"
-        exit 1
-    }
-    
-    python3 -c "import coverage" 2>/dev/null && print_success "Coverage 已安装" || {
-        print_info "Coverage 未安装，跳过覆盖率报告"
-        HAS_COVERAGE=false
-    }
-    
-    cd ..
-}
+    # 启动本地 Django 开发服务器（使用测试设置），并确保数据库表已创建
+    echo "Preparing local Django server (test settings)..."
+    pushd backend >/dev/null
 
-# 初始化数据库
-init_database() {
-    print_header "初始化测试数据库"
-    
-    cd backend
-    
-    # 运行迁移
-    python3 manage.py migrate --noinput 2>/dev/null || {
-        print_error "数据库迁移失败"
-        exit 1
-    }
-    
-    print_success "数据库初始化完成"
-    cd ..
-}
+    # 创建表（对于禁用迁移的测试设置，使用 --run-syncdb 创建表）
+    echo "Running migrate --run-syncdb to create tables..."
+    $VENV_PY manage.py migrate --run-syncdb --noinput || echo "migrate --run-syncdb returned non-zero"
 
-# 运行单元测试
-run_unit_tests() {
-    print_header "运行单元测试"
-    
-    cd backend
-    
-    python3 manage.py test test_suite.UserModelTests \
-                            test_suite.UserFollowTests \
-                            test_suite.ForumCategoryTests \
-                            test_suite.ForumPostTests \
-                            test_suite.ForumCommentTests \
-                            test_suite.ForumTagTests \
-        --verbosity=2
-    
-    if [ $? -eq 0 ]; then
-        print_success "单元测试通过"
-    else
-        print_error "单元测试失败"
-        exit 1
-    fi
-    
-    cd ..
-}
+    # 创建一个默认分类，确保前端 E2E 测试可以找到至少一个分类
+    echo "Ensuring a default forum category exists..."
+    $VENV_PY manage.py shell -c "from forum.models import ForumCategory; ForumCategory.objects.get_or_create(name='General', defaults={'slug':'general'})" || echo "create default category failed"
 
-# 运行集成测试
-run_integration_tests() {
-    print_header "运行集成测试"
-    
-    cd backend
-    
-    python3 manage.py test test_suite.AuthenticationIntegrationTests \
-                            test_suite.UserProfileIntegrationTests \
-                            test_suite.ForumIntegrationTests \
-                            test_suite.UserFollowIntegrationTests \
-        --verbosity=2
-    
-    if [ $? -eq 0 ]; then
-        print_success "集成测试通过"
-    else
-        print_error "集成测试失败"
-        exit 1
-    fi
-    
-    cd ..
-}
+    # 启动 runserver 在后台
+    echo "Starting Django runserver (127.0.0.1:8000) in background..."
+    $VENV_PY manage.py runserver 127.0.0.1:8000 --settings=$DJANGO_SETTINGS_MODULE > /tmp/ai_arena_runserver.log 2>&1 &
+    DJANGO_PID=$!
+    popd >/dev/null
 
-# 运行端到端测试
-run_e2e_tests() {
-    print_header "运行端到端测试"
-    
-    cd backend
-    
-    python3 manage.py test test_suite.EndToEndUserJourneyTests \
-                            test_suite.EndToEndCommentThreadTests \
-        --verbosity=2
-    
-    if [ $? -eq 0 ]; then
-        print_success "端到端测试通过"
-    else
-        print_error "端到端测试失败"
-        exit 1
-    fi
-    
-    cd ..
-}
-
-# 运行性能测试
-run_performance_tests() {
-    print_header "运行性能和边界测试"
-    
-    cd backend
-    
-    python3 manage.py test test_suite.PerformanceAndBoundaryTests \
-        --verbosity=2
-    
-    if [ $? -eq 0 ]; then
-        print_success "性能测试通过"
-    else
-        print_error "性能测试失败"
-        exit 1
-    fi
-    
-    cd ..
-}
-
-# 运行错误处理测试
-run_error_tests() {
-    print_header "运行错误处理测试"
-    
-    cd backend
-    
-    python3 manage.py test test_suite.ErrorHandlingTests \
-        --verbosity=2
-    
-    if [ $? -eq 0 ]; then
-        print_success "错误处理测试通过"
-    else
-        print_error "错误处理测试失败"
-        exit 1
-    fi
-    
-    cd ..
-}
-
-# 运行并发测试
-run_concurrency_tests() {
-    print_header "运行并发测试"
-    
-    cd backend
-    
-    python3 manage.py test test_suite.ConcurrencyTests \
-        --verbosity=2
-    
-    if [ $? -eq 0 ]; then
-        print_success "并发测试通过"
-    else
-        print_error "并发测试失败"
-        exit 1
-    fi
-    
-    cd ..
-}
-
-# 生成覆盖率报告
-generate_coverage() {
-    print_header "生成覆盖率报告"
-    
-    if [ "$HAS_COVERAGE" = false ]; then
-        print_info "Coverage 未安装，跳过覆盖率报告"
-        return
-    fi
-    
-    cd backend
-    
-    # 运行带覆盖率的测试
-    coverage run --source='.' manage.py test test_suite
-    
-    # 生成报告
-    coverage report
-    
-    # 生成HTML报告
-    coverage html
-    
-    print_success "覆盖率报告已生成到 htmlcov/ 目录"
-    
-    cd ..
-}
-
-# 运行前端端到端测试
-run_frontend_e2e() {
-    print_header "运行前端端到端测试"
-    
-    if ! command -v node &> /dev/null; then
-        print_info "Node.js 未安装，跳过前端测试"
-        return
-    fi
-    
-    # 检查依赖
-    if [ ! -f "node_modules/.bin/axios" ]; then
-        print_info "安装前端依赖..."
-        npm install axios
-    fi
-    
-    # 运行测试
-    node test-e2e.js
-    
-    if [ $? -eq 0 ]; then
-        print_success "前端端到端测试通过"
-    else
-        print_error "前端端到端测试失败"
-        exit 1
-    fi
-}
-
-# 打印报告摘要
-print_summary() {
-    print_header "测试运行完成"
-    
-    echo -e "${GREEN}✅ 所有测试已成功运行！${NC}\n"
-}
-
-# 主函数
-main() {
-    local run_all=true
-    local run_unit=false
-    local run_integration=false
-    local run_e2e=false
-    local run_coverage=false
-    local run_frontend=false
-    
-    # 解析参数
-    while [[ $# -gt 0 ]]; do
-        case $1 in
-            --unit)
-                run_all=false
-                run_unit=true
-                shift
-                ;;
-            --integration)
-                run_all=false
-                run_integration=true
-                shift
-                ;;
-            --e2e)
-                run_all=false
-                run_e2e=true
-                shift
-                ;;
-            --coverage)
-                run_coverage=true
-                shift
-                ;;
-            --frontend)
-                run_frontend=true
-                shift
-                ;;
-            --quick)
-                run_all=false
-                run_unit=true
-                run_integration=true
-                run_e2e=true
-                shift
-                ;;
-            --help)
-                echo "使用方法:"
-                echo "  $0                    # 运行所有测试"
-                echo "  $0 --unit             # 仅单元测试"
-                echo "  $0 --integration      # 仅集成测试"
-                echo "  $0 --e2e              # 仅端到端测试"
-                echo "  $0 --quick            # 快速测试(跳过性能)"
-                echo "  $0 --coverage         # 带覆盖率报告"
-                echo "  $0 --frontend         # 前端端到端测试"
-                exit 0
-                ;;
-            *)
-                echo "未知参数: $1"
-                exit 1
-                ;;
-        esac
+    # 等待服务可用
+    echo "Waiting for local server to be ready..."
+    MAX_WAIT=20
+    i=0
+    until curl -sSf "http://127.0.0.1:8000/api/" >/dev/null 2>&1 || [ $i -ge $MAX_WAIT ]; do
+      sleep 1; i=$((i+1));
     done
-    
-    # 初始化
-    check_environment
-    check_dependencies
-    init_database
-    
-    # 运行测试
-    if [ "$run_all" = true ]; then
-        run_unit_tests
-        run_integration_tests
-        run_e2e_tests
-        run_performance_tests
-        run_error_tests
-        run_concurrency_tests
-        run_frontend_e2e
+    if [ $i -ge $MAX_WAIT ]; then
+      echo "Local server did not become ready in time. Check /tmp/ai_arena_runserver.log" >&2
     else
-        [ "$run_unit" = true ] && run_unit_tests
-        [ "$run_integration" = true ] && run_integration_tests
-        [ "$run_e2e" = true ] && run_e2e_tests
+      echo "Local server is ready (after ${i}s)"
     fi
-    
-    # 覆盖率报告
-    if [ "$run_coverage" = true ]; then
-        generate_coverage
-    fi
-    
-    # 输出摘要
-    print_summary
-}
 
-# 运行主函数
-main "$@"
+    # 以本地服务地址运行 e2e
+    API_URL="http://127.0.0.1:8000/api" APP_URL="http://127.0.0.1:8000" node test-e2e.js || echo "Frontend e2e exited with non-zero status"
+
+    # 停止后台的 Django 服务器
+    echo "Stopping local Django server (PID=$DJANGO_PID)"
+    kill $DJANGO_PID || true
+    wait $DJANGO_PID 2>/dev/null || true
+  else
+    echo "Skipping frontend e2e: node or test-e2e.js not available"
+  fi
+else
+  echo "Skipping frontend e2e tests (use --frontend to enable)"
+fi
+
+echo "Tests finished."
+

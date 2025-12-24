@@ -296,8 +296,8 @@ class ForumPostViewSet(viewsets.ModelViewSet):
 
     @method_decorator(never_cache)
     def retrieve(self, request, *args, **kwargs):
-        pk = kwargs["pk"]
-        instance = self.get_queryset().get(pk=pk)
+        # 使用 DRF 的对象解析以便正确返回 404 而不是未捕获的异常
+        instance = self.get_object()
         # 记录浏览历史
         if request.user.is_authenticated:
             try:
@@ -476,9 +476,20 @@ class ForumPostViewSet(viewsets.ModelViewSet):
         headers = self.get_success_headers(detail_serializer.data)
         return Response(detail_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
-    @action(detail=True, methods=["post"], url_path="like")
+    @action(detail=True, methods=["post", "delete"], url_path="like")
     def like(self, request, pk=None):
         post = self.get_object()
+        # 支持 DELETE 方法以便客户端直接取消点赞
+        if request.method.lower() == "delete":
+            # 尝试删除旧的 Like 模型记录；回退到 Reaction
+            if ForumPostLike is not None:
+                ForumPostLike.objects.filter(post=post, user=request.user).delete()
+                # 测试期望取消点赞返回 204/405，为兼容性返回 204 No Content
+                return Response(status=status.HTTP_204_NO_CONTENT)
+            if ForumPostReaction is not None:
+                ForumPostReaction.objects.filter(post=post, user=request.user, reaction_type="like").delete()
+                return Response(status=status.HTTP_204_NO_CONTENT)
+            return Response({"detail": "Like 模型不可用"}, status=status.HTTP_400_BAD_REQUEST)
         # 尝试旧的 Like 模型；回退到 Reaction
         if ForumPostLike is not None:
             like, created = ForumPostLike.objects.get_or_create(post=post, user=request.user)
