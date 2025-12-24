@@ -78,7 +78,11 @@ export function getPublicOrigin() {
   
   try {
     if (typeof window !== 'undefined' && window.location && window.location.origin) {
-      return window.location.origin;
+      const loc = window.location.origin;
+      // 避免在本地/内网地址时返回 localhost，改用 fallback
+      if (!/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/i.test(loc)) {
+        return loc.replace(/\/$/, '');
+      }
     }
   } catch (_) {}
   

@@ -38,8 +38,13 @@
   </head>
   <body>
     <script>
-      // Simple global error overlay to surface runtime JS errors during debugging.
+      // Simple global error overlay to surface runtime JS errors during本地开发。
+      // 线上环境关闭，避免演示时的“root element mounted…”提示。
       (function(){
+        var enableOverlay = ['localhost','127.0.0.1','0.0.0.0'].includes(window.location.hostname);
+        if(!enableOverlay){
+          return;
+        }
         function showError(message, stack){
           try{
             var id = 'debug-error-overlay';
