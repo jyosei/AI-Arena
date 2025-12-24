@@ -86,6 +86,6 @@ export function getPublicOrigin() {
     }
   } catch (_) {}
   
-  // 最后的降级方案
-  return 'http://82.157.56.206';
+  // 最后的降级方案（包含端口 8000）
+  return 'http://82.157.56.206:8000';
 }
