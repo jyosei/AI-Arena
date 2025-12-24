@@ -70,6 +70,7 @@ from .serializers import (
     PostReactionSerializer,
     CommentReactionSerializer,
 )
+from django.conf import settings
 
 
 class ForumPostPagination(PageNumberPagination):
@@ -647,10 +648,19 @@ class ForumPostViewSet(viewsets.ModelViewSet):
         if qrcode is None:
             return Response({"detail": "未安装 qrcode 库，无法生成二维码"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         post = self.get_object()
-        # 构建分享链接
-        host = request.get_host()
-        protocol = 'https' if request.is_secure() else 'http'
-        share_url = f"{protocol}://{host}/forum/post/{post.id}"
+        # 构建分享链接：优先使用 settings.FRONTEND_URL（部署时应设置为公开域名），
+        # 回退到请求的 host 与协议（兼容旧环境或测试环境）。
+        try:
+            frontend = getattr(settings, 'FRONTEND_URL', '') or ''
+            if isinstance(frontend, str) and frontend.strip():
+                frontend = frontend.strip().rstrip('/')
+                share_url = f"{frontend}/forum/post/{post.id}"
+            else:
+                raise ValueError('no frontend')
+        except Exception:
+            host = request.get_host()
+            protocol = 'https' if request.is_secure() else 'http'
+            share_url = f"{protocol}://{host}/forum/post/{post.id}"
         
         # 生成二维码
         qr = qrcode.QRCode(

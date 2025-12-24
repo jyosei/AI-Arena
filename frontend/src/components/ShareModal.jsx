@@ -8,6 +8,28 @@ const { Text, Title } = Typography;
 export default function ShareModal({ visible, onClose, shareUrl, title }) {
   const [downloading, setDownloading] = useState(false);
 
+  // 规范化分享链接：将可能出现的内网/IP/localhost 回退替换为对外域名
+  const normalizeShareUrl = (url) => {
+    if (!url || typeof url !== 'string') return url;
+    try {
+      // 去掉多余空白
+      let s = url.trim();
+      // 如果已经以域名开头，直接返回（兼容 https/http）
+      if (/^https?:\/\/www\.ai-arena\.cn/i.test(s)) {
+        return s.replace(/\/$/, '');
+      }
+      // 替换常见的内网/本地地址为正式域名
+      s = s.replace(/^https?:\/\/localhost(:\d+)?/i, 'http://www.ai-arena.cn');
+      s = s.replace(/^https?:\/\/127\.0\.0\.1(:\d+)?/i, 'http://www.ai-arena.cn');
+      s = s.replace(/^https?:\/\/0\.0\.0\.0(:\d+)?/i, 'http://www.ai-arena.cn');
+      s = s.replace(/^https?:\/\/82\.157\.56\.206(:\d+)?/i, 'http://www.ai-arena.cn');
+      // 最终确保无尾斜杠
+      return s.replace(/\/$/, '');
+    } catch (e) {
+      return url;
+    }
+  };
+
   const handleCopyLink = () => {
     // 在非安全上下文 (http 公网 IP) 下 clipboard API 可能不可用，做降级处理
     try {
@@ -113,7 +135,7 @@ export default function ShareModal({ visible, onClose, shareUrl, title }) {
         }}>
           <QRCodeSVG 
             id="share-qrcode"
-            value={shareUrl} 
+            value={normalizeShareUrl(shareUrl)} 
             size={240}
             level="H"
             includeMargin={true}
@@ -134,7 +156,7 @@ export default function ShareModal({ visible, onClose, shareUrl, title }) {
               wordBreak: 'break-all',
               fontSize: '14px'
             }}>
-              {shareUrl}
+              {normalizeShareUrl(shareUrl)}
             </div>
           </div>
 
@@ -143,13 +165,13 @@ export default function ShareModal({ visible, onClose, shareUrl, title }) {
             <Button 
               type="primary" 
               icon={<CopyOutlined />}
-              onClick={handleCopyLink}
+                onClick={() => handleCopyLink(normalizeShareUrl(shareUrl))}
             >
               复制链接
             </Button>
             <Button 
               icon={<DownloadOutlined />}
-              onClick={handleDownloadQR}
+                onClick={() => handleDownloadQR(normalizeShareUrl(shareUrl))}
               loading={downloading}
             >
               下载二维码

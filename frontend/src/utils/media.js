@@ -75,17 +75,7 @@ export function getPublicOrigin() {
       return v.replace(/\/$/, '');
     }
   } catch (_) {}
-  
-  try {
-    if (typeof window !== 'undefined' && window.location && window.location.origin) {
-      const loc = window.location.origin;
-      // 避免在本地/内网地址时返回 localhost，改用 fallback
-      if (!/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/i.test(loc)) {
-        return loc.replace(/\/$/, '');
-      }
-    }
-  } catch (_) {}
-  
-  // 最后的降级方案（使用对外正式 IP）
+  // 不再使用运行时的 window.location.origin 回退（可能带入内网或服务器 IP），
+  // 最终降级到正式域名以保证分享链接始终使用对外域名。
   return 'http://www.ai-arena.cn';
 }
