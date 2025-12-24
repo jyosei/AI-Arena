@@ -31,10 +31,12 @@ services:
       # GitHub OAuth 配置 (将占位值替换成你的实际应用配置)
       GITHUB_CLIENT_ID: 'Ov23li8J7zm7OnqPEL02'
       GITHUB_CLIENT_SECRET: '8eb5be5e9ddd980a53a3cbe83320cb5921c7be8c'
-      # GitHub OAuth 回调必须指向后端 API 路由
-      # 确保 GitHub OAuth App 的回调设置与此一致
-      GITHUB_REDIRECT_URI: 'http://82.157.56.206/api/users/github/callback/'
-      FRONTEND_URL: 'http://82.157.56.206'
+      # GitHub OAuth 配置（推荐前端回调或后端回调需与 GitHub 控制台一致）
+      # 确保 GitHub OAuth App 的回调设置与此完全一致（包括 scheme、主机、路径和尾斜杠）
+      GITHUB_REDIRECT_URI: 'http://www.ai-arena.cn/api/users/github/callback/'
+      FRONTEND_URL: 'http://www.ai-arena.cn'
+      # 如果要使用前端回调，请把 GITHUB_REDIRECT_URI 改为
+      # 'http://www.ai-arena.cn/login/github/callback' 并在 GitHub 控制台中同步修改
     # 关键修改：
     # 1. 使用 bash -c 来确保脚本由 bash 执行
     # 2. 确保 wait-for-db.sh 脚本在本地 ./backend 文件夹中存在
