@@ -230,7 +230,7 @@ run_api_tests() {
     
     # 检查 API 服务是否运行
     print_info "检查 API 服务状态..."
-    if curl -s http://localhost:8000/api/health/ > /dev/null 2>&1; then
+    if curl -s http://82.157.56.206/api/health/ > /dev/null 2>&1; then
         print_success "API 服务运行正常"
     else
         print_warning "API 服务未运行，跳过集成测试"

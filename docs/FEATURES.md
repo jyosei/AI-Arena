@@ -103,7 +103,7 @@ POST   /api/auth/wechat/               # 微信 OAuth
 
 **注册新用户**:
 ```bash
-curl -X POST http://localhost:8000/api/users/register/ \
+curl -X POST http://82.157.56.206/api/users/register/ \
   -H "Content-Type: application/json" \
   -d '{
     "username": "john_doe",
@@ -114,7 +114,7 @@ curl -X POST http://localhost:8000/api/users/register/ \
 
 **微信登录**:
 ```bash
-curl -X POST http://localhost:8000/api/auth/wechat/ \
+curl -X POST http://82.157.56.206/api/auth/wechat/ \
   -H "Content-Type: application/json" \
   -d '{
     "code": "wechat_auth_code"
@@ -426,7 +426,7 @@ POST   /api/messages/{id}/export/      # 导出消息
 
 **创建对话**:
 ```bash
-curl -X POST http://localhost:8000/api/conversations/ \
+curl -X POST http://82.157.56.206/api/conversations/ \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -438,7 +438,7 @@ curl -X POST http://localhost:8000/api/conversations/ \
 
 **发送消息**:
 ```bash
-curl -X POST http://localhost:8000/api/conversations/1/messages/ \
+curl -X POST http://82.157.56.206/api/conversations/1/messages/ \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -720,7 +720,7 @@ POST   /api/test-results/export/       # 导出测试报告
 
 **创建测试**:
 ```bash
-curl -X POST http://localhost:8000/api/models/1/test-results/ \
+curl -X POST http://82.157.56.206/api/models/1/test-results/ \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{

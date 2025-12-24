@@ -45,9 +45,9 @@ docker-compose exec backend python manage.py createsuperuser
 ```
 
 **访问应用**:
-- 前端: http://localhost:3000
-- 后端 API: http://localhost:8000
-- Admin: http://localhost:8000/admin
+- 前端: http://82.157.56.206
+- 后端 API: http://82.157.56.206
+- Admin: http://82.157.56.206/admin
 - 数据库: localhost:3306
 
 ### 本地开发 (不用 Docker)
@@ -100,7 +100,7 @@ npm run dev
 # Django 设置
 DEBUG=True
 SECRET_KEY=your-secret-key-here
-ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0
+ALLOWED_HOSTS=82.157.56.206,127.0.0.1,0.0.0.0
 
 # 数据库
 DATABASE_ENGINE=django.db.backends.mysql
@@ -125,7 +125,7 @@ OPENAI_API_KEY=your-openai-key
 ANTHROPIC_API_KEY=your-anthropic-key
 
 # CORS
-CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+CORS_ALLOWED_ORIGINS=http://82.157.56.206,http://localhost:5173
 ```
 
 #### 依赖安装
@@ -169,7 +169,7 @@ python database_health_check.py
 
 ```bash
 # API 地址
-VITE_API_BASE_URL=http://localhost:8000/api
+VITE_API_BASE_URL=http://82.157.56.206/api
 
 # 应用信息
 VITE_APP_NAME=AI Arena
@@ -735,7 +735,7 @@ export default usePost;
 import axios from 'axios';
 
 const apiClient = axios.create({
-  baseURL: process.env.VITE_API_BASE_URL || 'http://localhost:8000/api',
+  baseURL: process.env.VITE_API_BASE_URL || 'http://82.157.56.206/api',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -1019,9 +1019,8 @@ npm run build
 # backend/ai_arena_backend/settings.py
 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "http://127.0.0.1:3000",
+  "http://82.157.56.206",
+  "http://127.0.0.1:3000",
 ]
 
 # 或允许所有来源 (仅开发时)

@@ -84,7 +84,7 @@ GROUP BY test_type;
 
 ```bash
 # 创建新的测试结果
-curl -X POST http://localhost:8000/api/models/1/test-results/ \
+curl -X POST http://82.157.56.206/api/models/1/test-results/ \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -246,7 +246,7 @@ ORDER BY date DESC;
 
 ```bash
 # 创建新的排行榜快照
-curl -X POST http://localhost:8000/api/leaderboard-snapshots/ \
+curl -X POST http://82.157.56.206/api/leaderboard-snapshots/ \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{

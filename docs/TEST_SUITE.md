@@ -316,7 +316,7 @@ describe('AI 对话 - 发送消息', () => {
 describe('页面加载性能', () => {
   it('首页应该在 2 秒内加载完成', async () => {
     const start = performance.now();
-    await page.goto('http://localhost:3000');
+    await page.goto('http://82.157.56.206');
     const end = performance.now();
     expect(end - start).toBeLessThan(2000);
   });
@@ -1327,7 +1327,7 @@ scripts\run-tests.bat performance  REM 只运行性能测试
 2. **Postman 集合测试** - 运行 Postman 自动化测试 (如果配置了)
 
 **前置条件**:
-- 后端 API 服务运行在 http://localhost:8000
+- 后端 API 服务运行在 http://82.157.56.206
 
 #### Docker 测试 (docker)
 

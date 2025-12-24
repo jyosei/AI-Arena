@@ -86,6 +86,6 @@ export function getPublicOrigin() {
     }
   } catch (_) {}
   
-  // 最后的降级方案（使用 HTTP 默认端口 80）
+  // 最后的降级方案（使用对外正式 IP）
   return 'http://82.157.56.206';
 }

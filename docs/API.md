@@ -6,7 +6,7 @@ AI-Arena 后端 API 接口文档
 
 ## 基础信息
 
-- **Base URL**: `http://localhost:8000/api/`
+-- **Base URL**: `http://82.157.56.206/api/`
 - **认证方式**: JWT (JSON Web Token)
 - **Content-Type**: `application/json`
 
@@ -92,7 +92,7 @@ Authorization: Bearer <access_token>
   "email": "test@example.com",
   "description": "个人简介",
   "avatar": "/media/users/avatars/avatar.jpg",
-  "avatar_url": "http://localhost:8000/media/users/avatars/avatar.jpg",
+  "avatar_url": "http://82.157.56.206/media/users/avatars/avatar.jpg",
   "is_staff": false
 }
 ```
@@ -213,7 +213,7 @@ Authorization: Bearer <access_token>
 ```json
 {
   "count": 100,
-  "next": "http://localhost:8000/api/forum/posts/?page=2",
+  "next": "http://82.157.56.206/api/forum/posts/?page=2",
   "previous": null,
   "results": [
     {

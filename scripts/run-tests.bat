@@ -247,7 +247,7 @@ REM ############################################################################
     call :print_info "检查 API 服务状态..."
     
     REM 尝试连接 API
-    powershell -Command "try { Invoke-WebRequest -Uri 'http://localhost:8000/api/health/' -TimeoutSec 5 } catch { exit 1 }" >nul 2>&1
+    powershell -Command "try { Invoke-WebRequest -Uri 'http://82.157.56.206/api/health/' -TimeoutSec 5 } catch { exit 1 }" >nul 2>&1
     if errorlevel 1 (
         call :print_warning "API 服务未运行，跳过集成测试"
         exit /b 0

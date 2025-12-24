@@ -14,8 +14,8 @@
 const axios = require('axios');
 
 // API基础URL
-const API_BASE_URL = process.env.API_URL || 'http://localhost:8000/api';
-const APP_BASE_URL = process.env.APP_URL || 'http://localhost:5173';
+const API_BASE_URL = process.env.API_URL || 'http://82.157.56.206/api';
+const APP_BASE_URL = process.env.APP_URL || 'http://82.157.56.206';
 
 // 测试用户凭证
 const TEST_USER = {

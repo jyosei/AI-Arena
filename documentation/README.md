@@ -65,8 +65,8 @@ docker compose up --build -d
 ```
 
 服务启动后：
-- 前端：http://localhost:8000
-- 后端 API：http://localhost:8000/api/
+- 前端：http://82.157.56.206
+- 后端 API：http://82.157.56.206/api/
 - 数据库：localhost:3306
 
 ### 4. 初始化数据（可选）
@@ -77,7 +77,7 @@ docker compose up --build -d
 docker exec -it ai-arena-backend-1 python manage.py createsuperuser
 ```
 
-访问 Django 管理后台：http://localhost:8000/admin/
+访问 Django 管理后台：http://82.157.56.206/admin/
 
 ### 5. 停止服务
 

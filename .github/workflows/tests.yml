@@ -134,8 +134,8 @@ jobs:
     - name: 运行前端端到端测试
       run: node test-e2e.js
       env:
-        API_URL: http://localhost:8000/api
-        APP_URL: http://localhost:5173
+        API_URL: http://82.157.56.206/api
+        APP_URL: http://82.157.56.206
       continue-on-error: true  # 前端测试失败不中断整个流程
 
   integration-tests:

@@ -198,21 +198,21 @@ git reset --hard HEAD^
 
 ```bash
 # 注册用户
-curl -X POST http://localhost:8000/api/users/register/ \
+curl -X POST http://82.157.56.206/api/users/register/ \
   -H "Content-Type: application/json" \
   -d '{"username":"test","password":"Test123"}'
 
 # 登录
-curl -X POST http://localhost:8000/api/token/ \
+curl -X POST http://82.157.56.206/api/token/ \
   -H "Content-Type: application/json" \
   -d '{"username":"test","password":"Test123"}'
 
 # 获取用户资料（需要 token）
-curl http://localhost:8000/api/users/profile/ \
+curl http://82.157.56.206/api/users/profile/ \
   -H "Authorization: Bearer YOUR_TOKEN"
 
 # 创建帖子
-curl -X POST http://localhost:8000/api/forum/posts/ \
+curl -X POST http://82.157.56.206/api/forum/posts/ \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"title":"Test","content":"Content","status":"published"}'
@@ -358,10 +358,10 @@ AI-Arena/
 
 ## 常用 URL
 
-- **前端**: http://localhost:8000
-- **API**: http://localhost:8000/api/
-- **Django Admin**: http://localhost:8000/admin/
-- **API 文档**: http://localhost:8000/api/docs/ (如果配置)
+- **前端**: http://82.157.56.206
+- **API**: http://82.157.56.206/api/
+- **Django Admin**: http://82.157.56.206/admin/
+- **API 文档**: http://82.157.56.206/api/docs/ (如果配置)
 
 ## 快速修复
 

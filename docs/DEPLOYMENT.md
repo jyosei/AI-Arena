@@ -53,10 +53,10 @@ OPENAI_API_KEY=sk-your-openai-api-key  # 必填
 # GitHub OAuth（可选）
 GITHUB_CLIENT_ID=your_github_client_id
 GITHUB_CLIENT_SECRET=your_github_client_secret
-GITHUB_REDIRECT_URI=http://localhost:8000/api/users/github/callback/
+GITHUB_REDIRECT_URI=http://82.157.56.206/api/users/github/callback/
 
 # 前端地址
-FRONTEND_URL=http://localhost:8000
+FRONTEND_URL=http://82.157.56.206
 
 # JWT（生产环境必须修改）
 JWT_SECRET=your_jwt_secret_key_change_this_in_production
@@ -104,9 +104,9 @@ docker exec -it ai-arena-backend-1 python manage.py shell
 
 #### 6. 访问应用
 
-- 前端：http://localhost:8000
-- Django Admin：http://localhost:8000/admin/
-- API：http://localhost:8000/api/
+- 前端：http://82.157.56.206
+- Django Admin：http://82.157.56.206/admin/
+- API：http://82.157.56.206/api/
 
 #### 7. 停止服务
 

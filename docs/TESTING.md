@@ -1,4 +1,4 @@
-# 测试指南
+## 测试指南
 
 本文档介绍如何测试 AI-Arena 的各项功能。
 
@@ -29,7 +29,7 @@ docker compose ps
 
 ```bash
 # 方法1: 通过 API 注册
-curl -X POST http://localhost:8000/api/users/register/ \
+curl -X POST http://82.157.56.206/api/users/register/ \
   -H "Content-Type: application/json" \
   -d '{"username":"testuser","password":"Test123456"}'
 
@@ -46,7 +46,7 @@ docker exec -it ai-arena-backend-1 python manage.py createsuperuser
 #### 1. 注册用户
 
 ```bash
-curl -X POST http://localhost:8000/api/users/register/ \
+curl -X POST http://82.157.56.206/api/users/register/ \
   -H "Content-Type: application/json" \
   -d '{
     "username": "testuser123",
@@ -68,7 +68,7 @@ curl -X POST http://localhost:8000/api/users/register/ \
 #### 2. 登录获取 Token
 
 ```bash
-curl -X POST http://localhost:8000/api/token/ \
+curl -X POST http://82.157.56.206/api/token/ \
   -H "Content-Type: application/json" \
   -d '{
     "username": "testuser123",
@@ -90,14 +90,14 @@ curl -X POST http://localhost:8000/api/token/ \
 # 保存 access token
 TOKEN="your_access_token_here"
 
-curl -X GET http://localhost:8000/api/users/profile/ \
+curl -X GET http://82.157.56.206/api/users/profile/ \
   -H "Authorization: Bearer $TOKEN"
 ```
 
 #### 4. 创建论坛帖子
 
 ```bash
-curl -X POST http://localhost:8000/api/forum/posts/ \
+curl -X POST http://82.157.56.206/api/forum/posts/ \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -111,21 +111,21 @@ curl -X POST http://localhost:8000/api/forum/posts/ \
 #### 5. 获取帖子列表
 
 ```bash
-curl -X GET "http://localhost:8000/api/forum/posts/?page=1&page_size=10"
+curl -X GET "http://82.157.56.206/api/forum/posts/?page=1&page_size=10"
 ```
 
 #### 6. 点赞帖子
 
 ```bash
 # 假设帖子 ID 为 1
-curl -X POST http://localhost:8000/api/forum/posts/1/like/ \
+curl -X POST http://82.157.56.206/api/forum/posts/1/like/ \
   -H "Authorization: Bearer $TOKEN"
 ```
 
 #### 7. 创建评论
 
 ```bash
-curl -X POST http://localhost:8000/api/forum/posts/1/comments/ \
+curl -X POST http://82.157.56.206/api/forum/posts/1/comments/ \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -142,7 +142,7 @@ curl -X POST http://localhost:8000/api/forum/posts/1/comments/ \
 import requests
 import json
 
-BASE_URL = "http://localhost:8000/api"
+BASE_URL = "http://82.157.56.206/api"
 
 def test_register():
     """测试用户注册"""
@@ -197,7 +197,6 @@ def test_create_post(token):
     return response.json()['id']
 
 def test_like_post(token, post_id):
-    """测试点赞帖子"""
     print("\n=== 测试点赞帖子 ===")
     response = requests.post(
         f"{BASE_URL}/forum/posts/{post_id}/like/",
@@ -205,10 +204,10 @@ def test_like_post(token, post_id):
     )
     print(f"状态码: {response.status_code}")
     print(f"响应: {response.json()}")
-
+ab -n 1000 -c 10 http://82.157.56.206/
 if __name__ == "__main__":
     import time
-    
+ab -n 1000 -c 10 http://82.157.56.206/api/forum/posts/
     # 注册
     user_data = test_register()
     username = user_data['username']
@@ -219,7 +218,7 @@ if __name__ == "__main__":
     
     # 获取资料
     test_get_profile(token)
-    
+wrk -t4 -c100 -d30s http://82.157.56.206/api/forum/posts/
     # 创建帖子
     post_id = test_create_post(token)
     
@@ -243,7 +242,7 @@ python test_api.py
 
 **测试步骤**:
 
-1. 访问 http://localhost:8000
+1. 访问 http://82.157.56.206
 2. 点击右上角"用户中心"
 3. 切换到"注册"标签
 4. 输入用户名和密码（两次）
@@ -397,10 +396,10 @@ npm test
 
 ```bash
 # 测试首页加载
-ab -n 1000 -c 10 http://localhost:8000/
+ab -n 1000 -c 10 http://82.157.56.206/
 
 # 测试 API 端点
-ab -n 1000 -c 10 http://localhost:8000/api/forum/posts/
+ab -n 1000 -c 10 http://82.157.56.206/api/forum/posts/
 ```
 
 ### 使用 wrk
@@ -411,7 +410,7 @@ ab -n 1000 -c 10 http://localhost:8000/api/forum/posts/
 # Mac: brew install wrk
 
 # 测试 API
-wrk -t4 -c100 -d30s http://localhost:8000/api/forum/posts/
+wrk -t4 -c100 -d30s http://82.157.56.206/api/forum/posts/
 ```
 
 ---
