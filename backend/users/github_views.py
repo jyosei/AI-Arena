@@ -2,6 +2,8 @@
 import secrets
 import requests
 from urllib.parse import urlencode
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from django.conf import settings
 from django.shortcuts import redirect
 from rest_framework.views import APIView
@@ -14,8 +16,13 @@ from .models import User
 
 
 def github_exchange_code_for_token(code: str):
+    # 使用带重试的 session 以应对短暂的网络波动或 GitHub 端的 5xx
+    session = requests.Session()
+    retries = Retry(total=3, backoff_factor=1, status_forcelist=(429, 500, 502, 503, 504))
+    session.mount('https://', HTTPAdapter(max_retries=retries))
+
     try:
-        resp = requests.post(
+        resp = session.post(
             'https://github.com/login/oauth/access_token',
             data={
                 'client_id': settings.GITHUB_CLIENT_ID,
@@ -24,9 +31,22 @@ def github_exchange_code_for_token(code: str):
                 'redirect_uri': settings.GITHUB_REDIRECT_URI,
             },
             headers={'Accept': 'application/json'},
-            timeout=10,
+            timeout=30,
         )
-        return resp.json()
+        # 如果不是 200，记录响应体以便排查（例如速率限制或服务端错误）
+        if resp.status_code != 200:
+            try:
+                text = resp.text
+            except Exception:
+                text = '<无法读取响应体>'
+            print('GitHub token 请求返回非 200:', resp.status_code, text)
+            return None
+
+        try:
+            return resp.json()
+        except Exception as e:
+            print('解析 GitHub token 响应 JSON 失败:', e, 'raw=', resp.text)
+            return None
     except Exception as e:
         print('GitHub token 请求失败:', e)
         return None
