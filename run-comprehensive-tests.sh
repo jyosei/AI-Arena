@@ -31,6 +31,55 @@ fi
 
 echo "Using python: $VENV_PY"
 
+# 如果测试设置需要 MySQL 环境变量但当前未设置，我们可以尝试用 Docker 启动一个临时 MySQL 容器
+TMP_MYSQL_CONTAINER_STARTED=false
+if [ -z "${MYSQL_HOST-}" ] || [ -z "${MYSQL_USER-}" ] || [ -z "${MYSQL_PASSWORD-}" ] || [ -z "${MYSQL_DATABASE-}" ]; then
+  if command -v docker >/dev/null 2>&1; then
+    echo "No MYSQL_* env found — attempting to start temporary MySQL docker container for tests..."
+    # 仅在没有已存在名为 ai_arena_test_mysql 的容器时启动
+    if [ "$(docker ps -a --format '{{.Names}}' | grep -w ai_arena_test_mysql || true)" = "" ]; then
+      MYSQL_ROOT_PASS="rootpass_ci_$(date +%s)"
+      MYSQL_USER="ci_test_user"
+      MYSQL_PASSWORD="ci_test_pass"
+      MYSQL_DATABASE="ai_arena_test"
+      MYSQL_PORT_HOST=3307
+
+      echo "Starting docker container 'ai_arena_test_mysql' (mapped port ${MYSQL_PORT_HOST}:3306)..."
+      docker run -d --name ai_arena_test_mysql -e MYSQL_ROOT_PASSWORD="$MYSQL_ROOT_PASS" -e MYSQL_DATABASE="$MYSQL_DATABASE" -e MYSQL_USER="$MYSQL_USER" -e MYSQL_PASSWORD="$MYSQL_PASSWORD" -p ${MYSQL_PORT_HOST}:3306 mysql:8 --default-authentication-plugin=mysql_native_password >/dev/null
+      TMP_MYSQL_CONTAINER_STARTED=true
+
+      # 等待 MySQL 启动
+      echo "Waiting for MySQL container to become available..."
+      attempts=0
+      until docker exec ai_arena_test_mysql mysqladmin ping -uroot -p"$MYSQL_ROOT_PASS" --silent >/dev/null 2>&1 || [ $attempts -ge 60 ]; do
+        sleep 1
+        attempts=$((attempts+1))
+      done
+      if [ $attempts -ge 60 ]; then
+        echo "Timed out waiting for MySQL container. Check 'docker logs ai_arena_test_mysql'." >&2
+      else
+        echo "MySQL container ready. Exporting MYSQL_* env vars for tests."
+        export MYSQL_HOST=127.0.0.1
+        export MYSQL_PORT=${MYSQL_PORT_HOST}
+        export MYSQL_USER=${MYSQL_USER}
+        export MYSQL_PASSWORD=${MYSQL_PASSWORD}
+        export MYSQL_DATABASE=${MYSQL_DATABASE}
+      fi
+    else
+      echo "Found existing docker container 'ai_arena_test_mysql'. Reusing it and exporting default env vars."
+      export MYSQL_HOST=127.0.0.1
+      export MYSQL_PORT=3307
+      export MYSQL_USER=ci_test_user
+      export MYSQL_PASSWORD=ci_test_pass
+      export MYSQL_DATABASE=ai_arena_test
+      TMP_MYSQL_CONTAINER_STARTED=true
+    fi
+  else
+    echo "No Docker available and MYSQL_* not set — test_settings requires MySQL. Aborting." >&2
+    exit 1
+  fi
+fi
+
 # 如果存在 .venv，尝试安装后端依赖（安全且幂等）
 if [ -f "backend/requirements.txt" ] && [ -x ".venv/bin/python" ]; then
   echo "Installing backend requirements into .venv (if not present)..."
@@ -47,8 +96,9 @@ pushd backend >/dev/null
 
 # 把任何传入参数传给 manage.py test（例如 --unit/--integration/--e2e）
 # 注意：我们已经把 `--frontend` 提取到 RUN_FRONTEND，所以这里使用 ARGS 数组传参给 Django
+# 默认行为：运行完整的测试套件（不只是 forum/test_suite），以覆盖主要功能
 if [ "${#ARGS[@]}" -eq 0 ]; then
-  $VENV_PY manage.py test test_suite --verbosity=2
+  $VENV_PY manage.py test --verbosity=2
 else
   $VENV_PY manage.py test --verbosity=2 "${ARGS[@]}"
 fi
