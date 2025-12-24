@@ -87,5 +87,5 @@ export function getPublicOrigin() {
   } catch (_) {}
   
   // 最后的降级方案（使用对外正式 IP）
-  return 'http://82.157.56.206';
+  return 'http://www.ai-arena.cn';
 }
