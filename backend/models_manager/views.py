@@ -227,7 +227,6 @@ class ModelListView(APIView):
         dummy_models = [
            {"id": 2, "name": "gpt-5", "owner_name": "OpenAI", "capabilities": ["chat", "vision"]},
             {"id": 3, "name": "gpt-5.1", "owner_name": "OpenAI", "capabilities": ["chat", "vision"]},
-            {"id": 4, "name": "gpt-5-codex", "owner_name": "OpenAI", "capabilities": ["chat", "vision"]},
             {"id": 5, "name": "gpt-5-mini", "owner_name": "OpenAI", "capabilities": ["chat", "vision"]},
             {"id": 7, "name": "dall-e-3", "owner_name": "OpenAI", "capabilities": ["image_generation"]},
             {"id": 8, "name": "gpt-4", "owner_name": "OpenAI", "capabilities": ["chat", "vision"]},
