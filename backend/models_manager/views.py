@@ -236,8 +236,6 @@ class ModelListView(APIView):
             {"id": 20, "name": "glm-4", "owner_name": "ZhipuAI", "capabilities": ["chat", "vision"]},
             {"id": 21, "name": "glm-4.5", "owner_name": "ZhipuAI", "capabilities": ["chat", "vision"]},
             {"id": 22, "name": "deepseek-chat", "owner_name": "深度求索", "capabilities": ["chat"]},
-            {"id": 23, "name": "deepseek-ocr", "owner_name": "深度求索", "capabilities": ["vision"]},
-            {"id": 24, "name": "deepseek-r1", "owner_name": "深度求索", "capabilities": ["chat"]},
             {"id": 26, "name": "doubao-seed-1-6-250615", "owner_name": "Doubao", "capabilities": ["chat", "vision"]},
             {"id": 27, "name": "llama-2-13b", "owner_name": "Ollama", "capabilities": ["chat"]},
             {"id": 28, "name": "qwen-max", "owner_name": "阿里巴巴", "capabilities": ["chat", "vision"]},
