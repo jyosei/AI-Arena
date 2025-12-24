@@ -24,14 +24,8 @@ urlpatterns = [
     path('notifications/', NotificationListView.as_view(), name='notifications'),
     path('notifications/<int:pk>/read/', NotificationMarkReadView.as_view(), name='notification-read'),
     path('notifications/mark-all-read/', NotificationMarkAllReadView.as_view(), name='notifications-mark-all-read'),
-    # 保留原有 follows/ 路由
-    path('follows/<int:user_id>/', FollowView.as_view(), name='user-follow-old'),
+    path('follows/<int:user_id>/', FollowView.as_view(), name='user-follow'),
     path('follows/', FollowListView.as_view(), name='follow-list'),
-
-    # 兼容旧路由：使得 /api/users/<id>/follow/ 生效（test-e2e 期望的路径）
-    path('<int:user_id>/follow/', FollowView.as_view(), name='compat-user-follow'),
-    path('<int:user_id>/follow', FollowView.as_view()),
-
     path('private-chats/', PrivateChatThreadsView.as_view(), name='private-chat-threads'),
     path('private-chats/<int:user_id>/', PrivateChatMessagesView.as_view(), name='private-chat-messages'),
 
