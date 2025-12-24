@@ -87,6 +87,12 @@ const AppLayout = () => {
   
   // 判断当前页面是否应该显示模式和模型选择器
   const shouldShowModelSelectors = location.pathname === '/' || location.pathname.startsWith('/chat/');
+  // 当在某个已保存会话页面时，锁定模式选择（不可点击）
+  // 从路径中解析会话 id，并检查 chatHistory 中是否存在对应会话
+  const chatPathMatch = location.pathname.match(/^\/chat\/(\d+)/);
+  const currentChatId = chatPathMatch ? chatPathMatch[1] : null;
+  const currentConversation = currentChatId ? chatHistory.find(c => String(c.id) === String(currentChatId)) : null;
+  const isModeLocked = Boolean(currentConversation);
   // ---
 
   const handleLogout = () => {
@@ -127,6 +133,10 @@ const AppLayout = () => {
   };
 
   const handleMenuClick = (e) => {
+    if (isModeLocked) {
+      message.info('当前会话已固定模式，无法更改');
+      return;
+    }
     setMode(e.key);
   };
 
@@ -469,15 +479,25 @@ const AppLayout = () => {
             {shouldShowModelSelectors && (
               <div className="app-content-toolbar">
               <Space size="large" className="model-selector-space">
-                <Dropdown overlay={menu}>
-                  <Button size="large">
+                {isModeLocked ? (
+                  <Button size="large" disabled>
                     <Space align="center">
                       {currentModeIcon}
                       {currentModeLabel}
                       <DownOutlined />
                     </Space>
                   </Button>
-                </Dropdown>
+                ) : (
+                  <Dropdown overlay={menu}>
+                    <Button size="large">
+                      <Space align="center">
+                        {currentModeIcon}
+                        {currentModeLabel}
+                        <DownOutlined />
+                      </Space>
+                    </Button>
+                  </Dropdown>
+                )}
 
                 {mode === 'side-by-side' && (
                   <>
@@ -485,7 +505,8 @@ const AppLayout = () => {
                       showSearch
                       placeholder="选择左侧模型"
                       value={leftModel}
-                      onChange={setLeftModel}
+                      onChange={(val) => { if (!isModeLocked) setLeftModel(val); }}
+                      disabled={isModeLocked}
                       style={{ width: 180 }}
                       options={modelOptions}
                       filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
@@ -495,7 +516,8 @@ const AppLayout = () => {
                       showSearch
                       placeholder="选择右侧模型"
                       value={rightModel}
-                      onChange={setRightModel}
+                      onChange={(val) => { if (!isModeLocked) setRightModel(val); }}
+                      disabled={isModeLocked}
                       style={{ width: 180 }}
                       options={modelOptions}
                       filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
@@ -507,7 +529,8 @@ const AppLayout = () => {
                     showSearch
                     placeholder="选择一个模型"
                     value={leftModel}
-                    onChange={setLeftModel}
+                    onChange={(val) => { if (!isModeLocked) setLeftModel(val); }}
+                    disabled={isModeLocked}
                     style={{ width: 180 }}
                     options={modelOptions}
                     filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
