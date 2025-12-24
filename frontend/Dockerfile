@@ -15,8 +15,8 @@ ARG VITE_API_BASE=/api/
 ENV VITE_API_BASE=${VITE_API_BASE}
 
 # 2. 公共访问地址
-# 默认使用公网地址并带端口 8000，构建时可覆盖
-ARG VITE_PUBLIC_ORIGIN=http://82.157.56.206:8000
+# 默认使用公网地址（HTTP 默认端口 80），构建时可覆盖
+ARG VITE_PUBLIC_ORIGIN=http://82.157.56.206
 ENV VITE_PUBLIC_ORIGIN=${VITE_PUBLIC_ORIGIN}
 
 # 3. GitHub Client ID (这很可能是缺失的变量)
@@ -26,8 +26,8 @@ ARG VITE_GITHUB_CLIENT_ID=Ov23li8J7zm7OnqPEL02
 ENV VITE_GITHUB_CLIENT_ID=${VITE_GITHUB_CLIENT_ID}
 
 # 4. 【新增】后端服务地址 (用于拼接媒体文件 URL)
-# 默认指向后端公网地址并带端口 8000，构建时可覆盖
-ARG VITE_BACKEND_ORIGIN=http://82.157.56.206:8000
+# 默认指向后端公网地址（HTTP 默认端口 80），构建时可覆盖
+ARG VITE_BACKEND_ORIGIN=http://82.157.56.206
 ENV VITE_BACKEND_ORIGIN=${VITE_BACKEND_ORIGIN}
 
 # 构建（Vite 会把 import.meta.env.VITE_... 嵌入到构建产物）
