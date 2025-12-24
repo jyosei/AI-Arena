@@ -63,3 +63,13 @@ MIGRATION_MODULES = _DisableMigrations()
 
 # 测试环境下关闭 DEBUG
 DEBUG = False
+
+# 测试时使用临时可写的媒体目录，避免权限问题或污染开发媒体目录
+import tempfile
+TEST_MEDIA_ROOT = os.path.join(tempfile.gettempdir(), 'ai_arena_test_media')
+os.makedirs(TEST_MEDIA_ROOT, exist_ok=True)
+try:
+    os.chmod(TEST_MEDIA_ROOT, 0o777)
+except Exception:
+    pass
+MEDIA_ROOT = TEST_MEDIA_ROOT
