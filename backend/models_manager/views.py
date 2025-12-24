@@ -89,6 +89,12 @@ DATASET_METADATA = {
         "task": "Topic Classification",
         "downloads": "1.5M+",
         "likes": 150,
+        "labels": { 
+        "0": "World",
+        "1": "Sports",
+        "2": "Business",
+        "3": "Sci/Tech"
+    },
     },
     "glue-sst2.csv": {
         "id": "gimmaru/glue-sst2",
@@ -1182,18 +1188,29 @@ class EvaluateDatasetView(APIView):
             "error_samples": error_samples,
         }
 
-    def _evaluate_classification(self, model_service, prompts,model_name:str):
-        """处理 rotten_tomatoes 类型的分类任务"""
+
+    def _evaluate_classification(self, model_service, prompts, model_name: str, dataset_name: str):
+        """
+        处理分类任务（V3版），智能支持二分类和多分类"""
         predictions = []
         ground_truth = []
         error_samples = []
         samples = []
         started_at = time.perf_counter()
 
+        # --- 关键: 根据传入的 dataset_name 获取数据集元数据 ---
+        metadata = DATASET_METADATA.get(dataset_name, {})
+        label_map = metadata.get("labels")  # e.g., {"0": "World", "1": "Sports", ...}
+        is_multiclass = bool(label_map)
+
+        # 反转 label_map 以便通过文本值查找数字标签
+        reverse_label_map = {v.lower(): k for k, v in label_map.items()} if is_multiclass else None
+
         for idx, row in enumerate(prompts, start=1):
             text = row.get('text')
-            label = row.get('label')
-            if text is None or label is None:
+            label_str = row.get('label')
+
+            if text is None or label_str is None:
                 samples.append({
                     "index": idx,
                     "prompt": text or "",
@@ -1208,12 +1225,12 @@ class EvaluateDatasetView(APIView):
                 continue
 
             try:
-                label_int = int(label)
+                label_int = int(label_str)
             except (ValueError, TypeError):
                 samples.append({
                     "index": idx,
                     "prompt": text,
-                    "expected_answer": str(label),
+                    "expected_answer": str(label_str),
                     "model_response": "",
                     "is_correct": None,
                     "included_in_metrics": False,
@@ -1223,72 +1240,99 @@ class EvaluateDatasetView(APIView):
                 })
                 continue
 
-            prompt_to_model = (
-                "Analyze the sentiment of the following movie review. Respond with only the word 'positive' or 'negative'.\n\nReview: '"
-                + text
-                + "'"
-            )
+            # --- 关键: 动态构建 Prompt 和预期答案文本 ---
+            if is_multiclass:
+                class_names = ", ".join(label_map.values())
+                prompt_to_model = f"Classify the following text into one of these categories: {class_names}. Respond with only the category name.\n\nText: '{text}'"
+                expected_answer_text = label_map.get(label_str, "Unknown")
+            else:  # 二分类
+                prompt_to_model = f"Analyze the sentiment of the following movie review. Respond with only the word 'positive' or 'negative'.\n\nReview: '{text}'"
+                expected_answer_text = "positive" if label_int == 1 else "negative"
 
             sample_started = time.perf_counter()
             predicted_label = None
             model_response = ""
             sample_error = None
+
             try:
-                model_response = model_service.evaluate(prompt=prompt_to_model, model_name=model_name).lower()
-                predicted_label = 1 if 'positive' in model_response else 0
+                model_response = model_service.evaluate(prompt=prompt_to_model, model_name=model_name).strip().lower()
+                
+                # --- 关键: 动态解析模型响应 ---
+                if is_multiclass:
+                    # 在模型返回的文本中寻找最匹配的类别
+                    found_label = None
+                    # 优先进行完全匹配
+                    for cat_name_lower, cat_id in reverse_label_map.items():
+                        if cat_name_lower == model_response:
+                            found_label = cat_id
+                            break
+                    # 如果没有完全匹配，再进行包含匹配
+                    if not found_label:
+                        for cat_name_lower, cat_id in reverse_label_map.items():
+                            if cat_name_lower in model_response:
+                                found_label = cat_id
+                                break
+                    
+                    if found_label is not None:
+                        predicted_label = int(found_label)
+                else:  # 二分类
+                    predicted_label = 1 if 'positive' in model_response else 0
+
             except Exception as exc:
                 sample_error = f"API Error: {exc}"
                 model_response = sample_error
 
             sample_time = round(time.perf_counter() - sample_started, 3)
-
-            included_in_metrics = predicted_label is not None
+            included_in_metrics = predicted_label is not None and sample_error is None
             is_correct = None
 
             if included_in_metrics:
                 ground_truth.append(label_int)
                 predictions.append(predicted_label)
-                is_correct = predicted_label == label_int
+                is_correct = (predicted_label == label_int)
                 if not is_correct and len(error_samples) < 5:
                     error_samples.append({
                         "prompt": text,
-                        "expected_answer": "positive" if label_int == 1 else "negative",
+                        "expected_answer": expected_answer_text,
                         "model_response": model_response,
                     })
-            else:
-                if len(error_samples) < 5:
-                    error_samples.append({
-                        "prompt": text,
-                        "expected_answer": "positive" if label_int == 1 else "negative",
-                        "model_response": model_response,
-                    })
+            elif len(error_samples) < 5: # 记录处理失败的样本
+                error_samples.append({
+                    "prompt": text,
+                    "expected_answer": expected_answer_text,
+                    "model_response": model_response,
+                })
 
             samples.append({
                 "index": idx,
                 "prompt": text,
-                "expected_answer": "positive" if label_int == 1 else "negative",
+                "expected_answer": expected_answer_text,
                 "model_response": model_response,
                 "is_correct": is_correct,
                 "included_in_metrics": included_in_metrics,
                 "skipped": False,
                 "sample_time": sample_time,
-                "message": sample_error or "",
+                "message": sample_error or ("" if included_in_metrics else "模型响应无效"),
             })
 
         total_elapsed = round(time.perf_counter() - started_at, 3)
 
+        # --- 关键: 动态计算指标 ---
         if ground_truth and predictions:
+            avg_method = 'macro' if is_multiclass else 'binary'
             accuracy = accuracy_score(ground_truth, predictions)
-            precision = precision_score(ground_truth, predictions, average='binary', zero_division=0)
-            recall = recall_score(ground_truth, predictions, average='binary', zero_division=0)
-            f1 = f1_score(ground_truth, predictions, average='binary', zero_division=0)
+            precision = precision_score(ground_truth, predictions, average=avg_method, zero_division=0)
+            recall = recall_score(ground_truth, predictions, average=avg_method, zero_division=0)
+            f1 = f1_score(ground_truth, predictions, average=avg_method, zero_division=0)
+            correct_answers = int(sum(1 for p, g in zip(predictions, ground_truth) if p == g))
         else:
             accuracy = precision = recall = f1 = 0
+            correct_answers = 0
 
         evaluated_prompts = len(predictions)
 
         return {
-            "benchmark_type": "Sentiment Classification",
+            "benchmark_type": "Topic Classification" if is_multiclass else "Sentiment Classification",
             "metrics": {
                 "accuracy": round(accuracy * 100, 2),
                 "precision": round(precision * 100, 2),
@@ -1297,70 +1341,11 @@ class EvaluateDatasetView(APIView):
             },
             "total_prompts": len(prompts),
             "evaluated_prompts": evaluated_prompts,
-            "correct_answers": int(sum(1 for p, g in zip(predictions, ground_truth) if p == g)),
+            "correct_answers": correct_answers,
             "error_samples": error_samples,
             "elapsed_seconds": total_elapsed,
             "samples": samples,
         }
-
-    def _persist_evaluation(self, request, dataset_name, model_name, evaluation_mode, summary, samples):
-        user = request.user if request.user.is_authenticated else None
-        completed_at = timezone.now()
-        base_extra = summary.get('extra')
-        extra_payload = {'source': 'sync'}
-        if isinstance(base_extra, dict):
-            extra_payload.update(base_extra)
-
-        with transaction.atomic():
-            evaluation_record = DatasetEvaluationResult.objects.create(
-                user=user,
-                dataset_name=dataset_name,
-                model_name=model_name,
-                evaluation_mode=evaluation_mode,
-                benchmark_type=summary.get('benchmark_type', ''),
-                total_prompts=summary.get('total_prompts') or len(samples),
-                evaluated_prompts=summary.get('evaluated_prompts', 0),
-                correct_answers=summary.get('correct_answers', 0),
-                metrics=summary.get('metrics', {}),
-                error_samples=summary.get('error_samples', []),
-                elapsed_seconds=summary.get('elapsed_seconds', 0),
-                status='completed',
-                extra=extra_payload,
-                completed_at=completed_at,
-            )
-
-            sample_objects = []
-            for sample in samples:
-                sample_objects.append(
-                    DatasetEvaluationSample(
-                        result=evaluation_record,
-                        index=sample.get('index') or len(sample_objects) + 1,
-                        prompt=sample.get('prompt', ''),
-                        expected_answer=sample.get('expected_answer', ''),
-                        model_response=sample.get('model_response', ''),
-                        is_correct=sample.get('is_correct'),
-                        included_in_metrics=sample.get('included_in_metrics', True),
-                        skipped=sample.get('skipped', False),
-                        sample_time=sample.get('sample_time'),
-                        message=sample.get('message', ''),
-                        extra={k: v for k, v in sample.items() if k not in {
-                            'index',
-                            'prompt',
-                            'expected_answer',
-                            'model_response',
-                            'is_correct',
-                            'included_in_metrics',
-                            'skipped',
-                            'sample_time',
-                            'message',
-                        }},
-                    )
-                )
-
-            if sample_objects:
-                DatasetEvaluationSample.objects.bulk_create(sample_objects)
-
-        return evaluation_record
 
     def post(self, request, *args, **kwargs):
         dataset_name = request.data.get('dataset_name')
@@ -1682,12 +1667,23 @@ class EvaluateDatasetStreamView(EvaluateDatasetView):
             "result": summary
         })
 
+
     def _stream_classification(self, model_service, prompts, model_name, dataset_name, total_prompts, start_time, evaluation_record):
+        """
+        处理分类任务的流式版本（V3版），智能支持二分类和多分类。
+        此版本为完整代码，不省略任何部分。
+        """
         processed = 0
-        evaluated = 0
-        tp = fp = tn = fn = 0
+        predictions = []
+        ground_truth = []
         error_samples = []
         batch = []
+
+        # --- 关键: 根据传入的 dataset_name 获取数据集元数据 ---
+        metadata = DATASET_METADATA.get(dataset_name, {})
+        label_map = metadata.get("labels")
+        is_multiclass = bool(label_map)
+        reverse_label_map = {v.lower(): k for k, v in label_map.items()} if is_multiclass else None
 
         def flush_batch():
             nonlocal batch
@@ -1698,8 +1694,9 @@ class EvaluateDatasetStreamView(EvaluateDatasetView):
         for row in prompts:
             processed += 1
             text = row.get('text')
-            label = row.get('label')
-            if text is None or label is None:
+            label_str = row.get('label')
+
+            if text is None or label_str is None:
                 batch.append(
                     DatasetEvaluationSample(
                         result=evaluation_record,
@@ -1727,14 +1724,14 @@ class EvaluateDatasetStreamView(EvaluateDatasetView):
                 continue
 
             try:
-                label_int = int(label)
+                label_int = int(label_str)
             except (ValueError, TypeError):
                 batch.append(
                     DatasetEvaluationSample(
                         result=evaluation_record,
                         index=processed,
                         prompt=text or "",
-                        expected_answer=str(label),
+                        expected_answer=str(label_str),
                         model_response="",
                         is_correct=None,
                         included_in_metrics=False,
@@ -1755,61 +1752,64 @@ class EvaluateDatasetStreamView(EvaluateDatasetView):
                 })
                 continue
 
-            prompt_to_model = "Analyze the sentiment of the following movie review. Respond with only the word 'positive' or 'negative'.\n\nReview: '" + text + "'"
+            # --- 关键: 动态构建 Prompt 和预期答案文本 ---
+            if is_multiclass:
+                class_names = ", ".join(label_map.values())
+                prompt_to_model = f"Classify the following text into one of these categories: {class_names}. Respond with only the category name.\n\nText: '{text}'"
+                expected_answer_text = label_map.get(label_str, "Unknown")
+            else:  # 二分类
+                prompt_to_model = f"Analyze the sentiment of the following movie review. Respond with only the word 'positive' or 'negative'.\n\nReview: '{text}'"
+                expected_answer_text = "positive" if label_int == 1 else "negative"
 
             sample_started = time.perf_counter()
             predicted_label = None
             sample_error = None
+            model_response = ""
+
             try:
-                model_response = model_service.evaluate(prompt=prompt_to_model, model_name=model_name).lower()
-                predicted_label = 1 if 'positive' in model_response else 0
+                model_response = model_service.evaluate(prompt=prompt_to_model, model_name=model_name).strip().lower()
+                
+                # --- 关键: 动态解析模型响应 ---
+                if is_multiclass:
+                    found_label = None
+                    for cat_name_lower, cat_id in reverse_label_map.items():
+                        if cat_name_lower == model_response:
+                            found_label = cat_id
+                            break
+                    if not found_label:
+                        for cat_name_lower, cat_id in reverse_label_map.items():
+                            if cat_name_lower in model_response:
+                                found_label = cat_id
+                                break
+                    if found_label is not None:
+                        predicted_label = int(found_label)
+                else:  # 二分类
+                    predicted_label = 1 if 'positive' in model_response else 0
             except Exception as exc:
                 sample_error = f"API Error: {exc}"
                 model_response = sample_error
 
             sample_time = round(time.perf_counter() - sample_started, 3)
-
-            included_in_metrics = predicted_label is not None
+            included_in_metrics = predicted_label is not None and sample_error is None
             is_correct = None
+
             if included_in_metrics:
-                evaluated += 1
-                if predicted_label == 1 and label_int == 1:
-                    tp += 1
-                elif predicted_label == 1 and label_int == 0:
-                    fp += 1
-                elif predicted_label == 0 and label_int == 0:
-                    tn += 1
-                elif predicted_label == 0 and label_int == 1:
-                    fn += 1
-
-                is_correct = predicted_label == label_int
+                ground_truth.append(label_int)
+                predictions.append(predicted_label)
+                is_correct = (predicted_label == label_int)
                 if not is_correct and len(error_samples) < 5:
-                    error_samples.append({
-                        "prompt": text,
-                        "expected_answer": "positive" if label_int == 1 else "negative",
-                        "model_response": model_response
-                    })
-            else:
-                if len(error_samples) < 5:
-                    error_samples.append({
-                        "prompt": text,
-                        "expected_answer": "positive" if label_int == 1 else "negative",
-                        "model_response": model_response
-                    })
-
-            accuracy = ((tp + tn) / evaluated * 100) if evaluated else 0.0
-            precision = (tp / (tp + fp) * 100) if (tp + fp) else 0.0
-            recall = (tp / (tp + fn) * 100) if (tp + fn) else 0.0
-            f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
+                    error_samples.append({"prompt": text, "expected_answer": expected_answer_text, "model_response": model_response})
+            elif len(error_samples) < 5:
+                error_samples.append({"prompt": text, "expected_answer": expected_answer_text, "model_response": model_response})
 
             batch.append(
                 DatasetEvaluationSample(
                     result=evaluation_record,
                     index=processed,
                     prompt=text,
-                    expected_answer="positive" if label_int == 1 else "negative",
+                    expected_answer=expected_answer_text,
                     model_response=model_response,
-                    is_correct=is_correct if included_in_metrics else None,
+                    is_correct=is_correct,
                     included_in_metrics=included_in_metrics,
                     skipped=False,
                     sample_time=sample_time,
@@ -1819,53 +1819,74 @@ class EvaluateDatasetStreamView(EvaluateDatasetView):
             if len(batch) >= 50:
                 flush_batch()
 
+            # --- 关键: 动态计算实时指标 ---
+            running_metrics = {}
+            if ground_truth and predictions:
+                avg_method = 'macro' if is_multiclass else 'binary'
+                accuracy = accuracy_score(ground_truth, predictions)
+                precision = precision_score(ground_truth, predictions, average=avg_method, zero_division=0)
+                recall = recall_score(ground_truth, predictions, average=avg_method, zero_division=0)
+                f1 = f1_score(ground_truth, predictions, average=avg_method, zero_division=0)
+                running_metrics = {
+                    "accuracy": round(accuracy * 100, 2),
+                    "precision": round(precision * 100, 2),
+                    "recall": round(recall * 100, 2),
+                    "f1_score": round(f1 * 100, 2),
+                }
+
             yield self._json_line({
                 "type": "progress",
                 "index": processed,
                 "total": total_prompts,
                 "prompt": text,
-                "expected_answer": "positive" if label_int == 1 else "negative",
+                "expected_answer": expected_answer_text,
                 "model_response": model_response,
                 "is_correct": is_correct,
                 "sample_time": sample_time,
                 "elapsed": round(time.perf_counter() - start_time, 3),
                 "included_in_metrics": included_in_metrics,
                 "message": sample_error or ("" if included_in_metrics else "模型响应无效"),
-                "running_metrics": {
-                    "accuracy": round(accuracy, 2),
-                    "precision": round(precision, 2),
-                    "recall": round(recall, 2),
-                    "f1_score": round(f1, 2),
-                }
+                "running_metrics": running_metrics
             })
 
         flush_batch()
         total_elapsed = round(time.perf_counter() - start_time, 3)
 
-        final_accuracy = ((tp + tn) / evaluated * 100) if evaluated else 0.0
-        final_precision = (tp / (tp + fp) * 100) if (tp + fp) else 0.0
-        final_recall = (tp / (tp + fn) * 100) if (tp + fn) else 0.0
-        final_f1 = (2 * final_precision * final_recall / (final_precision + final_recall)) if (final_precision + final_recall) else 0.0
+        # --- 关键: 动态计算最终指标 ---
+        final_metrics = {}
+        if ground_truth and predictions:
+            avg_method = 'macro' if is_multiclass else 'binary'
+            accuracy = accuracy_score(ground_truth, predictions)
+            precision = precision_score(ground_truth, predictions, average=avg_method, zero_division=0)
+            recall = recall_score(ground_truth, predictions, average=avg_method, zero_division=0)
+            f1 = f1_score(ground_truth, predictions, average=avg_method, zero_division=0)
+            final_metrics = {
+                "accuracy": round(accuracy * 100, 2),
+                "precision": round(precision * 100, 2),
+                "recall": round(recall * 100, 2),
+                "f1_score": round(f1 * 100, 2),
+            }
+            correct_answers = int(sum(1 for p, g in zip(predictions, ground_truth) if p == g))
+        else:
+            correct_answers = 0
+
+        evaluated_prompts = len(predictions)
 
         summary = {
-            "benchmark_type": "Sentiment Classification",
-            "metrics": {
-                "accuracy": round(final_accuracy, 2),
-                "precision": round(final_precision, 2),
-                "recall": round(final_recall, 2),
-                "f1_score": round(final_f1, 2),
-            },
+            "benchmark_type": "Topic Classification" if is_multiclass else "Sentiment Classification",
+            "metrics": final_metrics,
             "total_prompts": total_prompts,
-            "evaluated_prompts": evaluated,
-            "correct_answers": int(tp + tn),
+            "evaluated_prompts": evaluated_prompts,
+            "correct_answers": correct_answers,
             "error_samples": error_samples,
             "model_name": model_name,
             "dataset_name": dataset_name,
             "elapsed_seconds": total_elapsed,
         }
 
-        evaluation_record.evaluated_prompts = evaluated
-        evaluation_record.correct_answers = int((tp + tn))
+        # --- 持久化最终结果到数据库 ---
+        evaluation_record.evaluated_prompts = evaluated_prompts
+        evaluation_record.correct_answers = correct_answers
         evaluation_record.metrics = summary['metrics']
         evaluation_record.error_samples = error_samples
         evaluation_record.elapsed_seconds = total_elapsed
