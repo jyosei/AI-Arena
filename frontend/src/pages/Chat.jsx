@@ -792,7 +792,7 @@ export default function ChatPage() {
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'hidden', border: '1px solid #f0f0f0', borderRadius: 8, padding: 16 }}>
+      <div style={{ flex: 1, overflowY: 'auto', border: '1px solid #f0f0f0', borderRadius: 8, padding: 16 }}>
         {loadingHistory ? (
           <div style={{ textAlign: 'center', marginTop: 40 }}><Spin /> 加载历史消息...</div>
         ) : mode === 'direct-chat' ? (
