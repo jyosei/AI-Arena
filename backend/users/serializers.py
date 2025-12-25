@@ -32,11 +32,26 @@ class UserSerializer(serializers.ModelSerializer):
     def validate_username(self, value):
         if len(value) < 3:
             raise serializers.ValidationError("用户名长度至少为3个字符。")
+        if not value[0].isalpha():
+            raise serializers.ValidationError("用户名必须以字母开头。")
         return value
 
     def validate_password(self, value):
         if value and len(value) < 6:
             raise serializers.ValidationError("密码长度至少为6个字符。")
+        
+        if value:
+            # 检查密码是否包含数字、大写字母、小写字母和下划线的其中两种
+            has_digit = any(c.isdigit() for c in value)
+            has_upper = any(c.isupper() for c in value)
+            has_lower = any(c.islower() for c in value)
+            has_underscore = '_' in value
+            
+            types_count = sum([has_digit, has_upper, has_lower, has_underscore])
+            
+            if types_count < 2:
+                raise serializers.ValidationError("密码必须包含数字、大写字母、小写字母和下划线的其中至少两种。")
+        
         return value
 
     def create(self, validated_data):
@@ -74,6 +89,18 @@ class ChangePasswordSerializer(serializers.Serializer):
     def validate_new_password(self, value):
         if len(value) < 6:
             raise serializers.ValidationError('新密码长度至少6个字符')
+        
+        # 检查密码是否包含数字、大写字母、小写字母和下划线的其中两种
+        has_digit = any(c.isdigit() for c in value)
+        has_upper = any(c.isupper() for c in value)
+        has_lower = any(c.islower() for c in value)
+        has_underscore = '_' in value
+        
+        types_count = sum([has_digit, has_upper, has_lower, has_underscore])
+        
+        if types_count < 2:
+            raise serializers.ValidationError('新密码必须包含数字、大写字母、小写字母和下划线的其中至少两种')
+        
         return value
 
 

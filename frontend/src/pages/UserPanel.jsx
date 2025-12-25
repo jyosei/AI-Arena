@@ -90,9 +90,19 @@ export default function UserPanel() {
               <Form.Item name="username" label={intl.formatMessage({ id: 'register.username.label', defaultMessage: '用户名' })} rules={[{ required: true, message: intl.formatMessage({ id: 'register.username.required', defaultMessage: '请输入用户名' }) }]}>
                 <Input placeholder={intl.formatMessage({ id: 'register.username.placeholder', defaultMessage: '用户名' })} />
               </Form.Item>
+              <div style={{ marginBottom: '16px', fontSize: '12px', color: '#666' }}>
+                <p style={{ margin: '0 0 4px 0' }}>用户名要求：</p>
+                <p style={{ margin: '0 0 4px 0' }}>• 长度至少3个字符</p>
+                <p style={{ margin: '0' }}>• 必须以字母开头</p>
+              </div>
               <Form.Item name="password" label={intl.formatMessage({ id: 'register.password.label', defaultMessage: '密码' })} rules={[{ required: true, message: intl.formatMessage({ id: 'register.password.required', defaultMessage: '请输入密码' }) }]} hasFeedback>
                 <Input.Password placeholder={intl.formatMessage({ id: 'register.password.placeholder', defaultMessage: '密码' })} />
               </Form.Item>
+              <div style={{ marginBottom: '16px', fontSize: '12px', color: '#666' }}>
+                <p style={{ margin: '0 0 4px 0' }}>密码要求：</p>
+                <p style={{ margin: '0 0 4px 0' }}>• 长度至少6个字符</p>
+                <p style={{ margin: '0' }}>• 必须包含以下四种元素中的至少两种：数字、大写字母、小写字母、下划线</p>
+              </div>
               <Form.Item name="confirm" label={intl.formatMessage({ id: 'register.confirm.label', defaultMessage: '确认密码' })} dependencies={["password"]} hasFeedback rules={[{ required: true, message: intl.formatMessage({ id: 'register.confirm.required', defaultMessage: '请确认密码' }) }, ({ getFieldValue }) => ({ validator(_, value) { if (!value || getFieldValue('password') === value) { return Promise.resolve(); } return Promise.reject(new Error(intl.formatMessage({ id: 'register.confirm.mismatch', defaultMessage: '两次输入的密码不一致' }))); }, }), ]}>
                 <Input.Password placeholder={intl.formatMessage({ id: 'register.confirm.placeholder', defaultMessage: '确认密码' })} />
               </Form.Item>
