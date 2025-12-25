@@ -844,7 +844,7 @@ Services:
    └─ docker build -t frontend:latest ./frontend
 
 2. 启动容器
-   └─ docker-compose up -d
+   └─ docker compose up -d
 
 3. 初始化数据库
    ├─ python manage.py migrate
