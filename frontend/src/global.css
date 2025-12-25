@@ -91,6 +91,27 @@ html, body {
   }
 }
 
+/* 表单提示样式：确保注册时用户名和密码格式说明可见 */
+.ant-form-item-extra {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.form-hint {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin-top: 4px;
+}
+.form-hint ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+.form-hint li {
+  list-style: disc;
+}
+
 /* 回退：移除用户中心面板与 Tabs 强制宽度规则，恢复默认行为 */
 
 /* 用户中心列表卡片悬浮仅在桌面启用，移动端保持初始样式 */

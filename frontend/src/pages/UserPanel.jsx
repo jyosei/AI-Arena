@@ -11,6 +11,14 @@ export default function UserPanel() {
   const [loadingLogin, setLoadingLogin] = useState(false);
   const [loadingRegister, setLoadingRegister] = useState(false);
   const [activeTab, setActiveTab] = useState('login');
+  const usernameHints = [
+    intl.formatMessage({ id: 'register.username.rule.length', defaultMessage: '长度至少3个字符' }),
+    intl.formatMessage({ id: 'register.username.rule.start', defaultMessage: '必须以字母开头' }),
+  ];
+  const passwordHints = [
+    intl.formatMessage({ id: 'register.password.rule.length', defaultMessage: '长度至少6个字符' }),
+    intl.formatMessage({ id: 'register.password.rule.mix', defaultMessage: '包含数字、大写字母、小写字母、下划线中的至少两种' }),
+  ];
 
   const onLogin = async (values) => {
     setLoadingLogin(true);
@@ -87,10 +95,39 @@ export default function UserPanel() {
 
           <TabPane tab={intl.formatMessage({ id: 'register.tab', defaultMessage: '注册' })} key="register">
             <Form name="register" layout="vertical" onFinish={onRegister}>
-              <Form.Item name="username" label={intl.formatMessage({ id: 'register.username.label', defaultMessage: '用户名' })} rules={[{ required: true, message: intl.formatMessage({ id: 'register.username.required', defaultMessage: '请输入用户名' }) }]} extra="用户名要求：• 长度至少3个字符  • 必须以字母开头">
+              <Form.Item
+                name="username"
+                label={intl.formatMessage({ id: 'register.username.label', defaultMessage: '用户名' })}
+                rules={[{ required: true, message: intl.formatMessage({ id: 'register.username.required', defaultMessage: '请输入用户名' }) }]}
+                extra={(
+                  <div className="form-hint">
+                    <div>{intl.formatMessage({ id: 'register.username.hint.title', defaultMessage: '用户名要求：' })}</div>
+                    <ul>
+                      {usernameHints.map((text) => (
+                        <li key={text}>{text}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              >
                 <Input placeholder={intl.formatMessage({ id: 'register.username.placeholder', defaultMessage: '用户名' })} />
               </Form.Item>
-              <Form.Item name="password" label={intl.formatMessage({ id: 'register.password.label', defaultMessage: '密码' })} rules={[{ required: true, message: intl.formatMessage({ id: 'register.password.required', defaultMessage: '请输入密码' }) }]} hasFeedback extra="密码要求：• 长度至少6个字符  • 必须包含数字、大写字母、小写字母、下划线中的至少两种">
+              <Form.Item
+                name="password"
+                label={intl.formatMessage({ id: 'register.password.label', defaultMessage: '密码' })}
+                rules={[{ required: true, message: intl.formatMessage({ id: 'register.password.required', defaultMessage: '请输入密码' }) }]}
+                hasFeedback
+                extra={(
+                  <div className="form-hint">
+                    <div>{intl.formatMessage({ id: 'register.password.hint.title', defaultMessage: '密码要求：' })}</div>
+                    <ul>
+                      {passwordHints.map((text) => (
+                        <li key={text}>{text}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              >
                 <Input.Password placeholder={intl.formatMessage({ id: 'register.password.placeholder', defaultMessage: '密码' })} />
               </Form.Item>
               <Form.Item name="confirm" label={intl.formatMessage({ id: 'register.confirm.label', defaultMessage: '确认密码' })} dependencies={["password"]} hasFeedback rules={[{ required: true, message: intl.formatMessage({ id: 'register.confirm.required', defaultMessage: '请确认密码' }) }, ({ getFieldValue }) => ({ validator(_, value) { if (!value || getFieldValue('password') === value) { return Promise.resolve(); } return Promise.reject(new Error(intl.formatMessage({ id: 'register.confirm.mismatch', defaultMessage: '两次输入的密码不一致' }))); }, }), ]}>
