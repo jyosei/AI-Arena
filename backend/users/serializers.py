@@ -1,4 +1,3 @@
-# filepath: /home/ubuntu/AI-Arena/backend/users/serializers.py
 from django.utils.text import Truncator
 from rest_framework import serializers
 
@@ -9,11 +8,10 @@ class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, style={'input_type': 'password'}, min_length=6, required=False)
     avatar_file = serializers.ImageField(write_only=True, required=False, allow_null=True)
     avatar_url = serializers.SerializerMethodField(read_only=True)
-
     class Meta:
         model = User
         fields = [
-            'id', 'username', 'password', 'description', 'avatar', 'avatar_file', 'avatar_url'
+            'id', 'username', 'email', 'password', 'description', 'avatar', 'avatar_file', 'avatar_url'
         ]
         extra_kwargs = {
             'password': {'write_only': True},
@@ -38,11 +36,17 @@ class UserSerializer(serializers.ModelSerializer):
         if value and len(value) < 6:
             raise serializers.ValidationError("密码长度至少为6个字符。")
         return value
-
     def create(self, validated_data):
-        password = validated_data.pop('password')
+        password = validated_data.pop('password', None)
         avatar_file = validated_data.pop('avatar_file', None)
-        user = User.objects.create_user(password=password, **validated_data)
+        if password:
+            user = User.objects.create_user(password=password, **validated_data)
+        else:
+            # 支持无密码注册（例如社交登录），创建后设置为不可登录密码
+            user = User.objects.create(**validated_data)
+            user.set_unusable_password()
+            user.save(update_fields=['password'])
+
         if avatar_file:
             user.avatar_file = avatar_file
             user.save(update_fields=['avatar_file'])

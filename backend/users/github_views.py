@@ -43,10 +43,39 @@ def github_exchange_code_for_token(code: str):
             return None
 
         try:
-            return resp.json()
+            data = resp.json()
         except Exception as e:
             print('解析 GitHub token 响应 JSON 失败:', e, 'raw=', resp.text)
             return None
+
+        # 如果返回的是 bad_verification_code，可能是 redirect_uri 与最初授权时不一致。
+        # 在某些配置下，尝试去掉 redirect_uri 再交换一次可能成功（GitHub 将使用注册时的回调）。
+        if data.get('error') == 'bad_verification_code':
+            try:
+                resp2 = session.post(
+                    'https://github.com/login/oauth/access_token',
+                    data={
+                        'client_id': settings.GITHUB_CLIENT_ID,
+                        'client_secret': settings.GITHUB_CLIENT_SECRET,
+                        'code': code,
+                    },
+                    headers={'Accept': 'application/json'},
+                    timeout=30,
+                )
+                if resp2.status_code == 200:
+                    try:
+                        return resp2.json()
+                    except Exception:
+                        print('解析 GitHub token (no redirect) JSON 失败, raw=', resp2.text)
+                        return data
+                else:
+                    print('GitHub token (no redirect) 返回非200:', resp2.status_code, resp2.text)
+                    return data
+            except Exception as e:
+                print('重试 GitHub token 交换 (无 redirect_uri) 失败:', e)
+                return data
+
+        return data
     except Exception as e:
         print('GitHub token 请求失败:', e)
         return None
@@ -158,8 +187,13 @@ class GitHubCallbackView(APIView):
             print('GitHubCodeExchangeView state 不匹配: session=', session_state, 'received=', state)
 
         token_data = github_exchange_code_for_token(code)
-        if not token_data or 'access_token' not in token_data:
-            return Response({'error': '获取 access_token 失败'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        if not token_data:
+            return Response({'error': '获取 access_token 失败'}, status=status.HTTP_502_BAD_GATEWAY)
+        if 'access_token' not in token_data:
+            # 将 GitHub 返回的非敏感错误信息透传，便于前端/运维排查（不包含 client_secret）
+            github_err = {k: token_data.get(k) for k in ('error', 'error_description', 'error_uri') if token_data.get(k)}
+            print('GitHub token 交换返回错误:', github_err)
+            return Response({'error': '获取 access_token 失败', 'github': github_err}, status=status.HTTP_400_BAD_REQUEST)
 
         access_token = token_data['access_token']
         profile = github_fetch_profile(access_token)
@@ -198,8 +232,12 @@ class GitHubCodeExchangeView(APIView):
             print('GitHubCallbackView state 不匹配: session=', session_state, 'received=', state)
 
         token_data = github_exchange_code_for_token(code)
-        if not token_data or 'access_token' not in token_data:
-            return Response({'error': '获取 access_token 失败'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        if not token_data:
+            return Response({'error': '获取 access_token 失败'}, status=status.HTTP_502_BAD_GATEWAY)
+        if 'access_token' not in token_data:
+            github_err = {k: token_data.get(k) for k in ('error', 'error_description', 'error_uri') if token_data.get(k)}
+            print('GitHub token 交换返回错误:', github_err)
+            return Response({'error': '获取 access_token 失败', 'github': github_err}, status=status.HTTP_400_BAD_REQUEST)
 
         access_token = token_data['access_token']
         profile = github_fetch_profile(access_token)
