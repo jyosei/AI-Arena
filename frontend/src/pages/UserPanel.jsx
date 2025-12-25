@@ -97,7 +97,7 @@ export default function UserPanel() {
             <Form name="register" layout="vertical" onFinish={onRegister}>
               <Form.Item
                 name="username"
-                label={intl.formatMessage({ id: 'register.username.label', defaultMessage: '用户名' })}
+                label={intl.formatMessage({ id: 'register.username.label', defaultMessage: '用户名（不少于3个字符且以字母开头）' })}
                 rules={[{ required: true, message: intl.formatMessage({ id: 'register.username.required', defaultMessage: '请输入用户名' }) }]}
                 extra={(
                   <div className="form-hint">
@@ -114,7 +114,7 @@ export default function UserPanel() {
               </Form.Item>
               <Form.Item
                 name="password"
-                label={intl.formatMessage({ id: 'register.password.label', defaultMessage: '密码' })}
+                label={intl.formatMessage({ id: 'register.password.label', defaultMessage: '密码（长度至少六个字符，大写字母/小写字母/数字/下划线至少包含两种）' })}
                 rules={[{ required: true, message: intl.formatMessage({ id: 'register.password.required', defaultMessage: '请输入密码' }) }]}
                 hasFeedback
                 extra={(
