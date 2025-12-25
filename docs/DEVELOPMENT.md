@@ -37,11 +37,11 @@ git clone https://github.com/your-org/AI-Arena.git
 cd AI-Arena
 
 # 2. 构建镜像并启动
-docker-compose up -d
+docker compose up -d
 
 # 3. 初始化数据库
-docker-compose exec backend python manage.py migrate
-docker-compose exec backend python manage.py createsuperuser
+docker compose exec backend python manage.py migrate
+docker compose exec backend python manage.py createsuperuser
 ```
 
 **访问应用**:

@@ -180,7 +180,7 @@ jobs:
     
     - name: 启动服务（如果需要）
       run: |
-        docker-compose up -d
+        docker compose up -d
         sleep 15  # 等待服务启动
       working-directory: .
     
