@@ -27,6 +27,29 @@ class Migration(migrations.Migration):
             ],
         ),
         migrations.CreateModel(
+            name='AIModel',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('name', models.CharField(help_text='模型名称', max_length=100, unique=True)),
+                ('display_name', models.CharField(blank=True, help_text='展示名称', max_length=200)),
+                ('owner', models.CharField(blank=True, help_text='模型所有者/提供商', max_length=100)),
+                ('description', models.TextField(blank=True, help_text='模型描述')),
+                ('elo_rating', models.FloatField(default=1500.0, help_text='ELO评分，初始值1500')),
+                ('total_battles', models.IntegerField(default=0, help_text='总对战次数')),
+                ('wins', models.IntegerField(default=0, help_text='胜利次数')),
+                ('losses', models.IntegerField(default=0, help_text='失败次数')),
+                ('ties', models.IntegerField(default=0, help_text='平局次数')),
+                ('task_type', models.CharField(blank=True, help_text='任务类型（如：通用、代码、翻译等）', max_length=50)),
+                ('is_active', models.BooleanField(default=True, help_text='是否在排行榜中显示')),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+            ],
+            options={
+                'ordering': ['-elo_rating'],
+                'indexes': [models.Index(fields=['-elo_rating'], name='models_mana_elo_rat_c97aa7_idx')],
+            },
+        ),
+        migrations.CreateModel(
             name='BenchmarkScore',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
@@ -140,29 +163,6 @@ class Migration(migrations.Migration):
             ],
             options={
                 'ordering': ['-created_at'],
-            },
-        ),
-        migrations.CreateModel(
-            name='AIModel',
-            fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('name', models.CharField(help_text='模型名称', max_length=100, unique=True)),
-                ('display_name', models.CharField(blank=True, help_text='展示名称', max_length=200)),
-                ('owner', models.CharField(blank=True, help_text='模型所有者/提供商', max_length=100)),
-                ('description', models.TextField(blank=True, help_text='模型描述')),
-                ('elo_rating', models.FloatField(default=1500.0, help_text='ELO评分，初始值1500')),
-                ('total_battles', models.IntegerField(default=0, help_text='总对战次数')),
-                ('wins', models.IntegerField(default=0, help_text='胜利次数')),
-                ('losses', models.IntegerField(default=0, help_text='失败次数')),
-                ('ties', models.IntegerField(default=0, help_text='平局次数')),
-                ('task_type', models.CharField(blank=True, help_text='任务类型（如：通用、代码、翻译等）', max_length=50)),
-                ('is_active', models.BooleanField(default=True, help_text='是否在排行榜中显示')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-            ],
-            options={
-                'ordering': ['-elo_rating'],
-                'indexes': [models.Index(fields=['-elo_rating'], name='models_mana_elo_rat_c97aa7_idx')],
             },
         ),
     ]
