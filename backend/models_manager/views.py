@@ -33,109 +33,81 @@ import json
 from sympy import sympify, simplify
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 DATASET_METADATA = {
-    # --- 数学与逻辑推理 ---
+    # --- 数学与逻辑推理 (4个) ---
     "gsm8k.csv": {
-        "id": "openai/gsm8k",
-        "creator": "OpenAI",
-        "name": "GSM8K",
-        "modality": "math", # <-- 修改
-        "task": "Math Reasoning",
-        "downloads": "492k",
-        "likes": 985,
+        "id": "openai/gsm8k", "creator": "OpenAI", "name": "GSM8K",
+        "modality": "math", "task": "Math Reasoning", "downloads": "492k+", "likes": 985,
     },
-    "math_competition.csv": {
-        "id": "hendrycks/competition_math",
-        "creator": "Hendrycks et al.",
-        "name": "MATH",
-        "modality": "math", # <-- 修改
-        "task": "Competition Math",
-        "downloads": "115k",
-        "likes": 230,
+    "MATH-500.csv": {
+        "id": "HuggingFaceH4/MATH-500", "creator": "Hendrycks et al.", "name": "MATH (500 Sample)",
+        "modality": "math", "task": "Competition Math", "downloads": "1.5k+", "likes": 15,
     },
-    "commonsense_qa.csv": {
-        "id": "tau/commonsense_qa",
-        "creator": "Tel Aviv University",
-        "name": "CommonsenseQA",
-        "modality": "reasoning", # <-- 修改
-        "task": "Commonsense Reasoning",
-        "downloads": "120k",
-        "likes": 115,
+    "MATH-lighteval.csv": {
+        "id": "lighteval/MATH", "creator": "Hendrycks et al.", "name": "MATH (lighteval)",
+        "modality": "math", "task": "Competition Math", "downloads": "115k+", "likes": 230,
     },
-    "squad_formatted.csv": { 
-        "id": "stanford/squad",
-        "creator": "Stanford",
-        "name": "SQuAD",
-        "modality": "reading", # <-- 修改
-        "task": "Reading Comprehension",
-        "downloads": "1M+",
-        "likes": "10k+",
+    "hendrycks_math.csv": {
+        "id": "EleutherAI/hendrycks_math", "creator": "Hendrycks et al.", "name": "Hendrycks Math",
+        "modality": "math", "task": "Competition Math", "downloads": "1.5k+", "likes": 10,
     },
 
-    # --- 文本分类 ---
+    # --- 问答与常识推理 (3个) ---
+    "commonsense_qa.csv": {
+        "id": "tau/commonsense_qa", "creator": "Tel Aviv University", "name": "CommonsenseQA",
+        "modality": "reasoning", "task": "Commonsense Reasoning", "downloads": "120k+", "likes": 115,
+    },
+    "squad.csv": {
+        "id": "stanford/squad", "creator": "Stanford", "name": "SQuAD",
+        "modality": "reading", "task": "Reading Comprehension", "downloads": "1M+", "likes": "10k+",
+    },
+    "boolq.csv": {
+        "id": "google/boolq", "creator": "Google", "name": "BoolQ",
+        "modality": "reasoning", "task": "Yes/No Question Answering", "downloads": "500k+", "likes": 200,
+        "labels": {"0": "no", "1": "yes"},
+    },
+
+    # --- 文本分类 (4个) ---
     "rotten_tomatoes.csv": {
-        "id": "rotten_tomatoes",
-        "creator": "Pang & Lee",
-        "name": "Rotten Tomatoes",
-        "modality": "classification", # <-- 修改
-        "task": "Sentiment Analysis",
-        "downloads": "500k+",
-        "likes": 89,
+        "id": "rotten_tomatoes", "creator": "Pang & Lee", "name": "Rotten Tomatoes",
+        "modality": "classification", "task": "Sentiment Analysis", "downloads": "500k+", "likes": 89,
     },
     "ag_news.csv": {
-        "id": "fancyzhx/ag_news",
-        "creator": "AG's Corpus",
-        "name": "AG News",
-        "modality": "classification", # <-- 修改
-        "task": "Topic Classification",
-        "downloads": "1.5M+",
-        "likes": 150,
-        "labels": { 
-        "0": "World",
-        "1": "Sports",
-        "2": "Business",
-        "3": "Sci/Tech"
-    },
+        "id": "fancyzhx/ag_news", "creator": "AG's Corpus", "name": "AG News",
+        "modality": "classification", "task": "Topic Classification", "downloads": "1.5M+", "likes": 150,
+        "labels": {"1": "World", "2": "Sports", "3": "Business", "4": "Sci/Tech"},
     },
     "glue-sst2.csv": {
-        "id": "gimmaru/glue-sst2",
-        "creator": "Stanford",
-        "name": "SST-2 (GLUE)",
-        "modality": "classification", # <-- 修改
-        "task": "Sentiment Analysis",
-        "downloads": "2M+",
-        "likes": "1k+",
+        "id": "glue", "creator": "Stanford", "name": "SST-2 (GLUE)",
+        "modality": "classification", "task": "Sentiment Analysis", "downloads": "2M+", "likes": "1k+",
     },
-    "emotion.csv": {
-        "id": "dair-ai/emotion",
-        "creator": "Saravia et al.",
-        "name": "Emotion",
-        "modality": "classification", # <-- 修改
-        "task": "Emotion Classification",
-        "downloads": "300k+",
-        "likes": 210,
+    "imdb.csv": {
+        "id": "imdb", "creator": "Maas et al.", "name": "IMDb",
+        "modality": "classification", "task": "Sentiment Analysis", "downloads": "3.5M+", "likes": "1.5k+",
+    },
+    "multi_nli.csv": {
+        "id": "multi_nli", "creator": "Williams et al.", "name": "MultiNLI",
+        "modality": "classification", "task": "Natural Language Inference", "downloads": "1.2M+", "likes": 300,
+        "labels": {"0": "entailment", "1": "neutral", "2": "contradiction"},
     },
 
-    # --- 占位符/测试用 ---
-    "test_math_small.csv": {
-        "id": "local/test-math-small",
-        "creator": "local",
-        "name": "Small Math Test",
-        "modality": "math", # <-- 修改
-        "task": "Math Reasoning",
-        "downloads": "1",
-        "likes": 0,
+    # --- 文本生成 (摘要/翻译/代码) (4个) ---
+    "samsum.csv": {
+        "id": "samsum", "creator": "Gliwa et al.", "name": "SAMSum",
+        "modality": "summarization", "task": "Dialogue Summarization", "downloads": "1.2M+", "likes": 350,
     },
-    "test_sentiment_small.csv": {
-        "id": "local/test-sentiment-small",
-        "creator": "local",
-        "name": "Small Sentiment Test",
-        "modality": "classification", # <-- 修改
-        "task": "Sentiment Analysis",
-        "downloads": "1",
-        "likes": 0,
+    "xsum.csv": {
+        "id": "xsum", "creator": "BBC", "name": "XSum",
+        "modality": "summarization", "task": "Abstractive Summarization", "downloads": "2.1M+", "likes": "1.1k+",
+    },
+    "wmt16_de_en.csv": {
+        "id": "wmt16", "creator": "WMT", "name": "WMT16 (DE-EN)",
+        "modality": "translation", "task": "Machine Translation", "downloads": "1.8M+", "likes": 400,
+    },
+    "humaneval.csv": {
+        "id": "openai_humaneval", "creator": "OpenAI", "name": "HumanEval",
+        "modality": "code", "task": "Code Generation", "downloads": "1.5M+", "likes": "1.2k+",
     },
 }
-
 class RecordVoteView(APIView):
     """接收并记录一次对战的投票结果"""
     permission_classes = [AllowAny] # 允许任何人投票
